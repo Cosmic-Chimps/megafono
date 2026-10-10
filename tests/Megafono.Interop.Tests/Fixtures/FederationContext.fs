@@ -81,6 +81,14 @@ type HostLease(app: WebApplication, seen: ConcurrentQueue<SeenRequest>, release:
                 }
             )
 
+/// Exclusive use of the host port that `megafono.test` proxies to, for a host that builds its own Kestrel
+/// (the real Megáfono app) instead of the minimal one `AttachHost` creates. Dispose it after the host has stopped.
+type PortLease(port: int, release: unit -> unit) =
+    member _.Port = port
+
+    interface IDisposable with
+        member _.Dispose() = release ()
+
 let private caddyfile (domain: string) (upstream: string) =
     $"""{{
 	auto_https off
@@ -159,6 +167,16 @@ type FederationContext(pki: TestCa.TestPki, network: INetwork, hostPort: int) =
             with e ->
                 hostGate.Release() |> ignore
                 return raise e
+        }
+
+    /// Takes the host port for a host with its own Kestrel (see `PortLease`). Waits for the previous lease,
+    /// whether from this method or from `AttachHost`.
+    member _.LeasePort() : Task<PortLease> =
+        task {
+            let! acquired = hostGate.WaitAsync(TimeSpan.FromMinutes 5.0)
+            if not acquired then
+                failwith "timed out waiting for the megafono.test host port to be released by another test"
+            return new PortLease(hostPort, (fun () -> hostGate.Release() |> ignore))
         }
 
     /// A host that serves `GET /probe.json` -> `{"ok":true}` and 404 for everything else.

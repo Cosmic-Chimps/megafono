@@ -25,6 +25,10 @@
     <Compile Include="Integration/AppClientTests.fs" />
     <Compile Include="Integration/RemoteActorsTests.fs" />
     <Compile Include="Integration/QueueTests.fs" />
+    <Compile Include="Integration/WebFingerTests.fs" />
+    <Compile Include="Integration/ActorTests.fs" />
+    <Compile Include="Integration/NodeInfoTests.fs" />
+    <Compile Include="Integration/ProfileUpdateTests.fs" />
     <Compile Include="SmokeTests.fs" />
     <Compile Include="Integration/GatewayTests.fs" />
   </ItemGroup>

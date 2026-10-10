@@ -303,3 +303,90 @@ let ``R-13 non-2xx answers come back as responses`` () : Task =
             let! result = SafeHttp.signedGet (client true) keyId key.Value (Uri $"{baseUrl}/x")
             Assert.Equal(404, (result |> Result.defaultWith (fun e -> failwith $"{e}")).Status)
         })
+
+// ---- the test-network seam ------------------------------------------------------------------------------
+
+open System.Security.Cryptography.X509Certificates
+open Microsoft.AspNetCore.Hosting
+open Microsoft.AspNetCore.Server.Kestrel.Core
+open Microsoft.AspNetCore.Server.Kestrel.Https
+open Microsoft.Extensions.Logging
+
+/// A self-signed certificate for `name`, usable by Kestrel and as the only trusted root
+let private certificateFor (name: string) : X509Certificate2 =
+    use rsa = RSA.Create 2048
+    let request = CertificateRequest($"CN={name}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
+    let san = SubjectAlternativeNameBuilder()
+    san.AddDnsName name
+    request.CertificateExtensions.Add(san.Build())
+    use cert = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays -1.0, DateTimeOffset.UtcNow.AddDays 2.0)
+    X509CertificateLoader.LoadPkcs12(cert.Export X509ContentType.Pfx, null)
+
+let private withTlsServer (cert: X509Certificate2) (test: int -> Task) : Task =
+    task {
+        let builder = WebApplication.CreateBuilder()
+        builder.Logging.ClearProviders() |> ignore
+        builder.WebHost.ConfigureKestrel(fun (o: KestrelServerOptions) -> o.Listen(IPAddress.Loopback, 0, fun lo -> lo.UseHttps cert |> ignore)) |> ignore
+        let app = builder.Build()
+        app.Run(RequestDelegate(fun ctx -> ctx.Response.WriteAsync "secure"))
+        do! app.StartAsync()
+
+        try
+            let address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>().Addresses |> Seq.head
+            do! test (Uri address).Port
+        finally
+            app.StopAsync().GetAwaiter().GetResult()
+    }
+
+let private networkTo (port: int) (domain: string) (root: X509Certificate2) : SafeHttp.TestNetwork =
+    { Redirect = (fun host -> if host = domain then Some("127.0.0.1", port) else None)
+      TrustedRoot = root }
+
+let private testClient (network: SafeHttp.TestNetwork) =
+    SafeHttp.create (SafeHttp.createHandlerWith true (Some network)) true "Megafono/test" TimeProvider.System
+
+[<Fact>]
+let ``test seam: a fake domain reaches the redirected port and TLS validates against the test CA`` () : Task =
+    let cert = certificateFor "fake.test"
+
+    withTlsServer cert (fun port ->
+        task {
+            let client = testClient (networkTo port "fake.test" cert)
+            let! result = SafeHttp.signedGet client keyId key.Value (Uri "https://fake.test/hello")
+            let response = result |> Result.defaultWith (fun e -> failwith $"{e}")
+            Assert.Equal("secure", asString response)
+        })
+
+[<Fact>]
+let ``test seam: another CA is not trusted, and a certificate for another name is refused`` () : Task =
+    let cert = certificateFor "fake.test"
+    let stranger = certificateFor "fake.test"
+
+    withTlsServer cert (fun port ->
+        task {
+            let! wrongCa = SafeHttp.signedGet (testClient (networkTo port "fake.test" stranger)) keyId key.Value (Uri "https://fake.test/")
+            Assert.True wrongCa.IsError
+
+            // The server's certificate says fake.test; asking for other.test (same redirect) must fail the name check
+            let network = { networkTo port "other.test" cert with Redirect = (fun _ -> Some("127.0.0.1", port)) }
+            let! wrongName = SafeHttp.signedGet (testClient network) keyId key.Value (Uri "https://other.test/")
+            Assert.True wrongName.IsError
+        })
+
+[<Fact>]
+let ``test seam: without an override the fake domain is not reachable`` () : Task =
+    task {
+        let client = SafeHttp.create (SafeHttp.createHandlerWith true None) true "Megafono/test" TimeProvider.System
+        let! result = SafeHttp.signedGet client keyId key.Value (Uri "https://fake.test/")
+        Assert.True result.IsError
+    }
+
+[<Fact>]
+let ``test seam: it needs the private-address switch, which Production refuses`` () =
+    let network = networkTo 1 "fake.test" (certificateFor "fake.test")
+    Assert.Throws<ArgumentException>(fun () -> SafeHttp.createHandlerWith false (Some network) |> ignore) |> ignore
+
+    // And through the app: a registered override with the switch off fails as soon as the client is built
+    let configure (services: IServiceCollection) = services.AddSingleton<SafeHttp.TestNetwork>(network) |> ignore
+    use app = Megafono.Program.buildAppWith configure [| "--environment"; "Development" |] Megafono.Tests.TestSupport.validOverrides
+    Assert.Throws<ArgumentException>(fun () -> app.Services.GetRequiredService<SafeHttp.SafeHttpClient>() |> ignore) |> ignore

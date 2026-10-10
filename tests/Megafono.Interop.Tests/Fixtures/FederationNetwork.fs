@@ -44,6 +44,9 @@ type FederationNetwork() =
     /// Starts a Kestrel app reachable as `https://megafono.test` (see `FederationContext.AttachHost`).
     member _.AttachHost(configure) = ctx.Value.AttachHost configure
 
+    /// The host port for a host with its own Kestrel (the real Megáfono); see `FederationContext.PortLease`.
+    member _.LeasePort() = ctx.Value.LeasePort()
+
     /// A host that serves `/probe.json` and records every request.
     member _.AttachProbe() = ctx.Value.AttachProbe()
 

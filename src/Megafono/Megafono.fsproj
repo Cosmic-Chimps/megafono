@@ -5,6 +5,7 @@
     <Compile Include="Domain/Ids.fs" />
     <Compile Include="Domain/Backoff.fs" />
     <Compile Include="Domain/Events.fs" />
+    <Compile Include="Domain/ActivityStreams.fs" />
     <Compile Include="Infrastructure/Config.fs" />
     <Compile Include="Infrastructure/Database.fs" />
     <Compile Include="Infrastructure/KeyVault.fs" />
@@ -17,6 +18,11 @@
     <Compile Include="Infrastructure/AppClient.fs" />
     <Compile Include="Infrastructure/RemoteActors.fs" />
     <Compile Include="Infrastructure/Outbox.fs" />
+    <Compile Include="Federation/Http.fs" />
+    <Compile Include="Federation/Actors.fs" />
+    <Compile Include="Federation/WebFinger.fs" />
+    <Compile Include="Federation/NodeInfo.fs" />
+    <Compile Include="Internal/Actors.fs" />
     <Compile Include="Workers/Dispatcher.fs" />
     <Compile Include="Workers/Deliveries.fs" />
     <Compile Include="Workers/AppEvents.fs" />

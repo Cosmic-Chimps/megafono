@@ -39,7 +39,14 @@ let private register (options: Config.MegafonoOptions) (services: IServiceCollec
     services.AddSingleton<SafeHttp.SafeHttpClient>(fun sp ->
         let allow = options.Federation.AllowPrivateAddresses
         let agent = SafeHttp.userAgent options.Software.Version options.Domain
-        SafeHttp.create (SafeHttp.createHandler allow) allow agent (sp.GetRequiredService<TimeProvider>()))
+        // Registered by tests only (see SafeHttp.TestNetwork); createHandlerWith refuses it unless the private-address
+        // switch is on, and that switch is refused in Production
+        let testNetwork =
+            match box (sp.GetService typeof<SafeHttp.TestNetwork>) with
+            | null -> None
+            | network -> Some(network :?> SafeHttp.TestNetwork)
+
+        SafeHttp.create (SafeHttp.createHandlerWith allow testNetwork) allow agent (sp.GetRequiredService<TimeProvider>()))
     |> ignore
 
     services.AddSingleton<InstanceKey.InstanceKeyProvider>(fun sp ->
@@ -155,8 +162,14 @@ let buildAppWith (configure: IServiceCollection -> unit) (args: string[]) (overr
     let ports = lazy (PortGuard.boundPorts (app.Services.GetRequiredService<IServer>()) options.Ports)
     app.Use(PortGuard.middleware options.App.Token ports) |> ignore
 
-    app.UseRouting().UseOxpecker [ GET [ route "/health" (Health.handler (app.Services.GetRequiredService<NpgsqlDataSource>())) ] ]
-    |> ignore
+    let endpoints =
+        [ GET [ route "/health" (Health.handler (app.Services.GetRequiredService<NpgsqlDataSource>())) ] ]
+        @ Federation.WebFinger.endpoints
+        @ Federation.NodeInfo.endpoints
+        @ Federation.Actors.endpoints
+        @ Internal.Actors.endpoints
+
+    app.UseRouting().UseOxpecker endpoints |> ignore
 
     app
 
