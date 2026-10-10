@@ -7,6 +7,13 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 file="${1:-$root/samples/SampleApp/Megafono.fs}"
 limit=99
 
+# A directory means its Megafono.fs; a missing file must fail, not count as 0
+if [ -d "$file" ]; then file="$file/Megafono.fs"; fi
+if [ ! -f "$file" ]; then
+  echo "no such file: $file" >&2
+  exit 2
+fi
+
 count=$(awk '
   inblock { if ($0 ~ /\*\)/) inblock = 0; next }
   /^[[:space:]]*$/ { next }
