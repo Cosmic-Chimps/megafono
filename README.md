@@ -56,5 +56,5 @@ plan and tasks, and [`docs/vision.md`](docs/vision.md) the product vision. Expec
 
 ## Related projects
 
-- **Umbral**: a sign-in project. Megáfono does not depend on it.
+- **Umbral**: a self-hosted OpenID Connect provider for social login, so apps don't wire OAuth by hand. Megáfono does not depend on it; signing users in stays the app's job.
 - **Frunchy**: an F# app and the first intended consumer of Megáfono. Megáfono does not depend on it.
