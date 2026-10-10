@@ -149,7 +149,7 @@ let ``R-13 a loopback target is refused by the connection itself`` () : Task =
         let! result = SafeHttp.signedGet c keyId key.Value (Uri "https://127.0.0.1:9/")
 
         match result with
-        | Error(SafeHttp.Network _) -> ()
+        | Error(SafeHttp.BlockedAddress _) -> ()
         | other -> failwith $"expected a refused connection, got {other}"
 
         let! localhost = SafeHttp.signedGet c keyId key.Value (Uri "https://localhost:9/")

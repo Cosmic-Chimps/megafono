@@ -6,6 +6,7 @@ open System
 open System.Globalization
 open System.Security.Cryptography
 open System.Text
+open Megafono.Domain
 
 /// What a signature covers: the method, the raw path plus query, the headers and the body bytes
 type SignedRequest =
@@ -48,14 +49,6 @@ let describe (error: VerifyError) : string =
     | DigestMissing -> "no Digest header"
     | DigestMismatch -> "Digest does not match the body"
     | BadSignature -> "signature does not verify"
-
-type private ResultBuilder() =
-    member _.Bind(r, f) = Result.bind f r
-    member _.Return x = Ok x
-    member _.ReturnFrom(r: Result<_, _>) = r
-    member _.Zero() = Ok()
-
-let private result = ResultBuilder()
 
 let private requestTarget = "(request-target)"
 let private maxClockSkew = TimeSpan.FromHours 12.0

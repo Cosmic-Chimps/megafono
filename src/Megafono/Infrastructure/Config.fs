@@ -12,7 +12,11 @@ type AppOptions =
 
 type SoftwareOptions = { Name: string; Version: string }
 
-type PortOptions = { Federation: int; Internal: int }
+type PortOptions =
+    { Federation: int
+      Internal: int
+      /// Interface both listeners bind to; tests use 127.0.0.1
+      BindAddress: string }
 
 type DeliveryOptions = { PerHost: int; Global: int }
 
@@ -26,6 +30,8 @@ type FederationOptions =
 
 type MegafonoOptions =
     { Domain: string
+      /// `ConnectionStrings:Database`
+      Database: string
       App: AppOptions
       /// Base64 of 32 bytes (R-11)
       MasterKey: string
@@ -96,6 +102,7 @@ let read (config: IConfiguration) : MegafonoOptions * string list =
 
     let options =
         { Domain = text "Domain" ""
+          Database = defaultArg (Option.ofObj config["ConnectionStrings:Database"]) "" |> fun s -> s.Trim()
           App =
             { BaseUrl = text "App:BaseUrl" ""
               Token = text "App:Token" ""
@@ -110,7 +117,8 @@ let read (config: IConfiguration) : MegafonoOptions * string list =
               Version = text "Software:Version" "0.1.0" }
           Ports =
             { Federation = number "Ports:Federation" 8080
-              Internal = number "Ports:Internal" 8081 }
+              Internal = number "Ports:Internal" 8081
+              BindAddress = text "Ports:BindAddress" "0.0.0.0" }
           Delivery =
             { PerHost = number "Delivery:PerHost" 2
               Global = number "Delivery:Global" 32 }
@@ -128,6 +136,22 @@ let validate (environmentName: string) (options: MegafonoOptions) : string list 
           "Megafono:Domain is required (the public host name, e.g. example.com)"
       elif options.Domain.Contains '/' || options.Domain.Contains "://" || options.Domain |> Seq.exists Char.IsWhiteSpace then
           "Megafono:Domain must be a bare host name without scheme, path or spaces"
+
+      if String.IsNullOrWhiteSpace options.Database then
+          "ConnectionStrings:Database is required (the Postgres connection string)"
+
+      match Uri.TryCreate(options.App.BaseUrl, UriKind.Absolute) with
+      | true, uri when uri.Scheme = Uri.UriSchemeHttp || uri.Scheme = Uri.UriSchemeHttps -> ()
+      | _ -> "Megafono:App:BaseUrl is required and must be an absolute http(s) URL (the app's private address)"
+
+      if String.IsNullOrWhiteSpace options.App.Token then
+          "Megafono:App:Token is required (the bearer token for /internal/* and for calls to the app)"
+
+      if String.IsNullOrWhiteSpace options.App.WebhookSecret then
+          "Megafono:App:WebhookSecret is required (signs the webhooks sent to the app)"
+
+      if not (fst (Net.IPAddress.TryParse options.Ports.BindAddress)) then
+          "Megafono:Ports:BindAddress must be an IP address"
 
       if (decodeMasterKey options.MasterKey).IsNone then
           "Megafono:MasterKey must be base64 of exactly 32 bytes (for example `openssl rand -base64 32`)"

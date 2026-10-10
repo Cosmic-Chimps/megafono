@@ -9,7 +9,7 @@ open Megafono.Tests.TestSupport
 let private load (environment: string) (pairs: (string * string) list) =
     let config =
         ConfigurationBuilder()
-            .AddInMemoryCollection(pairs |> List.map (fun (k, v) -> Collections.Generic.KeyValuePair(k, v)))
+            .AddInMemoryCollection(pairs |> List.rev |> List.distinctBy fst |> List.rev |> List.map (fun (k, v) -> Collections.Generic.KeyValuePair(k, v)))
             .Build()
 
     Config.load environment config
@@ -32,6 +32,7 @@ let ``T009 defaults: ports, concurrency and rate limits`` () =
     Assert.Equal("megafono.test", o.Domain)
     Assert.Equal(8080, o.Ports.Federation)
     Assert.Equal(8081, o.Ports.Internal)
+    Assert.Equal("0.0.0.0", o.Ports.BindAddress)
     Assert.Equal(2, o.Delivery.PerHost)
     Assert.Equal(32, o.Delivery.Global)
     Assert.Equal(600, o.RateLimit.PerAddress)
@@ -110,20 +111,37 @@ let ``T009 indexed trusted proxies work too`` () =
 [<InlineData("AAAA")>] // 3 bytes
 [<InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")>] // 34 bytes
 let ``T009 a master key that is not base64 of 32 bytes stops startup`` (key: string) =
-    let errors = load "Production" [ "Megafono:Domain", "megafono.test"; "Megafono:MasterKey", key ] |> errorsOf
+    let others = validOverrides |> List.filter (fun (k, _) -> k <> "Megafono:MasterKey")
+    let errors = load "Production" (("Megafono:MasterKey", key) :: others) |> errorsOf
     Assert.True(mentions "MasterKey" errors)
 
 [<Fact>]
 let ``T009 exactly 32 bytes passes, 31 and 33 do not`` () =
     let ofLength n = Convert.ToBase64String(Array.zeroCreate<byte> n)
-    Assert.True((load "Production" [ "Megafono:Domain", "d.test"; "Megafono:MasterKey", ofLength 32 ]).IsOk)
+    let withKey n = ("Megafono:MasterKey", ofLength n) :: (validOverrides |> List.filter (fun (k, _) -> k <> "Megafono:MasterKey"))
+    Assert.True((load "Production" (withKey 32)).IsOk)
 
     for n in [ 31; 33; 16; 64 ] do
-        Assert.True((load "Production" [ "Megafono:Domain", "d.test"; "Megafono:MasterKey", ofLength n ]).IsError)
+        Assert.True((load "Production" (withKey n)).IsError)
 
 [<Fact>]
 let ``T009 a missing master key is reported`` () =
-    Assert.True(mentions "MasterKey" (load "Production" [ "Megafono:Domain", "d.test" ] |> errorsOf))
+    let without = validOverrides |> List.filter (fun (k, _) -> k <> "Megafono:MasterKey")
+    Assert.True(mentions "MasterKey" (load "Production" without |> errorsOf))
+
+[<Theory>]
+[<InlineData("ConnectionStrings:Database", "ConnectionStrings:Database")>]
+[<InlineData("Megafono:App:BaseUrl", "App:BaseUrl")>]
+[<InlineData("Megafono:App:Token", "App:Token")>]
+[<InlineData("Megafono:App:WebhookSecret", "App:WebhookSecret")>]
+let ``T017 the database, the app address, the token and the webhook secret are required`` (key: string, mentioned: string) =
+    let without = validOverrides |> List.filter (fun (k, _) -> k <> key)
+    Assert.True(mentions mentioned (load "Production" without |> errorsOf))
+
+[<Fact>]
+let ``T017 the app base URL must be an absolute http(s) URL and the bind address an IP`` () =
+    Assert.True(mentions "BaseUrl" (load "Production" (validOverrides @ [ "Megafono:App:BaseUrl", "app:3000" ]) |> errorsOf))
+    Assert.True(mentions "BindAddress" (load "Production" (validOverrides @ [ "Megafono:Ports:BindAddress", "everywhere" ]) |> errorsOf))
 
 [<Fact>]
 let ``T009 a bad previous master key is reported`` () =
@@ -137,7 +155,8 @@ let ``T009 a bad previous master key is reported`` () =
 [<InlineData("megafono.test/path")>]
 [<InlineData("mega fono.test")>]
 let ``T009 an empty or non-host Domain stops startup`` (domain: string) =
-    let errors = load "Production" [ "Megafono:Domain", domain; "Megafono:MasterKey", masterKey ] |> errorsOf
+    let others = validOverrides |> List.filter (fun (k, _) -> k <> "Megafono:Domain")
+    let errors = load "Production" (("Megafono:Domain", domain) :: others) |> errorsOf
     Assert.True(mentions "Domain" errors)
 
 [<Theory>]
