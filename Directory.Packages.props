@@ -3,6 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="FSharp.Core" Version="10.0.100" />
     <PackageVersion Include="Oxpecker" Version="2.1.1" />
     <PackageVersion Include="Npgsql" Version="10.0.3" />
     <PackageVersion Include="HtmlSanitizer" Version="9.2.1039" />
