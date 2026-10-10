@@ -40,11 +40,11 @@ Single repository, layout from plan.md: `src/Megafono/`, `src/Megafono.Gateway/`
 
 **Purpose**: solution, projects and pinned packages.
 
-- [ ] T001 Create `Megafono.slnx`, `global.json` (SDK 10.0.x, `"test": { "runner": "Microsoft.Testing.Platform" }`), `Directory.Build.props` (`net10.0`, `TreatWarningsAsErrors`, `LangVersion` latest) and `Directory.Packages.props` with central versions from research.md (Oxpecker 2.1.1, Npgsql 10.0.3, HtmlSanitizer 9.2.1039, Yarp.ReverseProxy 2.3.0, xunit.v3 4.0.1, Testcontainers 4.15.0, Testcontainers.PostgreSql 4.15.0) at the repository root
-- [ ] T002 Create `src/Megafono/Megafono.fsproj` (`Microsoft.NET.Sdk.Web`, references Oxpecker, Npgsql, HtmlSanitizer) with a minimal `src/Megafono/Program.fs` that builds a `WebApplication` through an exported `buildApp (args: string[]) (overrides: (string * string) list)` function (tests reuse it) and runs it
-- [ ] T003 [P] Create `tests/Megafono.Tests/Megafono.Tests.fsproj` (xUnit v3, `OutputType` Exe, Microsoft.Testing.Platform, Testcontainers.PostgreSql, project reference to `src/Megafono`) with one passing smoke test in `tests/Megafono.Tests/SmokeTests.fs`
-- [ ] T004 [P] Create `tests/Megafono.Interop.Tests/Megafono.Interop.Tests.fsproj` (xUnit v3, Testcontainers, project reference to `src/Megafono`) with an empty `tests/Megafono.Interop.Tests/Fixtures/` folder and a `fixtures/` folder for captured payloads
-- [ ] T005 Add `Megafono.slnx` entries for all projects and confirm `dotnet build` and `dotnet test` pass from the root; add the commands to the "Status" section of `CLAUDE.md`
+- [X] T001 Create `Megafono.slnx`, `global.json` (SDK 10.0.x, `"test": { "runner": "Microsoft.Testing.Platform" }`), `Directory.Build.props` (`net10.0`, `TreatWarningsAsErrors`, `LangVersion` latest) and `Directory.Packages.props` with central versions from research.md (Oxpecker 2.1.1, Npgsql 10.0.3, HtmlSanitizer 9.2.1039, Yarp.ReverseProxy 2.3.0, xunit.v3 4.0.1, Testcontainers 4.15.0, Testcontainers.PostgreSql 4.15.0) at the repository root
+- [X] T002 Create `src/Megafono/Megafono.fsproj` (`Microsoft.NET.Sdk.Web`, references Oxpecker, Npgsql, HtmlSanitizer) with a minimal `src/Megafono/Program.fs` that builds a `WebApplication` through an exported `buildApp (args: string[]) (overrides: (string * string) list)` function (tests reuse it) and runs it
+- [X] T003 [P] Create `tests/Megafono.Tests/Megafono.Tests.fsproj` (xUnit v3, `OutputType` Exe, Microsoft.Testing.Platform, Testcontainers.PostgreSql, project reference to `src/Megafono`) with one passing smoke test in `tests/Megafono.Tests/SmokeTests.fs`
+- [X] T004 [P] Create `tests/Megafono.Interop.Tests/Megafono.Interop.Tests.fsproj` (xUnit v3, Testcontainers, project reference to `src/Megafono`) with an empty `tests/Megafono.Interop.Tests/Fixtures/` folder (harness code) and a `Payloads/` folder for captured payloads (not `fixtures/`: macOS file systems are case-insensitive)
+- [X] T005 Add `Megafono.slnx` entries for all projects and confirm `dotnet build` and `dotnet test` pass from the root; add the commands to the "Status" section of `CLAUDE.md`
 
 ---
 
@@ -236,7 +236,7 @@ account follows the sample app's test user (quickstart section 5).
 
 - [ ] T083 Mastodon suite in `tests/Megafono.Interop.Tests/Mastodon/` (Trait `Suite=mastodon`, `AUTHORIZED_FETCH=true`): the scenarios of T035, T045, T058 and T068 against Mastodon, plus the lock icon (visibility `private`) on the followers-only post and finding Alex by pasting the sample profile URL (SC-001)
 - [ ] T084 [P] Load test in `tests/Megafono.Tests/Load/FanOutTests.fs` (Trait `Suite=load`): a stub fleet of 200 inbox hosts and 1,000 followers; with the process limited to 2 CPUs, every host receives the Create within 2 minutes (SC-003)
-- [ ] T085 [P] Capture the real inbound payloads and headers seen in the interop runs into `tests/Megafono.Interop.Tests/fixtures/` and `tests/Megafono.Tests/Fixtures/payloads/` behind a test-mode logging switch, and add verification tests for them (Principle VI)
+- [ ] T085 [P] Capture the real inbound payloads and headers seen in the interop runs into `tests/Megafono.Interop.Tests/Payloads/` and `tests/Megafono.Tests/Fixtures/payloads/` behind a test-mode logging switch, and add verification tests for them (Principle VI)
 - [ ] T086 [P] CI workflows in `.github/workflows/ci.yml` (build, `Megafono.Tests`, GoToSocial interop on every push) and `.github/workflows/mastodon.yml` (nightly schedule and manual dispatch for `Suite=mastodon` and `Suite=load`)
 - [ ] T087 [P] Write `README.md`: what Megáfono is, the three-call integration, link to `docs/operating.md`, contracts and the privacy limit
 - [ ] T088 Update `CLAUDE.md` (build and test commands, layout) and mark the decided open questions in `docs/vision.md` (per-actor keys, draft-cavage only, events only, no activity table) as decided by this feature

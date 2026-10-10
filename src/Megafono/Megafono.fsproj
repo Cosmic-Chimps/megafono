@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Oxpecker" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="HtmlSanitizer" />
+  </ItemGroup>
+
+</Project>

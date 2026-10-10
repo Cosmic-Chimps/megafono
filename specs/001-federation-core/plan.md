@@ -137,7 +137,7 @@ deploy/
 tests/Megafono.Tests/             # unit + integration: Postgres container, real Kestrel, fake app,
                                   # stub inbox fleet, fake TimeProvider, crash fault hook
 tests/Megafono.Interop.Tests/     # test CA, Caddy fronts, GoToSocial (every run),
-                                  # Mastodon (Trait Suite=mastodon), fixtures/ of real payloads
+                                  # Mastodon (Trait Suite=mastodon), Payloads/ of real payloads
 
 scripts/count-integration-lines.sh
 docs/                             # vision.md; operator docs (master key backup, privacy limit FR-065)
