@@ -1,0 +1,66 @@
+name: Nightly
+
+# The slow suites: interop against a real Mastodon, and load
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mastodon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - run: dotnet build
+
+      - name: Mastodon interop suite
+        run: |
+          mkdir -p test-output
+          dotnet test --project tests/Megafono.Interop.Tests --no-build -- --filter-trait "Suite=mastodon" 2>&1 | tee test-output/mastodon.txt
+
+      - name: Upload test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mastodon-test-output
+          path: |
+            test-output/
+            **/TestResults/
+          if-no-files-found: ignore
+
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - run: dotnet build
+
+      # Exit code 8 means no test matched: the load suite may not exist yet, which is not a failure
+      - name: Load suite
+        run: |
+          mkdir -p test-output
+          dotnet test --project tests/Megafono.Tests --no-build -- --filter-trait "Suite=load" --ignore-exit-code 8 2>&1 | tee test-output/load.txt
+
+      - name: Upload test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-output
+          path: |
+            test-output/
+            **/TestResults/
+          if-no-files-found: ignore

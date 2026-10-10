@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # Warnings are errors (Directory.Build.props), so both configurations must be clean
+      - name: Build (Debug)
+        run: dotnet build
+
+      - name: Build (Release)
+        run: dotnet build -c Release
+
+      - name: Unit and integration tests
+        run: |
+          mkdir -p test-output
+          dotnet test --project tests/Megafono.Tests --no-build -- --filter-not-trait "Suite=load" 2>&1 | tee test-output/megafono-tests.txt
+
+      # Starts GoToSocial in Testcontainers; the Mastodon suite runs nightly instead
+      - name: Interop tests
+        run: |
+          mkdir -p test-output
+          dotnet test --project tests/Megafono.Interop.Tests --no-build -- --filter-not-trait "Suite=mastodon" 2>&1 | tee test-output/interop-tests.txt
+
+      - name: Integration code stays under 100 lines
+        run: scripts/count-integration-lines.sh
+
+      - name: Build the images
+        run: |
+          docker build -f deploy/Dockerfile.megafono -t megafono/megafono:ci .
+          docker build -f deploy/Dockerfile.gateway -t megafono/gateway:ci .
+          docker build -f deploy/Dockerfile.sample -t megafono/sample:ci .
+
+      - name: Upload test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: |
+            test-output/
+            **/TestResults/
+          if-no-files-found: ignore
