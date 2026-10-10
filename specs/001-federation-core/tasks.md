@@ -223,9 +223,9 @@ account follows the sample app's test user (quickstart section 5).
 - [X] T076 [P] [US5] Create `src/Megafono.Gateway/` (`Megafono.Gateway.fsproj`, `Program.fs`, `appsettings.json`) on Yarp.ReverseProxy 2.3.0 with the routes, order, `RequestHeaderOriginalHost` and TLS settings from research R-14
 - [X] T077 [P] [US5] Create `samples/SampleApp/` (Oxpecker): users in memory with a `test` user, the actor lookup, the webhook receiver with signature check, a profile page at `/u/{handle}` with the `rel=alternate` link and header, a page listing followers and pending requests with approve buttons, and a publish form; keep integration code in `samples/SampleApp/Megafono.fs` separate from the sample's UI
 - [X] T078 [P] [US5] Create `deploy/Dockerfile.megafono`, `deploy/Dockerfile.gateway`, `deploy/Dockerfile.sample` (multi-stage, `linux/amd64` and `linux/arm64`)
-- [ ] T079 [US5] Create `deploy/compose.yaml` and `deploy/.env.example` (gateway on 443 with mounted cert, sample app, Megáfono with 8081 on an internal-only network, Postgres 17) following the vision's deployment section, with `/ap/*` routing
+- [X] T079 [US5] Create `deploy/compose.yaml` and `deploy/.env.example` (gateway on 443 with mounted cert, sample app, Megáfono with 8081 on an internal-only network, Postgres 17) following the vision's deployment section, with `/ap/*` routing
 - [X] T080 [P] [US5] Create `scripts/count-integration-lines.sh` counting non-blank, non-comment lines of `samples/SampleApp/Megafono.fs` and failing above 99 (SC-007)
-- [ ] T081 [US5] Write `docs/operating.md`: setup from compose in under 10 minutes, every `Megafono__` setting, master key generation and backup apart from the database, gateway routing rules, and the plain statement that a delivered followers-only post can be shown to anyone by the receiving server (FR-065, Principle II)
+- [X] T081 [US5] Write `docs/operating.md`: setup from compose in under 10 minutes, every `Megafono__` setting, master key generation and backup apart from the database, gateway routing rules, and the plain statement that a delivered followers-only post can be shown to anyone by the receiving server (FR-065, Principle II)
 - [ ] T082 [US5] Make T073–T075 pass and run quickstart section 6
 
 **Checkpoint**: all five stories work and can be deployed.

@@ -21,7 +21,9 @@ services:
     volumes:
       - ${TLS_CERT_PATH:?set TLS_CERT_PATH}:/certs/tls.crt:ro
       - ${TLS_KEY_PATH:?set TLS_KEY_PATH}:/certs/tls.key:ro
-    networks: [edge]
+    networks:
+      edge:
+        ipv4_address: 172.30.0.10 # fixed, so Megáfono can trust its X-Forwarded-For (per-address rate limits)
     depends_on: [megafono, sample]
 
   sample:
@@ -51,6 +53,7 @@ services:
       Megafono__App__Token: ${MEGAFONO_TOKEN:?set MEGAFONO_TOKEN}
       Megafono__App__WebhookSecret: ${MEGAFONO_WEBHOOK_SECRET:?set MEGAFONO_WEBHOOK_SECRET}
       ConnectionStrings__Database: Host=db;Database=megafono;Username=megafono;Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      Megafono__TrustedProxies: 172.30.0.10 # the gateway; without it every request would count as the gateway's address
     # 8080 (federation) is routed by the gateway over edge; 8081 (internal API) is only on internal and never published.
     # Both ports are listed here only so the intent is visible: no `ports:` entry exists for either.
     networks: [edge, internal]
@@ -75,7 +78,10 @@ services:
     networks: [internal]
 
 networks:
-  edge: {} # gateway, megafono (federation port), sample
+  edge: # gateway, megafono (federation port), sample
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
   internal:
     internal: true # no route to the outside: sample, megafono (internal API), db
 

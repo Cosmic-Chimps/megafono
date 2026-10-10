@@ -68,7 +68,7 @@ a JSON file) plus the connection string. A bad value stops startup with every pr
 | `Megafono__Delivery__Global` | no | `32` | Concurrent deliveries overall (at least 1). |
 | `Megafono__RateLimit__PerAddress` | no | `600` | Inbound requests per source address per window (at least 1). |
 | `Megafono__RateLimit__PerHost` | no | `600` | Inbound requests per signing host per window (at least 1). |
-| `Megafono__TrustedProxies` | no | none | Comma-separated addresses of proxies whose `X-Forwarded-*` headers are trusted (also as `Megafono__TrustedProxies__0`, `__1`…). Set it to the gateway's address. |
+| `Megafono__TrustedProxies` | no | none | Comma-separated addresses of proxies whose `X-Forwarded-*` headers are trusted (also as `Megafono__TrustedProxies__0`, `__1`…). Set it to the gateway's address (the compose file fixes it at `172.30.0.10`). Without it, every request counts as coming from the gateway and the per-address rate limit applies to the whole fediverse at once. |
 | `Megafono__Software__Name` | no | `megafono` | Software name in NodeInfo; lowercase letters, digits and `-`. |
 | `Megafono__Software__Version` | no | `0.1.0` | Software version in NodeInfo. |
 | `Megafono__Federation__AllowPrivateAddresses` | no | `false` | **Tests only.** Lets outbound requests reach private addresses and plain http. Refused when `ASPNETCORE_ENVIRONMENT` is `Production`. |
