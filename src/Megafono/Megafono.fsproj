@@ -1,14 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <Compile Include="Domain/ResultBuilder.fs" />
     <Compile Include="Domain/Ids.fs" />
     <Compile Include="Domain/Backoff.fs" />
+    <Compile Include="Domain/Events.fs" />
     <Compile Include="Infrastructure/Config.fs" />
     <Compile Include="Infrastructure/Database.fs" />
     <Compile Include="Infrastructure/KeyVault.fs" />
     <Compile Include="Infrastructure/HttpSignatures.fs" />
     <Compile Include="Infrastructure/SafeHttp.fs" />
     <Compile Include="Infrastructure/Sanitizer.fs" />
+    <Compile Include="Infrastructure/PortGuard.fs" />
+    <Compile Include="Infrastructure/Health.fs" />
+    <Compile Include="Infrastructure/InstanceKey.fs" />
+    <Compile Include="Infrastructure/AppClient.fs" />
+    <Compile Include="Infrastructure/RemoteActors.fs" />
+    <Compile Include="Infrastructure/Outbox.fs" />
+    <Compile Include="Workers/Dispatcher.fs" />
+    <Compile Include="Workers/Deliveries.fs" />
+    <Compile Include="Workers/AppEvents.fs" />
+    <Compile Include="Workers/Housekeeping.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

@@ -1,0 +1,94 @@
+/// Writing to the queues. Both helpers take the caller's open transaction, so the queue rows commit together
+/// with whatever caused them (FR-050) and the NOTIFY is only delivered once they are visible.
+module Megafono.Infrastructure.Outbox
+
+open System
+open System.Threading.Tasks
+open Npgsql
+open NpgsqlTypes
+open Megafono.Domain
+
+let deliveriesChannel = "megafono_deliveries"
+let eventsChannel = "megafono_app_events"
+
+let private notify (tx: NpgsqlTransaction) (channel: string) =
+    task {
+        use command = new NpgsqlCommand("SELECT pg_notify(@channel, '')", tx.Connection, tx)
+        command.Parameters.AddWithValue("channel", channel) |> ignore
+        let! _ = command.ExecuteNonQueryAsync()
+        ()
+    }
+
+/// The host key a delivery is limited by: lowercase host, plus the port when it is not the default
+let hostOf (inbox: string) : string = Uri(inbox).Authority.ToLowerInvariant()
+
+/// One `deliveries` row per distinct inbox, due now, with the 48 h deadline. Rows that already exist for the
+/// same (activity, inbox) are left alone, so a retried caller creates no second delivery. Returns the number
+/// of new rows.
+let enqueueDeliveries (tx: NpgsqlTransaction) (time: TimeProvider) (activityId: Guid) (inboxes: string list) : Task<int> =
+    task {
+        let distinct = inboxes |> List.distinct |> Array.ofList
+
+        if distinct.Length = 0 then
+            return 0
+        else
+            let now = time.GetUtcNow()
+
+            use command =
+                new NpgsqlCommand(
+                    """INSERT INTO deliveries (id, activity, inbox_url, host, status, attempts, next_attempt_at, deadline_at, created_at)
+                       SELECT gen_random_uuid(), @activity, i.inbox, i.host, 'pending', 0, @now, @deadline, @now
+                       FROM unnest(@inboxes, @hosts) AS i(inbox, host)
+                       ON CONFLICT (activity, inbox_url) DO NOTHING""",
+                    tx.Connection,
+                    tx
+                )
+
+            command.Parameters.AddWithValue("activity", activityId) |> ignore
+            command.Parameters.AddWithValue("now", now.UtcDateTime) |> ignore
+            command.Parameters.AddWithValue("deadline", (now + Backoff.deadline).UtcDateTime) |> ignore
+            command.Parameters.Add(NpgsqlParameter("inboxes", NpgsqlDbType.Array ||| NpgsqlDbType.Text, Value = distinct)) |> ignore
+            command.Parameters.Add(NpgsqlParameter("hosts", NpgsqlDbType.Array ||| NpgsqlDbType.Text, Value = (distinct |> Array.map hostOf))) |> ignore
+            let! inserted = command.ExecuteNonQueryAsync()
+            do! notify tx deliveriesChannel
+            return inserted
+    }
+
+/// Queues an app event for `userId`: takes the user's next `seq` (FR-057), stores the full envelope and
+/// NOTIFYs. Returns the event id.
+let enqueueEvent (tx: NpgsqlTransaction) (time: TimeProvider) (userId: string) (body: Events.EventBody) : Task<string> =
+    task {
+        let now = time.GetUtcNow()
+
+        use bump = new NpgsqlCommand("UPDATE local_actors SET event_seq = event_seq + 1 WHERE app_user_id = @user RETURNING event_seq, handle", tx.Connection, tx)
+        bump.Parameters.AddWithValue("user", userId) |> ignore
+        use! reader = bump.ExecuteReaderAsync()
+
+        if not (reader.Read()) then
+            invalidOp $"No local actor '{userId}' to queue an event for"
+
+        let seq = reader.GetInt64 0
+        let handle = reader.GetString 1
+        do! reader.CloseAsync()
+
+        let eventId = Events.newEventId now
+        let payload = Events.envelope eventId now seq userId handle body
+
+        use insert =
+            new NpgsqlCommand(
+                """INSERT INTO app_events (id, local_actor, seq, event_type, payload, status, attempts, next_attempt_at, created_at)
+                   VALUES (@id, @user, @seq, @type, @payload, 'pending', 0, @now, @now)""",
+                tx.Connection,
+                tx
+            )
+
+        insert.Parameters.AddWithValue("id", eventId) |> ignore
+        insert.Parameters.AddWithValue("user", userId) |> ignore
+        insert.Parameters.AddWithValue("seq", seq) |> ignore
+        insert.Parameters.AddWithValue("type", Events.typeName body.Type) |> ignore
+        insert.Parameters.Add(NpgsqlParameter("payload", NpgsqlDbType.Jsonb, Value = payload)) |> ignore
+        insert.Parameters.AddWithValue("now", now.UtcDateTime) |> ignore
+        let! _ = insert.ExecuteNonQueryAsync()
+        do! notify tx eventsChannel
+        return eventId
+    }

@@ -1,35 +1,150 @@
 module Megafono.Program
 
+open System
+open System.Collections.Concurrent
+open System.Net
 open Microsoft.AspNetCore.Builder
+open Microsoft.AspNetCore.Hosting
+open Microsoft.AspNetCore.Hosting.Server
+open Microsoft.AspNetCore.Http
+open Microsoft.AspNetCore.Server.Kestrel.Core
 open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.DependencyInjection
+open Microsoft.Extensions.DependencyInjection.Extensions
+open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
+open Npgsql
 open Oxpecker
 open Megafono.Infrastructure
+open Megafono.Workers
 
-// Placeholder; the real health endpoint comes in T017
-let private health: EndpointHandler = fun ctx -> ctx.WriteJson {| status = "ok" |}
+/// The two queue loops, built once the container exists; tests reach `Wake` through here
+type Workers =
+    { Deliveries: Dispatcher.Dispatcher
+      AppEvents: Dispatcher.Dispatcher }
 
-/// Builds the app without running it, so tests can reuse it. Overrides win over every other configuration source.
-let buildApp (args: string[]) (overrides: (string * string) list) : WebApplication =
+let private logger (sp: IServiceProvider) = sp.GetRequiredService<ILoggerFactory>().CreateLogger "Megafono"
+
+/// Everything the app is made of. `configure` runs first, so tests can pre-register a `TimeProvider` or a
+/// `DeliveryFaults`; the registrations here only fill in what is missing.
+let private register (options: Config.MegafonoOptions) (services: IServiceCollection) =
+    let masterKeys =
+        KeyVault.masterKeys (Config.decodeMasterKey options.MasterKey).Value (options.MasterKeyPrevious |> Option.bind Config.decodeMasterKey)
+
+    services.TryAddSingleton<TimeProvider>(TimeProvider.System)
+    services.AddSingleton options |> ignore
+    services.AddSingleton masterKeys |> ignore
+    Database.register services options.Database |> ignore
+
+    services.AddSingleton<SafeHttp.SafeHttpClient>(fun sp ->
+        let allow = options.Federation.AllowPrivateAddresses
+        let agent = SafeHttp.userAgent options.Software.Version options.Domain
+        SafeHttp.create (SafeHttp.createHandler allow) allow agent (sp.GetRequiredService<TimeProvider>()))
+    |> ignore
+
+    services.AddSingleton<InstanceKey.InstanceKeyProvider>(fun sp ->
+        InstanceKey.create (sp.GetRequiredService<NpgsqlDataSource>()) masterKeys options.Domain (sp.GetRequiredService<TimeProvider>()))
+    |> ignore
+
+    services.AddSingleton<IHostedService>(fun sp -> InstanceKey.hostedService (sp.GetRequiredService<InstanceKey.InstanceKeyProvider>())) |> ignore
+
+    services.AddSingleton<AppClient.AppClient>(fun sp ->
+        AppClient.create
+            { DataSource = sp.GetRequiredService<NpgsqlDataSource>()
+              Keys = masterKeys
+              Http = AppClient.createHttpClient ()
+              BaseUrl = options.App.BaseUrl
+              Token = options.App.Token
+              Domain = options.Domain
+              Time = sp.GetRequiredService<TimeProvider>()
+              AllowPrivateAddresses = options.Federation.AllowPrivateAddresses
+              Log = logger sp })
+    |> ignore
+
+    services.AddSingleton<RemoteActors.Env>(fun sp ->
+        let env: RemoteActors.Env =
+            { DataSource = sp.GetRequiredService<NpgsqlDataSource>()
+              Http = sp.GetRequiredService<SafeHttp.SafeHttpClient>()
+              Instance = sp.GetRequiredService<InstanceKey.InstanceKeyProvider>()
+              Time = sp.GetRequiredService<TimeProvider>()
+              AllowPrivateAddresses = options.Federation.AllowPrivateAddresses
+              Log = logger sp }
+
+        env)
+    |> ignore
+
+    services.AddSingleton<Workers>(fun sp ->
+        let dataSource = sp.GetRequiredService<NpgsqlDataSource>()
+        let time = sp.GetRequiredService<TimeProvider>()
+        let log = logger sp
+
+        let faults =
+            match box (sp.GetService typeof<Deliveries.DeliveryFaults>) with
+            | null -> None
+            | faults -> (faults :?> Deliveries.DeliveryFaults).BeforeCompletionWrite
+
+        let deliveries: Deliveries.Env =
+            { DataSource = dataSource
+              Http = sp.GetRequiredService<SafeHttp.SafeHttpClient>()
+              Keys = masterKeys
+              Domain = options.Domain
+              Time = time
+              KeyCache = ConcurrentDictionary() }
+
+        let events: AppEvents.Env =
+            { DataSource = dataSource
+              Http = AppEvents.createHttpClient ()
+              BaseUrl = options.App.BaseUrl
+              WebhookSecret = options.App.WebhookSecret
+              Time = time }
+
+        { Deliveries =
+            Dispatcher.create
+                (Deliveries.spec deliveries options.Delivery.Global options.Delivery.PerHost)
+                Dispatcher.defaultSettings
+                dataSource
+                time
+                log
+                faults
+          AppEvents = Dispatcher.create (AppEvents.spec events) Dispatcher.defaultSettings dataSource time log None })
+    |> ignore
+
+    services.AddSingleton<IHostedService>(fun sp -> sp.GetRequiredService<Workers>().Deliveries.Service) |> ignore
+    services.AddSingleton<IHostedService>(fun sp -> sp.GetRequiredService<Workers>().AppEvents.Service) |> ignore
+
+    services.AddSingleton<IHostedService>(fun sp ->
+        Housekeeping.hostedService (sp.GetRequiredService<NpgsqlDataSource>()) (sp.GetRequiredService<TimeProvider>()) (logger sp))
+    |> ignore
+
+/// Builds the app without running it, so tests can reuse it. Overrides win over every other configuration source;
+/// `configure` may register services before the app's own (a fake clock, the fault hook).
+let buildAppWith (configure: IServiceCollection -> unit) (args: string[]) (overrides: (string * string) list) : WebApplication =
     let builder = WebApplication.CreateBuilder args
 
-    builder.Configuration.AddInMemoryCollection(overrides |> List.map (fun (k, v) -> System.Collections.Generic.KeyValuePair(k, v)))
+    // A key given twice: the last one wins
+    let distinctOverrides = overrides |> List.rev |> List.distinctBy fst |> List.rev
+
+    builder.Configuration.AddInMemoryCollection(distinctOverrides |> List.map (fun (k, v) -> System.Collections.Generic.KeyValuePair(k, v)))
     |> ignore
 
     // Startup stops here, with every problem listed, rather than failing later on a bad key or domain
     let options =
         match Config.load builder.Environment.EnvironmentName builder.Configuration with
         | Ok options -> options
-        | Error errors -> raise (System.InvalidOperationException(Config.describeErrors errors))
+        | Error errors -> raise (InvalidOperationException(Config.describeErrors errors))
 
-    builder.Services.AddSingleton options |> ignore
+    // Federation port first, internal second: PortGuard.boundPorts relies on this order
+    let address = IPAddress.Parse options.Ports.BindAddress
+
+    builder.WebHost.ConfigureKestrel(fun (kestrel: KestrelServerOptions) ->
+        kestrel.AddServerHeader <- false
+        kestrel.Listen(address, options.Ports.Federation)
+        kestrel.Listen(address, options.Ports.Internal))
+    |> ignore
+
+    configure builder.Services
     builder.Services.AddRouting().AddOxpecker() |> ignore
-
-    match builder.Configuration.GetConnectionString "Database" with
-    | null
-    | "" -> ()
-    | connectionString -> Database.register builder.Services connectionString |> ignore
+    register options builder.Services
 
     let app = builder.Build()
 
@@ -37,8 +152,15 @@ let buildApp (args: string[]) (overrides: (string * string) list) : WebApplicati
         app.Logger.LogWarning
             "Megafono:Federation:AllowPrivateAddresses is ON: outbound requests may reach private addresses and plain http. This is for tests only."
 
-    app.UseRouting().UseOxpecker [ GET [ route "/health" health ] ] |> ignore
+    let ports = lazy (PortGuard.boundPorts (app.Services.GetRequiredService<IServer>()) options.Ports)
+    app.Use(PortGuard.middleware options.App.Token ports) |> ignore
+
+    app.UseRouting().UseOxpecker [ GET [ route "/health" (Health.handler (app.Services.GetRequiredService<NpgsqlDataSource>())) ] ]
+    |> ignore
+
     app
+
+let buildApp (args: string[]) (overrides: (string * string) list) : WebApplication = buildAppWith ignore args overrides
 
 [<EntryPoint>]
 let main argv =

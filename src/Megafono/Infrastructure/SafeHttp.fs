@@ -11,6 +11,9 @@ open System.Security.Cryptography
 open System.Threading
 open System.Threading.Tasks
 
+/// Thrown by the connect callback; surfaces as `BlockedAddress`
+exception BlockedAddressException of string
+
 let maxResponseBytes = 1024 * 1024
 let private timeout = TimeSpan.FromSeconds 10.0
 let private maxRedirects = 3
@@ -67,7 +70,7 @@ let private connect (allowPrivate: bool) (context: SocketsHttpConnectionContext)
             let allowed = addresses |> Array.filter (isAllowedAddress allowPrivate)
 
             if allowed.Length = 0 then
-                raise (HttpRequestException $"Refusing to connect to {host}: it resolves to no public address")
+                raise (BlockedAddressException $"Refusing to connect to {host}: it resolves to no public address")
 
             // Connect to the validated address itself, so a second DNS answer cannot swap it (rebinding)
             let mutable connected: Stream = null
@@ -111,6 +114,8 @@ type SafeHttpClient =
 
 type FetchError =
     | UnsafeUrl of string
+    /// The host resolves only to private, loopback or otherwise blocked addresses (FR-021)
+    | BlockedAddress of string
     | TooManyRedirects
     | ResponseTooLarge
     | TimedOut
@@ -185,13 +190,15 @@ let private sendOnce (client: SafeHttpClient) (request: HttpRequestMessage) : Ta
                 return body |> Result.map (fun b -> response.StatusCode, None, contentType, b)
         with
         | :? OperationCanceledException -> return Error TimedOut
+        | :? HttpRequestException as e when (match e.InnerException with BlockedAddressException _ -> true | _ -> false) ->
+            return Error(BlockedAddress e.InnerException.Message)
         | :? HttpRequestException as e ->
             let detail = if isNull e.InnerException then e.Message else $"{e.Message}: {e.InnerException.Message}"
             return Error(Network detail)
         | :? IOException as e -> return Error(Network e.Message) // the connection dropped while reading the body
     }
 
-let private signRequest (client: SafeHttpClient) (keyId: string) (key: RSA) (httpMethod: HttpMethod) (uri: Uri) (body: byte[] option) =
+let private signRequest (client: SafeHttpClient) (keyId: string) (key: RSA) (httpMethod: HttpMethod) (uri: Uri) (body: byte[] option) (accept: string) =
     let request = new HttpRequestMessage(httpMethod, uri)
     request.Headers.TryAddWithoutValidation("User-Agent", client.UserAgent) |> ignore
 
@@ -203,19 +210,19 @@ let private signRequest (client: SafeHttpClient) (keyId: string) (key: RSA) (htt
         let content = new ByteArrayContent(bytes)
         content.Headers.TryAddWithoutValidation("Content-Type", "application/activity+json") |> ignore
         request.Content <- content
-    | None -> request.Headers.TryAddWithoutValidation("Accept", activityAccept) |> ignore
+    | None -> request.Headers.TryAddWithoutValidation("Accept", accept) |> ignore
 
     request
 
 /// GET signed with `keyId`/`key`. Redirects are followed manually, at most 3 times, each hop re-checked
 /// and re-signed for its own host. Non-2xx answers are returned, not turned into errors.
-let signedGet (client: SafeHttpClient) (keyId: string) (key: RSA) (uri: Uri) : Task<Result<FetchResponse, FetchError>> =
+let signedGetAccepting (accept: string) (client: SafeHttpClient) (keyId: string) (key: RSA) (uri: Uri) : Task<Result<FetchResponse, FetchError>> =
     let rec hop (current: Uri) (redirects: int) =
         task {
             match checkScheme client current with
             | Error e -> return Error e
             | Ok() ->
-                use request = signRequest client keyId key HttpMethod.Get current None
+                use request = signRequest client keyId key HttpMethod.Get current None accept
 
                 match! sendOnce client request with
                 | Error e -> return Error e
@@ -236,6 +243,10 @@ let signedGet (client: SafeHttpClient) (keyId: string) (key: RSA) (uri: Uri) : T
 
     hop uri 0
 
+/// GET asking for ActivityStreams JSON, signed with `keyId`/`key`
+let signedGet (client: SafeHttpClient) (keyId: string) (key: RSA) (uri: Uri) : Task<Result<FetchResponse, FetchError>> =
+    signedGetAccepting activityAccept client keyId key uri
+
 /// POST of `body` (the exact bytes, so a retry is identical) with `Digest` and
 /// `Content-Type: application/activity+json`. Never follows redirects: a 3xx is the caller's failure to record.
 let signedPost (client: SafeHttpClient) (keyId: string) (key: RSA) (uri: Uri) (body: byte[]) : Task<Result<FetchResponse, FetchError>> =
@@ -243,7 +254,7 @@ let signedPost (client: SafeHttpClient) (keyId: string) (key: RSA) (uri: Uri) (b
         match checkScheme client uri with
         | Error e -> return Error e
         | Ok() ->
-            use request = signRequest client keyId key HttpMethod.Post uri (Some body)
+            use request = signRequest client keyId key HttpMethod.Post uri (Some body) activityAccept
 
             match! sendOnce client request with
             | Error e -> return Error e
@@ -255,3 +266,13 @@ let signedPost (client: SafeHttpClient) (keyId: string) (key: RSA) (uri: Uri) (b
                           Body = responseBody
                           Uri = uri }
     }
+
+/// One line for `last_error` columns and logs
+let describeError (error: FetchError) : string =
+    match error with
+    | UnsafeUrl reason -> $"unsafe URL: {reason}"
+    | BlockedAddress reason -> $"blocked address: {reason}"
+    | TooManyRedirects -> "too many redirects"
+    | ResponseTooLarge -> "response larger than 1 MB"
+    | TimedOut -> "timed out"
+    | Network reason -> $"network error: {reason}"

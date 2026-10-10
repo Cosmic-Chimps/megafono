@@ -7,14 +7,24 @@
 
   <ItemGroup>
     <Compile Include="TestSupport.fs" />
+    <Compile Include="Fixtures/PostgresFixture.fs" />
+    <Compile Include="Fixtures/FakeApp.fs" />
+    <Compile Include="Fixtures/StubRemote.fs" />
+    <Compile Include="Fixtures/MegafonoHost.fs" />
+    <Compile Include="Fixtures/Seed.fs" />
     <Compile Include="Unit/IdsTests.fs" />
     <Compile Include="Unit/BackoffTests.fs" />
     <Compile Include="Unit/ConfigTests.fs" />
+    <Compile Include="Unit/EventsTests.fs" />
     <Compile Include="Unit/KeyVaultTests.fs" />
     <Compile Include="Unit/HttpSignaturesTests.fs" />
     <Compile Include="Unit/SafeHttpTests.fs" />
     <Compile Include="Unit/SanitizerTests.fs" />
     <Compile Include="Integration/SchemaTests.fs" />
+    <Compile Include="Integration/HostTests.fs" />
+    <Compile Include="Integration/AppClientTests.fs" />
+    <Compile Include="Integration/RemoteActorsTests.fs" />
+    <Compile Include="Integration/QueueTests.fs" />
     <Compile Include="SmokeTests.fs" />
   </ItemGroup>
 
