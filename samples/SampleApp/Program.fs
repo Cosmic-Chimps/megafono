@@ -3,9 +3,11 @@ module SampleApp.Program
 open System
 open System.Collections.Concurrent
 open Microsoft.AspNetCore.Builder
+open Microsoft.AspNetCore.Hosting
 open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.DependencyInjection
+open Microsoft.Extensions.Hosting
 open Oxpecker
 open SampleApp
 open SampleApp.Users
@@ -29,6 +31,14 @@ let buildSample (args: string[]) (overrides: (string * string) list) : WebApplic
 
     builder.Services.AddRouting().AddOxpecker() |> ignore
     let app = builder.Build()
+
+    // The manage pages publish and approve on the user's behalf: never start them open outside Development
+    let adminPassword = app.Configuration["Sample:AdminPassword"] |> Option.ofObj |> Option.defaultValue ""
+
+    if adminPassword = "" && not (app.Environment.IsDevelopment()) then
+        failwith "Sample:AdminPassword (env SAMPLE__ADMINPASSWORD) is required outside Development"
+
+    app.Use(Auth.middleware adminPassword) |> ignore
     let s = Megafono.settings app.Configuration
     // Received webhook events by id, in memory; a repeated id is ignored
     let events = ConcurrentDictionary<string, string>()
