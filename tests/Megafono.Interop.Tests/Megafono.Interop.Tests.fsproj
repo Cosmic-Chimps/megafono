@@ -8,7 +8,9 @@
   <ItemGroup>
     <Compile Include="Fixtures/TestCa.fs" />
     <Compile Include="Fixtures/GoToSocialFixture.fs" />
+    <Compile Include="Fixtures/MastodonFixture.fs" />
     <Compile Include="HarnessTests.fs" />
+    <Compile Include="MastodonHarnessTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

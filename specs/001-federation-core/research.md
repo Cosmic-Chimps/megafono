@@ -261,8 +261,8 @@ Sources are listed per decision. Mastodon links point at `main` on GitHub, GoToS
   - GoToSocial (pinned tag, SQLite, `GTS_HOST=gts.test`, CA via `SSL_CERT_FILE`,
     `http-client.allow-ips` for the Docker subnet, rate limiting off) runs on **every** test run.
   - Mastodon (pinned 4.x tag; web, sidekiq, Postgres, Redis; production mode,
-    `ALLOWED_PRIVATE_ADDRESSES` = the network's fixed subnet, `AUTHORIZED_FETCH=true`, CA bundle via
-    `SSL_CERT_FILE`) runs in a separate suite marked `Trait("Suite", "mastodon")`, scheduled and
+    `ALLOWED_PRIVATE_ADDRESSES` = the three private ranges (the subnet is not fixed),
+    `AUTHORIZED_FETCH=true`, CA bundle via `SSL_CERT_FILE`) runs in a separate suite marked `Trait("Suite", "mastodon")`, scheduled and
     before releases.
   - Both servers are driven through their Mastodon-compatible client API (search with `resolve`,
     follow, home timeline, status) with one shared client. Provisioning: GTS
@@ -275,7 +275,51 @@ Sources are listed per decision. Mastodon links point at `main` on GitHub, GoToS
 - **Alternatives**: Megáfono as a container on the network (kept as the fallback if host-port
   exposure is flaky; costs an image build per run); HTTP mode (rejected above).
 - **Spikes before the code depends on them** (first tasks of the feature):
-  1. Mastodon in production mode trusting the test CA through `SSL_CERT_FILE`: **unverified**.
+  1. Mastodon in production mode trusting the test CA through `SSL_CERT_FILE`: **verified (T007,
+     2026-10-10)**, `ghcr.io/mastodon/mastodon:v4.7.3` (native arm64, Ruby 4.0.6, user `mastodon`,
+     entrypoint `tini`, no default command), the latest stable at the time (4.6.9, 4.5.19 and 4.4.26 are
+     the older maintained lines). `SSL_CERT_FILE=/certs/ca.pem`, a bundle holding **only the test CA**,
+     is enough: Mastodon (Ruby/OpenSSL, http.rb) then accepts the `megafono.test` leaf, and none of the
+     harness traffic needs the system roots. Without it Mastodon never reaches the host (the request
+     dies in the TLS handshake and nothing is logged). Setup that worked, in `MastodonFixture`:
+     - **Topology**: Postgres (`postgres:17-alpine`, alias `db`) and Redis (`redis:7-alpine`, alias
+       `redis`), web and sidekiq from the same image, a Caddy front aliased `mastodon.test` proxying to
+       `web:3000` (Caddy sets `X-Forwarded-Proto: https` itself; Mastodon's `force_ssl` needs it), and
+       the same `megafono.test` Caddy and host-port exposure as for GTS (both fixtures run in one
+       process without trouble).
+     - **Env** (web and sidekiq): `RAILS_ENV=production`, `LOCAL_DOMAIN=mastodon.test`,
+       `SECRET_KEY_BASE` (64 random bytes, hex), `ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY`,
+       `ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT`, `ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY` (random
+       32-char strings, no need for `rails db:encryption:init`), `DB_HOST/PORT/USER/NAME/PASS`,
+       `REDIS_HOST/PORT`, `ES_ENABLED=false`, `SINGLE_USER_MODE=false`, `AUTHORIZED_FETCH=true`,
+       `ALLOWED_PRIVATE_ADDRESSES=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`,
+       **`EMAIL_DOMAIN_ALLOWLIST=mastodon.test`**, `SSL_CERT_FILE`. `OTP_SECRET` is not needed, and
+       **VAPID keys are not needed** (the instance boots and serves without them).
+     - **Gotcha**: `tootctl accounts create` fails with `email unreachable` for a `.test` address,
+       because production validates the e-mail domain's MX record; `EMAIL_DOMAIN_ALLOWLIST` skips it.
+     - **Migration step**: the web container's command is `sh -c "bundle exec rails db:setup &&
+       exec bundle exec puma -C config/puma.rb"` (`POSTGRES_DB` already creates the database; `db:setup`
+       loads the schema, 615 migrations, in about 12 s). Sidekiq starts after web is healthy.
+     - **Readiness**: web is ready when `GET https://mastodon.test/health` answers 200 through the front
+       (`/health` is exempt from `force_ssl`); sidekiq is ready when
+       `/opt/mastodon/tmp/sidekiq_process_has_started_and_will_begin_processing_jobs` exists
+       (`MASTODON_SIDEKIQ_READY_FILENAME`), checked with `test -f`; Postgres with
+       `pg_isready -h 127.0.0.1` (the init server is socket-only), Redis with `redis-cli ping`.
+     - **Account and token**: `docker exec <web> bin/tootctl accounts create alice --email
+       alice@mastodon.test --confirmed --approve` (prints a generated password, which the harness does not
+       need), then `bin/rails runner /tmp/token.rb` (script copied in with `WithResourceMapping`) that
+       does `Doorkeeper::Application.create!(name:, redirect_uri: 'urn:ietf:wg:oauth:2.0:oob', scopes:
+       'read write follow')` and `Doorkeeper::AccessToken.create!(application:, resource_owner_id:,
+       scopes: 'read write follow', expires_in: nil)` and prints `TOKEN=<token>` (parsed from stdout, which
+       also carries Sidekiq log lines). `GET /api/v1/accounts/verify_credentials` with it returns
+       `username: alice`, `url: https://mastodon.test/@alice` (the actor id is
+       `https://mastodon.test/ap/users/<numeric id>` in 4.7).
+     - **Dialing**: a search `GET /api/v2/search?q=@nobody@megafono.test&resolve=true&type=accounts` makes
+       Mastodon send, unsigned, `GET https://megafono.test/.well-known/webfinger?resource=acct:nobody@megafono.test`
+       and `GET /.well-known/host-meta`, both with `Host: megafono.test` and `User-Agent: Mastodon/4.7.3
+       (http.rb/5.3.1; +https://mastodon.test/)`, so the host must answer host-meta too (404 is fine).
+       Without `ALLOWED_PRIVATE_ADDRESSES` the search fails at once with
+       `{"error":"Mastodon::PrivateNetworkAddressError"}` and nothing arrives.
   2. A non-interactive GTS user token: **verified (T006, 2026-10-10)**. Flow, all over the Caddy
      front with one cookie jar and no redirect following (`HarnessTests`, `GoToSocialFixture.ObtainToken`):
      1. `gotosocial admin account create --username alice --email alice@gts.test --password ...` via
@@ -330,7 +374,13 @@ Sources are listed per decision. Mastodon links point at `main` on GitHub, GoToS
 - **Timings (T006, macOS Docker Desktop, images cached)**: the GTS harness smoke suite takes about 18 s:
   expose host port 2.1 s, start GTS container 1.6 s, both Caddy fronts 0.9 s (parallel), GTS ready
   (migrations, WASM compile) 5.6 s, token 0.1 s. A cold run adds the image pulls.
-- **Estimates (unverified)**: Mastodon suite 6–12 min plus the first image pull.
+- **Mastodon timings and memory (T007, macOS Docker Desktop, images cached)**: the Mastodon smoke suite
+  takes about 35 s end to end: Postgres, Redis and both Caddys 3.1 s, web healthy (`db:setup` plus boot)
+  10.2 s, sidekiq ready 6.3 s, account plus token 8.2 s (two Rails boots), host-port exposure 2.1 s. The
+  first run (cold) was about 60 s. Idle memory: web about 425 MiB, sidekiq about 327 MiB, Postgres about 57
+  MiB, Redis about 11 MiB, around 0.8 GiB in total; the image is 868 MB. Far below the 6–12 min first
+  estimated, so the Mastodon suite can run on every CI build if desired (the `Suite=mastodon` trait still
+  lets it be filtered out).
 - **Sources**: [GTS config](https://docs.gotosocial.org/en/latest/configuration/general/),
   [GTS CLI](https://docs.gotosocial.org/en/latest/admin/cli/),
   [Mastodon config](https://docs.joinmastodon.org/admin/config/),

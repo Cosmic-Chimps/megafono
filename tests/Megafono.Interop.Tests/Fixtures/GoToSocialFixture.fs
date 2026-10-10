@@ -81,7 +81,7 @@ let startProbeHost () : Task<ProbeHost> =
         return ProbeHost(app, Uri(address).Port, seen)
     }
 
-let private bytes (s: string) : byte[] = Encoding.UTF8.GetBytes s
+let bytes (s: string) : byte[] = Encoding.UTF8.GetBytes s
 
 let private caddyfile (domain: string) (upstream: string) =
     $"""{{
@@ -94,7 +94,7 @@ https://{domain} {{
 }}
 """
 
-let private caddyFront (network: INetwork) (pki: TestCa.TestPki) (domain: string) (upstream: string) =
+let caddyFront (network: INetwork) (pki: TestCa.TestPki) (domain: string) (upstream: string) =
     let leaf = pki.Leaf domain
     ContainerBuilder(CaddyImage)
         .WithNetwork(network)
@@ -124,7 +124,7 @@ let private gtsContainer (network: INetwork) (pki: TestCa.TestPki) =
         .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("listening on"))
         .Build()
 
-let private timed (timings: ConcurrentDictionary<string, TimeSpan>) (name: string) (work: Task) =
+let timed (timings: ConcurrentDictionary<string, TimeSpan>) (name: string) (work: Task) =
     task {
         let sw = Diagnostics.Stopwatch.StartNew()
         do! work
