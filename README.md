@@ -56,5 +56,5 @@ plan and tasks, and [`docs/vision.md`](docs/vision.md) the product vision. Expec
 
 ## Related projects
 
-- **Umbral**: a sign-in project from the same author. Megáfono does not depend on it.
+- **Umbral**: a sign-in project. Megáfono does not depend on it.
 - **Frunchy**: an F# app and the first intended consumer of Megáfono. Megáfono does not depend on it.
