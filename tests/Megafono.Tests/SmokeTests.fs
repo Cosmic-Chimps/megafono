@@ -12,7 +12,7 @@ open Xunit
 [<Fact>]
 let ``health answers 200 on real Kestrel`` () : Task =
     task {
-        let app = Megafono.Program.buildApp [||] [ "urls", "http://127.0.0.1:0" ]
+        let app = Megafono.Program.buildApp [||] (("urls", "http://127.0.0.1:0") :: TestSupport.validOverrides)
         do! app.StartAsync()
 
         try

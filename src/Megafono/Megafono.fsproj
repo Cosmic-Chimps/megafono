@@ -1,6 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <Compile Include="Domain/Ids.fs" />
+    <Compile Include="Domain/Backoff.fs" />
+    <Compile Include="Infrastructure/Config.fs" />
+    <Compile Include="Infrastructure/Database.fs" />
+    <Compile Include="Infrastructure/KeyVault.fs" />
+    <Compile Include="Infrastructure/HttpSignatures.fs" />
+    <Compile Include="Infrastructure/SafeHttp.fs" />
+    <Compile Include="Infrastructure/Sanitizer.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
