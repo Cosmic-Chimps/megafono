@@ -1,0 +1,16 @@
+# Build context is the repository root: docker build -f deploy/Dockerfile.gateway .
+# Multi-arch: both stages follow the build host, so linux/amd64 and linux/arm64 work without a RID.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY global.json Directory.Build.props Directory.Packages.props ./
+COPY src/ src/
+COPY samples/ samples/
+RUN dotnet publish src/Megafono.Gateway/Megafono.Gateway.fsproj -c Release -o /app /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+COPY --from=build /app .
+# Non-root: the aspnet image ships the unprivileged user "app"
+USER $APP_UID
+EXPOSE 8080 443
+ENTRYPOINT ["dotnet", "Megafono.Gateway.dll"]

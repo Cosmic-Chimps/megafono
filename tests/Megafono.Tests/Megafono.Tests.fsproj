@@ -27,6 +27,7 @@
     <Compile Include="Integration/QueueTests.fs" />
     <Compile Include="SmokeTests.fs" />
     <Compile Include="Integration/GatewayTests.fs" />
+    <Compile Include="Integration/SampleAppTests.fs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -37,6 +38,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Megafono/Megafono.fsproj" />
     <ProjectReference Include="../../src/Megafono.Gateway/Megafono.Gateway.fsproj" />
+    <ProjectReference Include="../../samples/SampleApp/SampleApp.fsproj" />
   </ItemGroup>
 
 </Project>
