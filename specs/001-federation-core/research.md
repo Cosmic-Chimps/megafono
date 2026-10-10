@@ -54,6 +54,10 @@ Sources are listed per decision. Mastodon links point at `main` on GitHub, GoToS
   no user is involved; living under `/ap/*` keeps the gateway rule unchanged.
 - **Gotcha**: the `id` in the body must equal the request URL byte for byte (no trailing slash, no
   case drift).
+- **Verified in US1 (T035)**: GTS and Mastodon 4.7.3 both resolve the actor and show name, note and
+  avatar (both cache the avatar). Mastodon only uses `url` when it is on the actor's host; on another
+  host it shows the actor id instead. Fine in the reference deployment (the app is behind the same
+  domain), and `docs/operating.md` says so.
 - **Sources**: [actor_serializer.rb](https://github.com/mastodon/mastodon/blob/main/app/serializers/activitypub/actor_serializer.rb),
   [fetch_remote_actor_service.rb](https://github.com/mastodon/mastodon/blob/main/app/services/activitypub/fetch_remote_actor_service.rb),
   [instance actor](https://github.com/mastodon/mastodon/blob/main/app/controllers/instance_actors_controller.rb),

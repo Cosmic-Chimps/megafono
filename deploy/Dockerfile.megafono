@@ -5,8 +5,7 @@ WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props ./
 COPY src/ src/
 COPY samples/ samples/
-# FS3511 is only reported by Release builds (RemoteActors.fs, a let rec inside a task); drop NoWarn once that is fixed
-RUN dotnet publish src/Megafono/Megafono.fsproj -c Release -o /app /p:UseAppHost=false /p:NoWarn=FS3511
+RUN dotnet publish src/Megafono/Megafono.fsproj -c Release -o /app /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app

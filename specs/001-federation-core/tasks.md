@@ -101,20 +101,20 @@ profile the fake app returns.
 
 ### Tests for User Story 1 (REQUIRED) ⚠️
 
-- [ ] T031 [P] [US1] Integration tests in `tests/Megafono.Tests/Integration/WebFingerTests.fs`: known handle → JRD with `subject`, both aliases, `self` and `profile-page` links, `application/jrd+json`; unknown handle 404; other domain 404; uppercase handle and domain resolve; app unavailable uses the stored profile up to 24 h then 404 (FR-001, edge case "App is down")
-- [ ] T032 [P] [US1] Integration tests in `tests/Megafono.Tests/Integration/ActorTests.fs`: actor document fields from research R-02, `id` equals the request URL, `url` = profile URL, `publicKey.owner` = id, `manuallyApprovesFollowers` from `locked`, `type` Service/Group, key created once and reused, the private key never appears in any response; collections are stubs with `totalItems`; instance actor at `/ap/actor` is an Application; unknown id 404 (FR-003 to FR-006, FR-022)
-- [ ] T033 [P] [US1] Integration tests in `tests/Megafono.Tests/Integration/NodeInfoTests.fs`: discovery links 2.0 and 2.1; both documents carry the configured software name and version and the required keys (FR-002)
-- [ ] T034 [P] [US1] Integration test in `tests/Megafono.Tests/Integration/ProfileUpdateTests.fs`: with two seeded accepted inbound follows on `StubRemote` hosts, `PUT /internal/actors/{id}` after the fake app changes the name delivers one signed `Update{Person}` per host; no change → nothing sent (FR-007)
-- [ ] T035 [US1] Interop test in `tests/Megafono.Interop.Tests/DiscoveryTests.fs`: GTS search `@alex@megafono.test` with `resolve=true` returns Alex with the fake app's name, note and avatar; an unknown handle returns nothing (US1 scenarios 1–2)
+- [X] T031 [P] [US1] Integration tests in `tests/Megafono.Tests/Integration/WebFingerTests.fs`: known handle → JRD with `subject`, both aliases, `self` and `profile-page` links, `application/jrd+json`; unknown handle 404; other domain 404; uppercase handle and domain resolve; app unavailable uses the stored profile up to 24 h then 404 (FR-001, edge case "App is down")
+- [X] T032 [P] [US1] Integration tests in `tests/Megafono.Tests/Integration/ActorTests.fs`: actor document fields from research R-02, `id` equals the request URL, `url` = profile URL, `publicKey.owner` = id, `manuallyApprovesFollowers` from `locked`, `type` Service/Group, key created once and reused, the private key never appears in any response; collections are stubs with `totalItems`; instance actor at `/ap/actor` is an Application; unknown id 404 (FR-003 to FR-006, FR-022)
+- [X] T033 [P] [US1] Integration tests in `tests/Megafono.Tests/Integration/NodeInfoTests.fs`: discovery links 2.0 and 2.1; both documents carry the configured software name and version and the required keys (FR-002)
+- [X] T034 [P] [US1] Integration test in `tests/Megafono.Tests/Integration/ProfileUpdateTests.fs`: with two seeded accepted inbound follows on `StubRemote` hosts, `PUT /internal/actors/{id}` after the fake app changes the name delivers one signed `Update{Person}` per host; no change → nothing sent (FR-007)
+- [X] T035 [US1] Interop test in `tests/Megafono.Interop.Tests/DiscoveryTests.fs`: GTS search `@alex@megafono.test` with `resolve=true` returns Alex with the fake app's name, note and avatar; an unknown handle returns nothing (US1 scenarios 1–2)
 
 ### Implementation for User Story 1
 
-- [ ] T036 [P] [US1] Implement actor, instance actor and collection-stub builders in `src/Megafono/Domain/ActivityStreams.fs` with the `@context` and fields from research R-02, serialized with shared `JsonSerializerOptions`
-- [ ] T037 [US1] Implement `src/Megafono/Federation/WebFinger.fs`: `GET /.well-known/webfinger` per research R-03 using `AppClient` by handle
-- [ ] T038 [P] [US1] Implement `src/Megafono/Federation/NodeInfo.fs`: `/.well-known/nodeinfo`, `/nodeinfo/2.0`, `/nodeinfo/2.1` per research R-04 (user count = live local actors)
-- [ ] T039 [US1] Implement `src/Megafono/Federation/Actors.fs`: `GET /ap/actors/{id}` via `AppClient` by id, `GET /ap/actor`, and the `outbox`, `followers`, `following` stubs, all `application/activity+json` written with `WriteBytes` (contracts/federation.md)
-- [ ] T040 [US1] Implement `src/Megafono/Internal/Actors.fs`: `PUT /internal/actors/{id}` refreshes through `AppClient`, and if the profile changed creates an `Update{Person}` activity and enqueues it to the distinct inboxes of accepted followers via `Outbox` (FR-007, contracts/internal-api.md)
-- [ ] T041 [US1] Register the US1 endpoints in `src/Megafono/Program.fs` and make T031–T035 pass
+- [X] T036 [P] [US1] Implement actor, instance actor and collection-stub builders in `src/Megafono/Domain/ActivityStreams.fs` with the `@context` and fields from research R-02, serialized with shared `JsonSerializerOptions`
+- [X] T037 [US1] Implement `src/Megafono/Federation/WebFinger.fs`: `GET /.well-known/webfinger` per research R-03 using `AppClient` by handle
+- [X] T038 [P] [US1] Implement `src/Megafono/Federation/NodeInfo.fs`: `/.well-known/nodeinfo`, `/nodeinfo/2.0`, `/nodeinfo/2.1` per research R-04 (user count = live local actors)
+- [X] T039 [US1] Implement `src/Megafono/Federation/Actors.fs`: `GET /ap/actors/{id}` via `AppClient` by id, `GET /ap/actor`, and the `outbox`, `followers`, `following` stubs, all `application/activity+json` written with `WriteBytes` (contracts/federation.md)
+- [X] T040 [US1] Implement `src/Megafono/Internal/Actors.fs`: `PUT /internal/actors/{id}` refreshes through `AppClient`, and if the profile changed creates an `Update{Person}` activity and enqueues it to the distinct inboxes of accepted followers via `Outbox` (FR-007, contracts/internal-api.md)
+- [X] T041 [US1] Register the US1 endpoints in `src/Megafono/Program.fs` and make T031–T035 pass
 
 **Checkpoint**: US1 works alone: GTS finds Alex.
 

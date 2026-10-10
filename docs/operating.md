@@ -106,6 +106,11 @@ Traefik) must too:
 6. **Never route the internal port (8081).** It is the app's control surface (publish, approve, block) behind one
    bearer token. Keep it on a network only the app and Megáfono share, and never publish it.
 
+## Profile links
+
+The app's profile pages must live on the same domain as Megáfono (as in the reference deployment, where the
+gateway serves both). Mastodon ignores an actor's profile link on another host and links to the actor id instead.
+
 ## What followers-only means
 
 Followers-only (`followers`) is a request, not a guarantee. Megáfono sends such a post only to the inboxes of the

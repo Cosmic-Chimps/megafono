@@ -425,31 +425,33 @@ let private webFingerUrls (env: Env) (user: string) (host: string) : Uri list =
     let make scheme = Uri $"{scheme}://{host}/.well-known/webfinger?resource=acct:{acct}"
     if env.AllowPrivateAddresses then [ make "https"; make "http" ] else [ make "https" ]
 
+/// Tries each WebFinger URL in turn, falling through to the next only when one is unreachable. A top-level
+/// recursive function, not a `let rec` inside `task { }`, so the state machine compiles statically (FS3511).
+let rec private webFingerAttempt (env: Env) (urls: Uri list) (last: RemoteError) : Task<Result<RemoteActor, RemoteError>> =
+    task {
+        match urls with
+        | [] -> return Error last
+        | url :: rest ->
+            match! fetchDocument env (Some "application/jrd+json, application/json") url with
+            | Error(Unreachable _ as e) when not rest.IsEmpty -> return! webFingerAttempt env rest e
+            | Error e -> return Error e
+            | Ok response ->
+                return!
+                    withJson response (fun jrd ->
+                        task {
+                            match selfLink jrd with
+                            | None -> return Error NotFound
+                            | Some href -> return! getActor env href
+                        })
+    }
+
 /// `user@host` → the actor, through WebFinger. The `self` link of type activity+json is followed.
 let resolveHandle (env: Env) (handle: string) : Task<Result<RemoteActor, RemoteError>> =
     task {
         match parseHandle handle with
         | None -> return Error NotFound
         | Some(user, host) ->
-            let rec attempt (urls: Uri list) (last: RemoteError) =
-                task {
-                    match urls with
-                    | [] -> return Error last
-                    | url :: rest ->
-                        match! fetchDocument env (Some "application/jrd+json, application/json") url with
-                        | Error(Unreachable _ as e) when not rest.IsEmpty -> return! attempt rest e
-                        | Error e -> return Error e
-                        | Ok response ->
-                            return!
-                                withJson response (fun jrd ->
-                                    task {
-                                        match selfLink jrd with
-                                        | None -> return Error NotFound
-                                        | Some href -> return! getActor env href
-                                    })
-                }
-
-            match! attempt (webFingerUrls env user host) NotFound with
+            match! webFingerAttempt env (webFingerUrls env user host) NotFound with
             | Error e -> return Error e
             | Ok actor ->
                 // The handle the user typed is the one we know them by, when the actor agrees about the user name
