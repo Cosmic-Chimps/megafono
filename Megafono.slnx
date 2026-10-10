@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Megafono/Megafono.fsproj" />
+    <Project Path="src/Megafono.Gateway/Megafono.Gateway.fsproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Megafono.Tests/Megafono.Tests.fsproj" />
