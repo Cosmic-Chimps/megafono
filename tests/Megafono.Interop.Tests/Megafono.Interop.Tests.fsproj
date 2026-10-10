@@ -6,7 +6,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Placeholder.fs" />
+    <Compile Include="Fixtures/TestCa.fs" />
+    <Compile Include="Fixtures/GoToSocialFixture.fs" />
+    <Compile Include="HarnessTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

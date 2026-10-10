@@ -276,11 +276,61 @@ Sources are listed per decision. Mastodon links point at `main` on GitHub, GoToS
   exposure is flaky; costs an image build per run); HTTP mode (rejected above).
 - **Spikes before the code depends on them** (first tasks of the feature):
   1. Mastodon in production mode trusting the test CA through `SSL_CERT_FILE`: **unverified**.
-  2. A non-interactive GTS user token (no documented password grant): **unverified**.
-  3. Host-port exposure on Docker Desktop for macOS and on Linux CI: **unverified**.
-  4. GTS dialing private addresses only with `allow-ips`: **unverified**.
-- **Estimates (unverified)**: GTS suite 2–4 min cold; Mastodon suite 6–12 min plus the first image
-  pull.
+  2. A non-interactive GTS user token: **verified (T006, 2026-10-10)**. Flow, all over the Caddy
+     front with one cookie jar and no redirect following (`HarnessTests`, `GoToSocialFixture.ObtainToken`):
+     1. `gotosocial admin account create --username alice --email alice@gts.test --password ...` via
+        `docker exec` (`/gotosocial/gotosocial admin account create`). The server must be fully up
+        first (see timings); the account is usable at once, no `account confirm` needed.
+     2. `POST /api/v1/apps` (form: `client_name`, `redirect_uris=urn:ietf:wg:oauth:2.0:oob`,
+        `scopes=read write follow`) returns `client_id` and `client_secret`.
+     3. `GET /oauth/authorize?client_id&redirect_uri&response_type=code&scope` answers `303
+        /auth/sign_in` and sets the `gotosocial-gts.test` cookie (`Secure`, `Domain=gts.test`, 2 min),
+        so the cookie jar only works over https.
+     4. `POST /auth/sign_in` with form `username` (the **email**) and `password` answers `302
+        /oauth/authorize`.
+     5. `GET /oauth/authorize` (same query) is a page with one field-less form (`POST
+        /oauth/authorize`, button "Allow"); the pending request lives in the session cookie.
+     6. `POST /oauth/authorize` with an empty form answers `302 /oauth/oob?code=<code>`.
+     7. `POST /oauth/token` (`grant_type=authorization_code`, `client_id`, `client_secret`,
+        `redirect_uri`, `code`) returns `access_token`; `GET /api/v1/accounts/verify_credentials` with
+        it returns the user. Steps 2 to 7 take about 0.1 s.
+     Gotchas: GTS answers **418 to any request without a `User-Agent`** (`HttpClient` sends none, so
+     set one); it answers **503 while starting** and logs "listening on" *before* it serves, so
+     readiness is a 200 from `GET /api/v1/instance`, not the log line.
+  3. Host-port exposure on Docker Desktop for macOS: **verified on macOS Docker Desktop 29.8
+     (arm64)**; Linux CI **still unverified** (same mechanism, expected to work).
+     `TestcontainersSettings.ExposeHostPortsAsync(port)` (before any container is created) starts a
+     `testcontainers/sshd:1.4.0` sidecar (2 s warm) and containers created afterwards resolve
+     `host.testcontainers.internal` to it, including containers on a custom network. A real Kestrel
+     host listening on `0.0.0.0:<free port>` in the test process was reached from the
+     `megafono.test` Caddy (`reverse_proxy host.testcontainers.internal:<port>`, Host preserved by
+     default) and from a curl container (`curlimages/curl:8.22.0`, `--cacert`) as
+     `https://megafono.test/probe.json`; the host saw `Host: megafono.test`. The same request without
+     the CA fails the TLS handshake. The sidecar and the containers are removed by Ryuk at the end.
+     Certificates, Caddyfiles and the CA are copied in with `WithResourceMapping` (no bind mounts, so no
+     host-path sharing or file-permission issues on macOS).
+  4. GTS dialing private addresses only with `allow-ips`: **verified**. Without
+     `GTS_HTTP_CLIENT_ALLOW_IPS`, a search for `@nobody@megafono.test` fails in GTS with `dial tcp
+     172.22.0.4:443: dial within blocked / reserved IP range` and nothing reaches the host; with
+     `GTS_HTTP_CLIENT_ALLOW_IPS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` (comma-separated CIDRs, env
+     form of `http-client.allow-ips`) GTS makes a signed `GET
+     https://megafono.test/.well-known/webfinger?resource=acct:nobody@megafono.test` (keyId
+     `https://gts.test/users/alice/main-key`, `User-Agent` `gotosocial/...`), trusting the test CA
+     through `SSL_CERT_FILE=/certs/ca.pem`. The Docker network's subnet is not fixed (it was
+     `172.22.0.0/16` here), so the harness allows the three private ranges instead of the exact subnet.
+- **Pinned images (T006)**: `docker.io/superseriousbusiness/gotosocial:0.22.2` (reports
+  `0.22.2+git-fb2bf13`; entrypoint `/gotosocial/gotosocial server start`, user 1000), `docker.io/library/caddy:2.11.7-alpine`
+  (`auto_https off`, `admin off`, explicit `tls <leaf> <key>`, ready on "serving initial configuration"),
+  `docker.io/curlimages/curl:8.22.0` (helper). GTS env: `GTS_HOST=gts.test`, `GTS_ACCOUNT_DOMAIN=gts.test`,
+  `GTS_PROTOCOL=https`, `GTS_DB_TYPE=sqlite`, `GTS_DB_ADDRESS=/gotosocial/storage/sqlite.db`,
+  `GTS_LETSENCRYPT_ENABLED=false`, `GTS_ADVANCED_RATE_LIMIT_REQUESTS=0` (0 disables rate limiting),
+  `GTS_TRUSTED_PROXIES`, `GTS_HTTP_CLIENT_ALLOW_IPS`, `SSL_CERT_FILE`. The test CA and leaves are ECDSA P-256
+  made with `CertificateRequest`; the test process trusts only that CA (custom chain trust, name checked),
+  and reaches the fronts through the mapped port 443 with a `ConnectCallback`, keeping the URL host for SNI.
+- **Timings (T006, macOS Docker Desktop, images cached)**: the GTS harness smoke suite takes about 18 s:
+  expose host port 2.1 s, start GTS container 1.6 s, both Caddy fronts 0.9 s (parallel), GTS ready
+  (migrations, WASM compile) 5.6 s, token 0.1 s. A cold run adds the image pulls.
+- **Estimates (unverified)**: Mastodon suite 6–12 min plus the first image pull.
 - **Sources**: [GTS config](https://docs.gotosocial.org/en/latest/configuration/general/),
   [GTS CLI](https://docs.gotosocial.org/en/latest/admin/cli/),
   [Mastodon config](https://docs.joinmastodon.org/admin/config/),
