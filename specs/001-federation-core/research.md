@@ -1,0 +1,299 @@
+# Research: Federation Core
+
+**Feature**: [spec.md](spec.md) | **Plan**: [plan.md](plan.md) | **Date**: 2026-10-10
+
+Three research passes fed this file: the interop test harness, the Mastodon and GoToSocial wire
+details, and the .NET building blocks. Nothing here was run against live servers yet; items marked
+**unverified** are confirmed by the spikes in R-15 before the code depends on them.
+
+Sources are listed per decision. Mastodon links point at `main` on GitHub, GoToSocial (GTS) links at
+`main` on Codeberg or docs.gotosocial.org.
+
+## Protocol
+
+### R-01 HTTP Signatures (draft-cavage)
+
+- **Decision**: hand-written module. Outbound: `algorithm="rsa-sha256"`, signed headers
+  `(request-target) host date digest` on POST and `(request-target) host date` on GET,
+  `Digest: SHA-256=<base64>`, RFC 7231 `Date`, `Content-Type: application/activity+json`.
+  Inbound: accept `rsa-sha256` and `hs2019` (RSA-SHA256 when the key is RSA); verify the header
+  list the sender declares, but require `(request-target)`, `host`, `date` and, on POST, `digest`
+  to be in it; `Date` within ±12 h; Digest prefix matched case-insensitively, SHA-256 only, checked
+  against the raw bytes before parsing. Parse the `Signature` header with a quote-aware tokenizer.
+  Verification sits behind a `SignatureScheme` seam so RFC 9421 can be added later.
+- **Rationale**: matches what both servers send. Mastodon signs draft-cavage first and only falls
+  back to RFC 9421 after a 400/401 (4.7 behavior on `main`), so a cavage-only receiver keeps
+  working. GTS always signs `hs2019` with RSA-SHA256 and requires signed GETs on every
+  ActivityPub endpoint.
+- **Gotchas**: keyIds differ: Mastodon `…/users/x#main-key`, GTS `…/users/x/main-key` (a path that
+  returns a partial actor stub; fetch it signed). Strip the fragment, fetch, use the `publicKey`
+  whose `id` equals the keyId, take the actor from `publicKey.owner`. GTS signs with the query
+  string first; use path plus query in `(request-target)`.
+- **Alternatives**: a NuGet draft-cavage library (none found that is maintained; not surveyed in
+  depth); RFC 9421 now (deferred by the spec).
+- **Sources**: [Mastodon signed_request.rb](https://github.com/mastodon/mastodon/blob/main/app/lib/signed_request.rb),
+  [request.rb](https://github.com/mastodon/mastodon/blob/main/app/lib/request.rb),
+  [docs: security](https://docs.joinmastodon.org/spec/security/),
+  [GTS http signatures](https://docs.gotosocial.org/en/latest/federation/http_signatures/).
+
+### R-02 Actor documents and the instance actor
+
+- **Decision**: actor at `https://{domain}/ap/actors/{appUserId}` with `@context`
+  `[activitystreams, security/v1, {toot, schema, manuallyApprovesFollowers, discoverable,
+  indexable}]`, `id`, `type`, `preferredUsername`, `name`, `summary`, `url` (app profile), `inbox`,
+  `outbox`, `followers`, `following`, `endpoints.sharedInbox`, `manuallyApprovesFollowers`,
+  `discoverable`, `indexable`, `published`, `icon`, `webfinger` (FEP-2c59), and one
+  `publicKey {id: <actor>#main-key, owner, publicKeyPem}`. `outbox`, `followers` and `following`
+  are served as `OrderedCollection` stubs with `totalItems` and no items. A separate **instance
+  actor** (`Application`, `preferredUsername` = domain) at `https://{domain}/ap/actor` signs every
+  outbound GET not made on behalf of a user (handle resolution, key refetch).
+- **Rationale**: Mastodon requires `@context`, a known `type`, `preferredUsername`, `inbox`,
+  `publicKey`, and that the fetched `id` equals the URL. GTS requires exactly one `publicKey` whose
+  `owner` equals the actor id, and reads `followers` to classify followers-only posts. Both servers
+  (GTS always, Mastodon under authorized fetch) reject unsigned GETs, so a key is needed even when
+  no user is involved; living under `/ap/*` keeps the gateway rule unchanged.
+- **Gotcha**: the `id` in the body must equal the request URL byte for byte (no trailing slash, no
+  case drift).
+- **Sources**: [actor_serializer.rb](https://github.com/mastodon/mastodon/blob/main/app/serializers/activitypub/actor_serializer.rb),
+  [fetch_remote_actor_service.rb](https://github.com/mastodon/mastodon/blob/main/app/services/activitypub/fetch_remote_actor_service.rb),
+  [instance actor](https://github.com/mastodon/mastodon/blob/main/app/controllers/instance_actors_controller.rb),
+  [GTS astointernal.go](https://codeberg.org/superseriousbusiness/gotosocial/src/branch/main/internal/typeutils/astointernal.go),
+  [GTS actors](https://docs.gotosocial.org/en/latest/federation/actors/).
+
+### R-03 WebFinger and profile-URL lookups
+
+- **Decision**: answer `acct:{handle}@{domain}` (domain matched case-insensitively, other domains
+  404) with `application/jrd+json`: `subject`, `aliases: [profileUrl, actorId]`, links
+  `rel=self type=application/activity+json href=actorId` and
+  `rel=http://webfinger.net/rel/profile-page type=text/html href=profileUrl`. The sample app emits
+  both `<link rel="alternate" type="application/activity+json" href=actorId>` and a matching
+  `Link:` header on profile pages.
+- **Rationale**: Mastodon re-resolves `preferredUsername@host` and requires the same actor, so
+  `preferredUsername` must equal the handle. Mastodon's `FetchResourceService` follows one
+  `Link`/`<link rel=alternate>` hop for pasted profile URLs. GTS does not appear to follow alternates
+  (inferred from source), so on GTS people paste the handle.
+- **Sources**: [webfinger.rb](https://github.com/mastodon/mastodon/blob/main/app/lib/webfinger.rb),
+  [webfinger_serializer.rb](https://github.com/mastodon/mastodon/blob/main/app/serializers/webfinger_serializer.rb),
+  [fetch_resource_service.rb](https://github.com/mastodon/mastodon/blob/main/app/services/fetch_resource_service.rb).
+
+### R-04 NodeInfo
+
+- **Decision**: `/.well-known/nodeinfo` links both schema 2.0 and 2.1; `/nodeinfo/2.0` and
+  `/nodeinfo/2.1` serve `version`, `software{name, version}`, `protocols: ["activitypub"]`,
+  `services{inbound: [], outbound: []}`, `openRegistrations: false`, `usage{users{total}}`,
+  `metadata: {}`. The configured software name is validated against `^[a-z0-9-]+$` at startup.
+- **Rationale**: required keys of the 2.1 schema; Mastodon advertises only 2.0, so some consumers
+  look for it. Neither server needs NodeInfo to federate (unverified), so it is not on any critical
+  path.
+- **Source**: [NodeInfo 2.1 schema](https://github.com/jhass/nodeinfo/blob/main/schemas/2.1/schema.json).
+
+### R-05 Follow, Accept, Reject, Undo
+
+- **Decision**: outbound Follow `{id, type: Follow, actor, object: <target id>}`. Accept and Reject
+  carry their own unique `id`, `actor` = our actor, and embed the **full** Follow
+  (`{id, type, actor, object}`) as `object`; after a repeated Follow, answer with the latest follow
+  id. Inbound Undo accepts an embedded Follow or a bare id. Inbound Follow is taken only if
+  `follow.actor` equals the signer and `follow.object` is one of our actors, regardless of which
+  inbox it arrived at. A Reject for an already accepted outgoing follow ends it.
+- **Rationale**: GTS answers 400 to an Accept or Reject without `id` and handles a bare IRI only for
+  its own follow paths, so embedding is the form both accept. Mastodon matches by uri or by
+  actor/target and treats Reject-after-Accept as an unfollow.
+- **Sources**: [follow serializers](https://github.com/mastodon/mastodon/blob/main/app/serializers/activitypub/accept_follow_serializer.rb),
+  [accept.rb](https://github.com/mastodon/mastodon/blob/main/app/lib/activitypub/activity/accept.rb),
+  [reject.rb](https://github.com/mastodon/mastodon/blob/main/app/lib/activitypub/activity/reject.rb),
+  [GTS accept.go](https://codeberg.org/superseriousbusiness/gotosocial/src/branch/main/internal/federation/federatingdb/accept.go).
+
+### R-06 Addressing, visibility and private fetches
+
+- **Decision**: one addressing table, set identically on the activity and the object:
+
+  | Audience | `to` | `cc` |
+  |---|---|---|
+  | public | `[as:Public]` | `[followers]` |
+  | unlisted | `[followers]` | `[as:Public]` |
+  | followers | `[followers]` | `[]` |
+
+  The `followers` value is exactly the actor's `followers` URL. A followers-only object (and its
+  activity) is served only to a signed request whose key owner is an **accepted follower of the
+  object's author at fetch time**; everything else, including requests signed by a remote
+  instance actor, gets 404.
+- **Rationale**: Mastodon derives visibility as public if Public is in `to`, unlisted if in `cc`,
+  private if `to` contains the followers collection, else direct; GTS does the same and treats
+  followers in `cc` as direct. Mastodon signs fetches of a status with a local account that follows
+  the author (first local follower), and its own status controller answers 404 when not permitted.
+- **Sources**: [status_parser.rb](https://github.com/mastodon/mastodon/blob/main/app/lib/activitypub/parser/status_parser.rb),
+  [tag_manager.rb](https://github.com/mastodon/mastodon/blob/main/app/lib/activitypub/tag_manager.rb),
+  [statuses_controller.rb](https://github.com/mastodon/mastodon/blob/main/app/controllers/statuses_controller.rb),
+  GTS `internal/ap/extract.go` (`ExtractVisibility`).
+
+### R-07 Notes, Update, Delete and extensions
+
+- **Decision**: a Note or Article carries `id`, `type`, `attributedTo`, `published`, `content`,
+  `url`, `to`, `cc`, optional `summary`, `sensitive`, `inReplyTo`, `tag`, and
+  `attachment[{type: Document, mediaType, url, name}]`. Edits send `Update{object}` with `updated`
+  set and the same addressing. Deletes send `Delete{object: {id, type: Tombstone}}` to the same
+  audience (never Public for a followers-only object), then the id answers 410. Extensions: the
+  namespace IRI is added to `@context` as `{prefix: namespace}` and the data under
+  `prefix:key` properties; no `@graph`, `@included` or `@reverse`.
+- **Rationale**: Mastodon applies edits only with `updated`, accepts Delete with an id or a
+  Tombstone, and reads specific keys without full JSON-LD processing, so unknown properties are
+  ignored. GTS handling of unknown properties is **unverified** (covered by an interop test).
+- **Sources**: [update.rb](https://github.com/mastodon/mastodon/blob/main/app/lib/activitypub/activity/update.rb),
+  [delete.rb](https://github.com/mastodon/mastodon/blob/main/app/lib/activitypub/activity/delete.rb),
+  [GTS posts](https://docs.gotosocial.org/en/latest/federation/posts/).
+
+### R-08 Shared inboxes
+
+- **Decision**: at publish, recipients are the accepted followers of the author; group them by
+  `endpoints.sharedInbox` when advertised, else by personal inbox, one delivery row per distinct
+  URL. GTS actors advertise no shared inbox, so they fall back to personal inboxes automatically.
+- **Rationale**: Mastodon accepts a followers-only Create on its shared inbox only if it has a local
+  follower of the author, and fans it out to those followers only. Since deliveries only go to
+  servers with an accepted follower, this always holds.
+- **Source**: Mastodon `app/lib/activitypub/activity/create.rb`.
+
+## .NET building blocks
+
+### R-09 HTTP layer on Oxpecker 2.1.1
+
+- **Decision**: Oxpecker 2.1.1 endpoints with explicit verbs. Inbox handlers read the raw body
+  through a helper that rejects a declared `Content-Length` over 1 MB, sets
+  `IHttpMaxRequestBodySizeFeature`, and copies into a buffer, mapping Kestrel's 413
+  `BadHttpRequestException`. Responses use `ctx.SetContentType` + `ctx.WriteBytes` with our own
+  `JsonSerializerOptions` (`application/activity+json`, `application/jrd+json`), never `WriteJson`.
+- **Rationale**: 2.1.1 has no raw-body reader and no per-endpoint metadata (`configureEndpoint`), so
+  per-endpoint limits and policies live in handlers or middleware.
+- **Source**: Frunchy's `oxpecker` skill and the 2.1.1 package XML docs.
+
+### R-10 One process, two ports
+
+- **Decision**: one `WebApplication`, Kestrel listening on the federation and internal ports
+  (8080, 8081 by default). A first middleware compares `ctx.Connection.LocalPort`: `/internal/*`
+  only on the internal port, and nothing but `/internal/*` and `/health` on it; anything else is
+  404. The internal API also checks the bearer token in constant time
+  (`CryptographicOperations.FixedTimeEquals`).
+- **Rationale**: `RequireHost("*:8081")` matches the Host header, which a caller controls, and needs
+  endpoint metadata. The local port of the socket can't be spoofed.
+- **Alternative**: two `WebApplication`s in one process (rejected: double DI and config wiring).
+
+### R-11 Keys at rest
+
+- **Decision**: RSA-2048 per actor (`RSA.Create 2048`, PKCS#8 / SPKI PEM). Private keys are
+  encrypted with AES-256-GCM under a master key from configuration (`Megafono__MasterKey`, base64 of
+  32 bytes): stored as `[keyVersion:1][nonce:12][tag:16][ciphertext]`, with the actor id as
+  associated data so a row can't be moved to another actor. Megáfono refuses to start without a
+  valid master key. A previous key can be configured for rotation (re-encryption command is a later
+  feature).
+- **Rationale**: ASP.NET Data Protection would need its own key ring storage (EF-based or a custom
+  repository) and an opaque format tied to application names, which breaks silently on migration.
+- **Risk**: losing the master key loses every actor. The docs say to back it up apart from the
+  database.
+
+### R-12 Rate limiting (refines spec FR-016)
+
+- **Decision**: two layers. (1) Before verification, the ASP.NET Core `GlobalLimiter` (a
+  `PartitionedRateLimiter` token bucket) on inbox paths, keyed by client address taken from
+  `X-Forwarded-For` only when the request comes from a configured trusted proxy. (2) After
+  verification, a per-host limiter keyed by the verified signer's host, before any further work.
+  Both default to 600 a minute, both configurable, both answer 429 with `Retry-After`. Remote key
+  fetches are counted against the claimed host.
+- **Rationale**: the keyId host is attacker-controlled until verified, so keying only on it lets an
+  attacker exhaust a legitimate server's budget. The per-address layer bounds the number of
+  partitions.
+- **Source**: `Microsoft.AspNetCore.RateLimiting` (shared framework).
+
+### R-13 SSRF-safe outbound client
+
+- **Decision**: one `SocketsHttpHandler` whose `ConnectCallback` resolves DNS itself, rejects
+  loopback, unspecified, private (10/8, 172.16/12, 192.168/16), link-local (169.254/16, fe80::/10),
+  CGNAT (100.64/10), ULA (fc00::/7), multicast and IPv4-mapped forms of these, and connects to a
+  validated address. No automatic redirects (manual, at most 3, each re-validated and re-signed);
+  `https` only; 10 s timeout; responses read with `ResponseHeadersRead` into a 1 MB capped buffer.
+  Tests inject an allow rule (`Megafono__Federation__AllowPrivateAddresses=true`), logged loudly and
+  refused when `ASPNETCORE_ENVIRONMENT=Production`. Plain `http` is allowed only by the same test
+  switch.
+- **Rationale**: connecting to the validated IP closes DNS rebinding; TLS still validates the
+  original host name.
+
+### R-14 Sanitizing, queues, gateway
+
+- **HTML**: `HtmlSanitizer` 9.2.1039 (AngleSharp 1.7.2), one shared instance with cleared defaults
+  and an allowlist of `p br a span strong em b i ul ol li blockquote code pre`, attributes `href rel
+  class` (class on `a` and `span` only), schemes `http https mailto`, and
+  `rel="nofollow noopener noreferrer ugc"` added to links. Applied to `content`, `summary` and
+  `name` of anything sent to the app. A hand-rolled stripper fails the security bar.
+- **Queues**: Postgres tables `deliveries` and `app_events`, one row per (activity, inbox) with
+  `UNIQUE (activity_id, inbox_url)`. One in-process dispatcher claims due rows with
+  `FOR UPDATE SKIP LOCKED` and a lease (`lease_until`, `lease_token`), hands them to a pool bounded
+  globally (32) and per host (2) by semaphores, completes with `WHERE lease_token = @tok`. Rows are
+  written in the same transaction as the object, before the app gets its answer. Wake-up through
+  `LISTEN`/`NOTIFY` sent in that transaction, plus a poll every few seconds. Backoff
+  `least(6 h, 1 min × 2^(attempts−1))` with jitter. Shutdown drains: stop claiming, let in-flight
+  requests finish and record them.
+- **What "no duplicate" can mean (refines spec SC-004/FR-050)**: exactly-once over HTTP is
+  impossible: a POST can succeed and the process die before the row is marked delivered. So: a
+  clean restart or deploy never loses and never duplicates; after a hard crash, a delivery in that
+  window may be sent once more with the **same activity id and identical bytes**, which receivers
+  deduplicate; two different activities, or concurrent sends of one, never happen. The test kills
+  the process between the response and the write through a fault hook.
+- **Gateway**: a small `Megafono.Gateway` project on `Yarp.ReverseProxy` 2.3.0 (stable Microsoft
+  YARP images are unverified, and owning the project keeps config path and TLS under our control).
+  Routes in order: exact `/.well-known/webfinger`, exact `/.well-known/nodeinfo`, `/nodeinfo/{**}`,
+  `/ap/{**}`, `/inbox` to Megáfono; catch-all to the app. `RequestHeaderOriginalHost: true` on every
+  route, no path or body transforms, default `X-Forwarded-*`, TLS from a configured certificate.
+  Megáfono trusts forwarded headers only from configured proxies.
+- **Prior art**: Frunchy's `Workers/ImportProcessor.fs` (`SKIP LOCKED` with stale-claim reset);
+  River, graphile-worker, Que, Oban use the same claim-and-lease shape (from memory).
+
+## Test harness
+
+### R-15 Real-server interop harness
+
+- **Decision**:
+  - TLS everywhere. The test process generates a root CA and one leaf certificate per domain
+    (`megafono.test`, `gts.test`, `mastodon.test`; reserved `.test` TLD).
+  - One Docker network (Testcontainers). Each domain is a Caddy container with that network alias,
+    terminating TLS with its leaf and reverse-proxying with the Host preserved.
+  - Megáfono runs **in the test process on real Kestrel** (port 0, both ports), exposed to the
+    containers with `TestcontainersSettings.ExposeHostPortsAsync`; the `megafono.test` Caddy proxies
+    to `host.testcontainers.internal:<port>`. The test also hosts the fake app (actor lookup and
+    event receiver) on Kestrel.
+  - GoToSocial (pinned tag, SQLite, `GTS_HOST=gts.test`, CA via `SSL_CERT_FILE`,
+    `http-client.allow-ips` for the Docker subnet, rate limiting off) runs on **every** test run.
+  - Mastodon (pinned 4.x tag; web, sidekiq, Postgres, Redis; production mode,
+    `ALLOWED_PRIVATE_ADDRESSES` = the network's fixed subnet, `AUTHORIZED_FETCH=true`, CA bundle via
+    `SSL_CERT_FILE`) runs in a separate suite marked `Trait("Suite", "mastodon")`, scheduled and
+    before releases.
+  - Both servers are driven through their Mastodon-compatible client API (search with `resolve`,
+    follow, home timeline, status) with one shared client. Provisioning: GTS
+    `gotosocial admin account create` plus a scripted sign-in for a token; Mastodon
+    `tootctl accounts create --confirmed --approve` plus a `rails runner` script for a token.
+  - Assertions poll with a timeout (30–60 s). Real inbound payloads are captured as fixtures.
+- **Rationale**: plain HTTP would test neither https ids nor Mastodon at all (it forces HTTPS in
+  production). TestServer has no socket, so containers can't reach it. Fedify's Mastodon lane
+  skipped signatures to get going, which would defeat Principle VI.
+- **Alternatives**: Megáfono as a container on the network (kept as the fallback if host-port
+  exposure is flaky; costs an image build per run); HTTP mode (rejected above).
+- **Spikes before the code depends on them** (first tasks of the feature):
+  1. Mastodon in production mode trusting the test CA through `SSL_CERT_FILE`: **unverified**.
+  2. A non-interactive GTS user token (no documented password grant): **unverified**.
+  3. Host-port exposure on Docker Desktop for macOS and on Linux CI: **unverified**.
+  4. GTS dialing private addresses only with `allow-ips`: **unverified**.
+- **Estimates (unverified)**: GTS suite 2–4 min cold; Mastodon suite 6–12 min plus the first image
+  pull.
+- **Sources**: [GTS config](https://docs.gotosocial.org/en/latest/configuration/general/),
+  [GTS CLI](https://docs.gotosocial.org/en/latest/admin/cli/),
+  [Mastodon config](https://docs.joinmastodon.org/admin/config/),
+  [Fedify PR #598](https://github.com/fedify-dev/fedify/pull/598),
+  [Testcontainers networking](https://dotnet.testcontainers.org/api/create_docker_network).
+
+## Package versions (NuGet, 2026-10-10)
+
+| Package | Version | Use |
+|---|---|---|
+| Oxpecker | 2.1.1 | HTTP (pinned, same as Frunchy) |
+| Npgsql | 10.0.3 | Postgres |
+| HtmlSanitizer | 9.2.1039 | Sanitizing remote HTML |
+| Yarp.ReverseProxy | 2.3.0 | Gateway project |
+| xunit.v3 | 4.0.1 | Tests (Microsoft.Testing.Platform) |
+| Testcontainers.PostgreSql | 4.15.0 | Tests (and base Testcontainers for other containers) |
