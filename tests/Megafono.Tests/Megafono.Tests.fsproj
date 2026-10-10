@@ -6,6 +6,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="TestSupport.fs" />
+    <Compile Include="Unit/IdsTests.fs" />
+    <Compile Include="Unit/BackoffTests.fs" />
+    <Compile Include="Unit/ConfigTests.fs" />
+    <Compile Include="Unit/KeyVaultTests.fs" />
+    <Compile Include="Unit/HttpSignaturesTests.fs" />
+    <Compile Include="Unit/SafeHttpTests.fs" />
+    <Compile Include="Unit/SanitizerTests.fs" />
+    <Compile Include="Integration/SchemaTests.fs" />
     <Compile Include="SmokeTests.fs" />
   </ItemGroup>
 
