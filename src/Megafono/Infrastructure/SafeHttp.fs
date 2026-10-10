@@ -6,8 +6,10 @@ open System
 open System.IO
 open System.Net
 open System.Net.Http
+open System.Net.Security
 open System.Net.Sockets
 open System.Security.Cryptography
+open System.Security.Cryptography.X509Certificates
 open System.Threading
 open System.Threading.Tasks
 
@@ -62,15 +64,37 @@ let isAllowedAddress (allowPrivate: bool) (ip: IPAddress) : bool =
 
 // ---- handler ---------------------------------------------------------------------------------------------
 
-let private connect (allowPrivate: bool) (context: SocketsHttpConnectionContext) (token: CancellationToken) : ValueTask<Stream> =
+/// Test-only network override: a fake domain (`gts.test`) really lives at another host and port (a container's
+/// mapped port), and its certificate comes from a private CA. Requires the AllowPrivateAddresses switch, which is
+/// refused in Production, so this can never be active there.
+type TestNetwork =
+    {
+        /// The host name being dialed -> where to connect instead (host, port); None leaves it alone
+        Redirect: string -> (string * int) option
+        /// The only root certificate trusted for TLS while this override is set
+        TrustedRoot: X509Certificate2
+    }
+
+let private connect
+    (allowPrivate: bool)
+    (testNetwork: TestNetwork option)
+    (context: SocketsHttpConnectionContext)
+    (token: CancellationToken)
+    : ValueTask<Stream> =
     ValueTask<Stream>(
         task {
-            let host = context.DnsEndPoint.Host
+            let requested = context.DnsEndPoint.Host
+
+            let host, port =
+                match testNetwork |> Option.bind (fun t -> t.Redirect requested) with
+                | Some(realHost, realPort) -> realHost, realPort
+                | None -> requested, context.DnsEndPoint.Port
+
             let! addresses = Dns.GetHostAddressesAsync(host, token)
             let allowed = addresses |> Array.filter (isAllowedAddress allowPrivate)
 
             if allowed.Length = 0 then
-                raise (BlockedAddressException $"Refusing to connect to {host}: it resolves to no public address")
+                raise (BlockedAddressException $"Refusing to connect to {requested}: it resolves to no public address")
 
             // Connect to the validated address itself, so a second DNS answer cannot swap it (rebinding)
             let mutable connected: Stream = null
@@ -81,28 +105,49 @@ let private connect (allowPrivate: bool) (context: SocketsHttpConnectionContext)
                     let socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp, NoDelay = true)
 
                     try
-                        do! socket.ConnectAsync(IPEndPoint(address, context.DnsEndPoint.Port), token)
+                        do! socket.ConnectAsync(IPEndPoint(address, port), token)
                         connected <- new NetworkStream(socket, ownsSocket = true)
                     with e ->
                         socket.Dispose()
                         lastError <- e
 
             if isNull connected then
-                raise (HttpRequestException($"Could not connect to {host}", lastError))
+                raise (HttpRequestException($"Could not connect to {requested}", lastError))
 
             return connected
         }
     )
 
+/// Trust only `root`, and still require the certificate to match the host that was asked for
+let private trustOnly (root: X509Certificate2) =
+    RemoteCertificateValidationCallback(fun _ cert _ errors ->
+        if isNull cert
+           || errors.HasFlag SslPolicyErrors.RemoteCertificateNameMismatch
+           || errors.HasFlag SslPolicyErrors.RemoteCertificateNotAvailable then
+            false
+        else
+            use chain = new X509Chain()
+            chain.ChainPolicy.TrustMode <- X509ChainTrustMode.CustomRootTrust
+            chain.ChainPolicy.CustomTrustStore.Add root |> ignore
+            chain.ChainPolicy.RevocationMode <- X509RevocationMode.NoCheck
+            chain.Build(new X509Certificate2(cert)))
+
 /// The handler behind every outbound request: validated dialing, no automatic redirects. TLS still checks the
-/// original host name. Tests that trust a private CA set `SslOptions.RemoteCertificateValidationCallback`.
-let createHandler (allowPrivate: bool) : SocketsHttpHandler =
+/// original host name. With a `TestNetwork` the dialed address and the trusted CA are replaced (tests only).
+let createHandlerWith (allowPrivate: bool) (testNetwork: TestNetwork option) : SocketsHttpHandler =
+    if testNetwork.IsSome && not allowPrivate then
+        invalidArg (nameof testNetwork) "A test network override needs the AllowPrivateAddresses switch, which Production refuses"
+
     let handler = new SocketsHttpHandler()
     handler.AllowAutoRedirect <- false
     handler.UseCookies <- false
     handler.ConnectTimeout <- timeout
-    handler.ConnectCallback <- fun context token -> connect allowPrivate context token
+    handler.ConnectCallback <- fun context token -> connect allowPrivate testNetwork context token
+    testNetwork |> Option.iter (fun t -> handler.SslOptions.RemoteCertificateValidationCallback <- trustOnly t.TrustedRoot)
     handler
+
+/// `createHandlerWith` without an override
+let createHandler (allowPrivate: bool) : SocketsHttpHandler = createHandlerWith allowPrivate None
 
 // ---- client ----------------------------------------------------------------------------------------------
 

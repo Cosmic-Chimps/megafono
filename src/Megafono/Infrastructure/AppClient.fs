@@ -33,9 +33,20 @@ type LookupResult =
     | UnavailableWithFallback of LocalActor
     | UnavailableNoFallback
 
+/// What an explicit profile refresh found
+type RefreshResult =
+    /// The profile was read again from the app. `Changed` is true for a new actor or when anything a remote
+    /// server shows differs from what was stored before.
+    | Refreshed of actor: LocalActor * changed: bool
+    | RefreshNotFound
+    /// The app did not answer usefully; nothing was changed
+    | RefreshUnavailable
+
 type AppClient =
     { ByHandle: string -> Task<LookupResult>
-      ById: string -> Task<LookupResult> }
+      ById: string -> Task<LookupResult>
+      /// Always asks the app (no 5 minute cache) and reports whether the profile changed (FR-007)
+      Refresh: string -> Task<RefreshResult> }
 
 type Env =
     { DataSource: NpgsqlDataSource
@@ -299,8 +310,46 @@ let private lookup
                     return unavailable $"handle '{profile.Handle}' belongs to another user"
     }
 
+/// The fields that appear in the actor document, and so are worth an `Update` when they change
+let private profileDiffers (before: LocalActor) (after: LocalActor) =
+    before.Handle <> after.Handle
+    || before.ActorType <> after.ActorType
+    || before.Locked <> after.Locked
+    || before.Name <> after.Name
+    || before.Summary <> after.Summary
+    || before.IconUrl <> after.IconUrl
+    || before.ProfileUrl <> after.ProfileUrl
+
+let private refresh (env: Env) (id: string) : Task<RefreshResult> =
+    task {
+        if not (Ids.isValidAppUserId id) then
+            return RefreshNotFound
+        else
+            let! previous = storedById env id
+
+            match! call env $"/megafono/actors/{Uri.EscapeDataString id}" with
+            | Unknown -> return RefreshNotFound
+            | Failed reason ->
+                env.Log.LogWarning("Profile refresh of {Id} failed: {Reason}", id, reason)
+                return RefreshUnavailable
+            | Answered profile when profile.Id <> id -> return RefreshUnavailable
+            | Answered profile ->
+                try
+                    let! actor = store env profile
+
+                    let changed =
+                        match previous with
+                        | Some before -> profileDiffers before actor
+                        | None -> true
+
+                    return Refreshed(actor, changed)
+                with :? PostgresException as e when e.SqlState = PostgresErrorCodes.UniqueViolation ->
+                    return RefreshUnavailable
+    }
+
 let create (env: Env) : AppClient =
-    { ByHandle =
+    { Refresh = refresh env
+      ByHandle =
         fun handle ->
             match Ids.normalizeHandle handle with
             | None -> Task.FromResult NotFound

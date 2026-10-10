@@ -71,8 +71,8 @@ type HostTests(pg: PostgresFixture) =
             let! body = (host.InternalClient None).GetStringAsync "/health" // unauthenticated
             Assert.Contains("\"ok\"", body)
 
-            // The right token passes the guard (nothing is routed there yet, so the router answers 404, not 401)
-            let! right = status (host.InternalClient(Some MegafonoHost.token)) "/internal/actors/u1"
+            // The right token passes the guard (nothing is routed at this path, so the router answers 404, not 401)
+            let! right = status (host.InternalClient(Some MegafonoHost.token)) "/internal/unrouted"
             Assert.Equal(HttpStatusCode.NotFound, right)
 
             let! response = (host.InternalClient None).GetAsync "/internal/x"
