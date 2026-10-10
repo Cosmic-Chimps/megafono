@@ -3,6 +3,7 @@
   <ItemGroup>
     <Compile Include="Users.fs" />
     <Compile Include="Megafono.fs" />
+    <Compile Include="Auth.fs" />
     <Compile Include="Pages.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

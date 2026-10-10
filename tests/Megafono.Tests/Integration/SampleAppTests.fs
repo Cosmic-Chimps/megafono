@@ -15,6 +15,7 @@ open Xunit
 
 let private token = "app-token"
 let private secret = "webhook-secret"
+let private adminPassword = "s3cret"
 let private testId = "3f6c2a9e-1b7d-4c55-9b0e-7a2f4f1d9c10"
 
 let private withSample (test: HttpClient -> Task) : Task =
@@ -26,7 +27,8 @@ let private withSample (test: HttpClient -> Task) : Task =
                   "Megafono:Url", "http://127.0.0.1:1"
                   "Megafono:Token", token
                   "Megafono:WebhookSecret", secret
-                  "App:Domain", "app.test" ]
+                  "App:Domain", "app.test"
+                  "Sample:AdminPassword", adminPassword ]
 
         do! app.StartAsync()
         let address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>().Addresses |> Seq.head
@@ -132,3 +134,43 @@ let ``FR-005 the profile page links to the actor, in the page and in the Link he
             let! missing = client.GetAsync "/u/nobody"
             Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode)
         })
+
+let private manage (client: HttpClient) (path: string) (credentials: string option) =
+    task {
+        use request = new HttpRequestMessage(HttpMethod.Get, path)
+
+        credentials
+        |> Option.iter (fun c ->
+            request.Headers.TryAddWithoutValidation("Authorization", $"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes c)}")
+            |> ignore)
+
+        return! client.SendAsync request
+    }
+
+[<Fact>]
+let ``the management pages need the admin password and the profile stays public`` () =
+    withSample (fun client ->
+        task {
+            for credentials in [ None; Some "admin:wrong"; Some "admin:"; Some "nocolon" ] do
+                let! response = manage client "/u/test/manage" credentials
+                Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode)
+                Assert.Contains("Basic", response.Headers.WwwAuthenticate.ToString())
+
+            let! post = client.PostAsync("/u/test/publish", new StringContent "audience=public&text=hi")
+            Assert.Equal(HttpStatusCode.Unauthorized, post.StatusCode)
+
+            // Authorized: the page loads, and its calls to the unreachable Megafono URL fail with an error, not 401
+            let! response = manage client "/u/test/manage" (Some "anyone:s3cret")
+            Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode)
+
+            let! profile = client.GetAsync "/u/test"
+            Assert.Equal(HttpStatusCode.OK, profile.StatusCode)
+        })
+
+[<Fact>]
+let ``the sample refuses to start without an admin password outside Development`` () =
+    let build password env =
+        SampleApp.Program.buildSample [| "--environment"; env |] [ "urls", "http://127.0.0.1:0"; "Sample:AdminPassword", password ]
+
+    Assert.ThrowsAny<exn>(fun () -> build "" "Production" |> ignore) |> ignore
+    build "" "Development" |> ignore
