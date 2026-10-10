@@ -307,7 +307,8 @@ Sources are listed per decision. Mastodon links point at `main` on GitHub, GoToS
        `pg_isready -h 127.0.0.1` (the init server is socket-only), Redis with `redis-cli ping`.
      - **Account and token**: `docker exec <web> bin/tootctl accounts create alice --email
        alice@mastodon.test --confirmed --approve` (prints a generated password, which the harness does not
-       need), then `bin/rails runner /tmp/token.rb` (script copied in with `WithResourceMapping`) that
+       need), then `bin/rails runner /tmp/token.rb` (script copied in with `WithResourceMapping`; T008
+       folded both into one runner that calls `Mastodon::CLI::Accounts.new.invoke(:create, ...)`) that
        does `Doorkeeper::Application.create!(name:, redirect_uri: 'urn:ietf:wg:oauth:2.0:oob', scopes:
        'read write follow')` and `Doorkeeper::AccessToken.create!(application:, resource_owner_id:,
        scopes: 'read write follow', expires_in: nil)` and prints `TOKEN=<token>` (parsed from stdout, which
@@ -362,6 +363,27 @@ Sources are listed per decision. Mastodon links point at `main` on GitHub, GoToS
      `https://gts.test/users/alice/main-key`, `User-Agent` `gotosocial/...`), trusting the test CA
      through `SSL_CERT_FILE=/certs/ca.pem`. The Docker network's subnet is not fixed (it was
      `172.22.0.0/16` here), so the harness allows the three private ranges instead of the exact subnet.
+- **Shared fixtures (T008)**, in `tests/Megafono.Interop.Tests/Fixtures/`: `FederationNetwork` is an xUnit v3
+  assembly fixture (`[<assembly: AssemblyFixture(typeof<FederationNetwork>)>]`, injected into test classes
+  as a constructor argument) that owns the PKI (`megafono.test`, `gts.test`, `mastodon.test`), the Docker
+  network, the host-port exposure and the `megafono.test` Caddy; `GoToSocial()` and `Mastodon()` start
+  their servers lazily on first call (`Lazy<Task>` with `ExecutionAndPublication`), so a GTS-only run never
+  starts Mastodon; both servers offer `CreateUser prefix`, which returns a `FediClient` with a token.
+  `FediClient` is one Mastodon-compatible client for both (search with `resolve`, follow/unfollow,
+  relationships, follow requests, lock, home timeline, status get/post, `pollUntil` with a 60 s default).
+  **How Megáfono's host attaches to `megafono.test`**: the fixture reserves one free host port up front
+  (bind to port 0, read it, release it), exposes it with `ExposeHostPortsAsync` and points the `megafono.test`
+  Caddy at `host.testcontainers.internal:<port>`; `net.AttachHost(configure)` starts a Kestrel app bound to
+  exactly that port (all requests recorded) and returns a lease. There is one port and test classes run in
+  parallel, so the lease is exclusive: `AttachHost` waits until the previous lease is disposed (tests that
+  attach a host are serialized; user creation and searches are not). Chosen over a fixture-owned router
+  because it adds no proxy hop that could alter signed requests; the cost is a tiny window between
+  releasing the reserved port and Kestrel binding it. Run only GTS with `-- --filter-not-trait
+  "Suite=mastodon"`, only Mastodon with `-- --filter-trait "Suite=mastodon"`.
+  Mastodon user creation is one `rails runner` (one Rails boot, about 4 s) that calls tootctl's own
+  `Mastodon::CLI::Accounts#create` and then mints the token; doing `tootctl` and a second runner doubled it.
+  Timings with the shared fixtures: GTS suite 4 tests about 30 s wall, Mastodon suite 3 tests about 60 s,
+  both together about 61 s (they run in parallel).
 - **Pinned images (T006)**: `docker.io/superseriousbusiness/gotosocial:0.22.2` (reports
   `0.22.2+git-fb2bf13`; entrypoint `/gotosocial/gotosocial server start`, user 1000), `docker.io/library/caddy:2.11.7-alpine`
   (`auto_https off`, `admin off`, explicit `tls <leaf> <key>`, ready on "serving initial configuration"),

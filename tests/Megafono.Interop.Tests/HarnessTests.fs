@@ -1,43 +1,90 @@
-/// Smoke tests for the interop harness (R-15, T006): they prove the TLS network, the GoToSocial
-/// account and token, and the host-port exposure work before any federation test relies on them.
+/// Smoke tests for the interop harness (R-15, T006/T008): they prove the TLS network, the GoToSocial
+/// users and tokens, the host exposure and the `FediClient` work before any federation test relies on them.
 module Megafono.Interop.Tests.HarnessTests
 
 open System
 open System.Linq
-open System.Text.Json
-open System.Threading.Tasks
 open DotNet.Testcontainers.Builders
-open DotNet.Testcontainers.Containers
 open Xunit
-open Megafono.Interop.Tests.GoToSocialFixture
+open Megafono.Interop.Tests.FediClient
+open Megafono.Interop.Tests.FederationContext
 
-/// Polls until `check` returns Some, or fails with `describe ()` after `timeout`.
-let private pollUntil (timeout: TimeSpan) (describe: unit -> Task<string>) (check: unit -> 'a option) =
+/// The `FediClient` surface, exercised between two local users of one server (both servers pass it):
+/// locked account, follow request, approve, reject, home timeline, status fetch, unfollow.
+let localFollowFlow (server: IFediServer) =
     task {
-        let deadline = DateTime.UtcNow + timeout
-        let mutable result = check ()
-        while result.IsNone && DateTime.UtcNow < deadline do
-            do! Task.Delay 250
-            result <- check ()
-        match result with
-        | Some r -> return r
-        | None ->
-            let! detail = describe ()
-            return failwith $"timed out after {timeout}: {detail}"
+        use! alice = server.CreateUser "alice"
+        use! bob = server.CreateUser "bob"
+        use! carol = server.CreateUser "carol"
+        let! aliceAccount = alice.Me()
+        let! bobAccount = bob.Me()
+        let! carolAccount = carol.Me()
+        Assert.Equal(alice.Username, aliceAccount.Username)
+        Assert.Equal($"https://{server.Domain}/@{alice.Username}", aliceAccount.Url)
+
+        let! locked = alice.LockAccount()
+        Assert.True locked.Locked
+
+        // Search by handle finds the local account; ids are the same for everyone on the server.
+        let! found = bob.SearchAccount(alice.Handle, true)
+        let found = Assert.IsType<Account>(found.Value)
+        Assert.Equal(aliceAccount.Id, found.Id)
+
+        // A follow of a locked account waits for approval.
+        let! pending = bob.Follow aliceAccount.Id
+        Assert.True(pending.Requested && not pending.Following)
+        let! _ = carol.Follow aliceAccount.Id
+        let! requests =
+            pollFor "follow requests from bob and carol" (fun () ->
+                task {
+                    let! rs = alice.FollowRequests()
+                    return (if rs.Length >= 2 then Some rs else None)
+                })
+        Assert.Contains(requests, fun a -> a.Id = bobAccount.Id)
+
+        let! approved = alice.AuthorizeFollowRequest bobAccount.Id
+        Assert.True approved.FollowedBy
+        let! _ = alice.RejectFollowRequest carolAccount.Id
+        let! bobSees =
+            pollFor "bob follows alice" (fun () ->
+                task {
+                    let! r = bob.Relationship aliceAccount.Id
+                    return (if r.Following then Some r else None)
+                })
+        Assert.False bobSees.Requested
+        let! carolSees = carol.Relationship aliceAccount.Id
+        Assert.False(carolSees.Following || carolSees.Requested)
+
+        // A public post reaches the follower's home timeline and can be fetched by id.
+        let text = $"hello from the harness {Guid.NewGuid():N}"
+        let! posted = alice.PostStatus("public", text)
+        Assert.Equal("public", posted.Visibility)
+        let! seen =
+            pollFor "alice's post in bob's home timeline" (fun () ->
+                task {
+                    let! timeline = bob.HomeTimeline()
+                    return timeline |> List.tryFind (fun s -> s.Uri = posted.Uri)
+                })
+        Assert.Contains(text, seen.Content)
+        let! fetched = bob.GetStatus seen.Id
+        Assert.Equal(posted.Uri, fetched.Uri)
+
+        let! unfollowed = bob.Unfollow aliceAccount.Id
+        Assert.False unfollowed.Following
+        let! rels = bob.Relationships [ aliceAccount.Id; carolAccount.Id ]
+        Assert.True(rels |> List.forall (fun r -> not r.Following))
     }
 
-type HarnessTests(fx: GoToSocialFixture) =
+type HarnessTests(net: FederationNetwork) =
 
     [<Fact>]
     member _.``the user token is accepted by verify_credentials`` () =
         task {
-            use client = fx.AuthedClient()
-            let! resp = client.GetAsync $"https://{GtsDomain}/api/v1/accounts/verify_credentials"
-            let! body = resp.Content.ReadAsStringAsync()
-            Assert.True(resp.IsSuccessStatusCode, body)
-            use doc = JsonDocument.Parse(body)
-            Assert.Equal(fx.Username, doc.RootElement.GetProperty("username").GetString())
-            Assert.Equal($"https://{GtsDomain}/@{fx.Username}", doc.RootElement.GetProperty("url").GetString())
+            let! gts = net.GoToSocial()
+            use! alice = gts.CreateUser "alice"
+            let! me = alice.Me()
+            Assert.Equal(alice.Username, me.Username)
+            Assert.Equal($"https://{GtsDomain}/@{alice.Username}", me.Url)
         }
 
     [<Fact>]
@@ -46,18 +93,18 @@ type HarnessTests(fx: GoToSocialFixture) =
             // A plain curl container that trusts the test CA stands in for "a peer on the network".
             let curl =
                 ContainerBuilder(CurlImage)
-                    .WithNetwork(fx.Network)
+                    .WithNetwork(net.Network)
                     .WithEntrypoint("sleep", "infinity")
-                    .WithResourceMapping(Text.Encoding.UTF8.GetBytes fx.Pki.CaPem, "/certs/ca.pem")
+                    .WithResourceMapping(bytes net.Pki.CaPem, "/certs/ca.pem")
                     .Build()
             do! curl.StartAsync()
             try
-                let before = fx.Probe.Seen.Count
+                use! probe = net.AttachProbe()
                 let! result =
                     curl.ExecAsync [| "curl"; "-sS"; "--fail"; "--cacert"; "/certs/ca.pem"; $"https://{MegafonoDomain}/probe.json" |]
                 Assert.True((result.ExitCode = Nullable 0L), $"curl failed: {result.Stderr}")
                 Assert.Equal("""{"ok":true}""", result.Stdout.Trim())
-                let seen = fx.Probe.Seen.Skip(before).Single(fun r -> r.PathAndQuery = "/probe.json")
+                let seen = probe.Seen.Single(fun r -> r.PathAndQuery = "/probe.json")
                 Assert.Equal(MegafonoDomain, seen.Host)
 
                 // And it does not trust anything else: without the CA the handshake must fail.
@@ -70,21 +117,24 @@ type HarnessTests(fx: GoToSocialFixture) =
     [<Fact>]
     member _.``GoToSocial dials the in-process host through the megafono.test front`` () =
         task {
-            use client = fx.AuthedClient()
-            let! resp =
-                client.GetAsync $"https://{GtsDomain}/api/v2/search?q=%%40nobody%%40{MegafonoDomain}&resolve=true&type=accounts"
-            let! body = resp.Content.ReadAsStringAsync()
-            Assert.True(resp.IsSuccessStatusCode, body)
-
+            let! gts = net.GoToSocial()
+            use! alice = gts.CreateUser "alice"
+            use! probe = net.AttachProbe()
+            let! _ = alice.SearchAccount($"nobody@{MegafonoDomain}", true)
             let! seen =
-                pollUntil
-                    (TimeSpan.FromSeconds 30.0)
-                    (fun () -> task { let! logs = fx.GtsLogs() in return logs })
-                    (fun () ->
-                        fx.Probe.Seen
-                        |> Seq.tryFind (fun r -> r.PathAndQuery.StartsWith "/.well-known/webfinger" && r.Host = MegafonoDomain))
+                pollUntil (TimeSpan.FromSeconds 30.0) "GoToSocial to request webfinger on the host" (fun () ->
+                    task {
+                        return
+                            probe.Seen
+                            |> Seq.tryFind (fun r -> r.PathAndQuery.StartsWith "/.well-known/webfinger" && r.Host = MegafonoDomain)
+                    })
             Assert.Contains($"acct:nobody@{MegafonoDomain}", Uri.UnescapeDataString seen.PathAndQuery)
             Assert.Contains("gotosocial", seen.UserAgent, StringComparison.OrdinalIgnoreCase)
         }
 
-    interface IClassFixture<GoToSocialFixture>
+    [<Fact>]
+    member _.``the FediClient flows work between two local GoToSocial users`` () =
+        task {
+            let! gts = net.GoToSocial()
+            do! localFollowFlow gts
+        }

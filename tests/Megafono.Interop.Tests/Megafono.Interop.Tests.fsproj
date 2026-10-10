@@ -7,8 +7,11 @@
 
   <ItemGroup>
     <Compile Include="Fixtures/TestCa.fs" />
-    <Compile Include="Fixtures/GoToSocialFixture.fs" />
-    <Compile Include="Fixtures/MastodonFixture.fs" />
+    <Compile Include="Fixtures/FediClient.fs" />
+    <Compile Include="Fixtures/FederationContext.fs" />
+    <Compile Include="Fixtures/GoToSocialServer.fs" />
+    <Compile Include="Fixtures/MastodonServer.fs" />
+    <Compile Include="Fixtures/FederationNetwork.fs" />
     <Compile Include="HarnessTests.fs" />
     <Compile Include="MastodonHarnessTests.fs" />
   </ItemGroup>
