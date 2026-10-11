@@ -43,6 +43,14 @@ Numbering continues 001's research (R-01 to R-15). **Unverified** items are conf
 - **Gotcha**: replies to a remote reply that mention neither our actors nor reach a follower are never seen; the
   viewer's own server finds them by crawling. Documented, not promised.
 
+- **Verified in US1 (T011)**: GTS 0.22.2 and Mastodon 4.7.3 address a reply `to: [Public]`, `cc`: the author's
+  followers plus mentioned actors, delivered to our shared `/inbox`. **GTS sent nothing to Megáfono when the reply
+  did not mention the Group** (Mastodon untested without the mention): clients normally prefill the mention, but a
+  user who deletes it is not heard. GTS sends `to` and `tag` as single values (not arrays); both send `contentMap`.
+  GTS reuses one `Update` id for every edit (`…/activity#Update`), so edits are deduplicated by `id|updated`;
+  Mastodon uses `…#updates/<unix>`. GTS deletes with a bare URI (with the Create's addressing), Mastodon with a
+  Tombstone. Mastodon copies our `context`/`conversation` onto its replies.
+
 ### R-23 Outbound replies
 
 - **Decision**: a reply's `to` is `[as:Public]` (public) or `[followers]` (unlisted), `cc` holds the other of the
