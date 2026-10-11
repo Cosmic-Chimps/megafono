@@ -236,7 +236,7 @@ account follows the sample app's test user (quickstart section 5).
 
 - [ ] T083 Mastodon suite in `tests/Megafono.Interop.Tests/Mastodon/` (Trait `Suite=mastodon`, `AUTHORIZED_FETCH=true`): the scenarios of T035, T045, T058 and T068 against Mastodon, plus the lock icon (visibility `private`) on the followers-only post and finding Alex by pasting the sample profile URL (SC-001)
 - [X] T084 [P] Load test in `tests/Megafono.Tests/Load/FanOutTests.fs` (Trait `Suite=load`): a stub fleet of 200 inbox hosts and 1,000 followers; with the process limited to 2 CPUs, every host receives the Create within 2 minutes (SC-003)
-- [ ] T085 [P] Capture the real inbound payloads and headers seen in the interop runs into `tests/Megafono.Interop.Tests/Payloads/` and `tests/Megafono.Tests/Fixtures/payloads/` behind a test-mode logging switch, and add verification tests for them (Principle VI)
+- [X] T085 [P] Capture the real inbound payloads and headers seen in the interop runs into `tests/Megafono.Interop.Tests/Payloads/` and `tests/Megafono.Tests/Fixtures/payloads/` behind a test-mode logging switch, and add verification tests for them (Principle VI)
 - [X] T086 [P] CI workflows in `.github/workflows/ci.yml` (build, `Megafono.Tests`, GoToSocial interop on every push) and `.github/workflows/nightly.yml` (nightly schedule and manual dispatch for `Suite=mastodon` and `Suite=load`)
 - [X] T087 [P] Write `README.md`: what Megáfono is, the three-call integration, link to `docs/operating.md`, contracts and the privacy limit
 - [X] T088 Update `CLAUDE.md` (build and test commands, layout) and mark the decided open questions in `docs/vision.md` (per-actor keys, draft-cavage only, events only, no activity table) as decided by this feature
