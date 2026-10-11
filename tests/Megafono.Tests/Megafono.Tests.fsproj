@@ -46,6 +46,7 @@
     <Compile Include="SmokeTests.fs" />
     <Compile Include="Integration/GatewayTests.fs" />
     <Compile Include="Integration/SampleAppTests.fs" />
+    <Compile Include="RepositoryTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

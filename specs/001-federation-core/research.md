@@ -172,6 +172,13 @@ Sources are listed per decision. Mastodon links point at `main` on GitHub, GoToS
   [delete.rb](https://github.com/mastodon/mastodon/blob/main/app/lib/activitypub/activity/delete.rb),
   [GTS posts](https://docs.gotosocial.org/en/latest/federation/posts/).
 
+- **Verified in US3 (T058)**: GTS 0.22.2 and Mastodon 4.7.3 show followers-only posts as `private`, public as
+  `public`, unlisted as `unlisted`; edits apply (`edited_at` set) and deletes remove the post. Extension data is
+  ignored and the post displays normally. Seen once on GTS (not our bug): deleting a post that had been edited
+  failed inside GTS with `DeleteStatus … NOT NULL constraint failed: statuses.thread_id`.
+- **Test-harness lesson**: shared remote servers cache our keys (instance actor and users). Interop tests must reuse
+  one instance-actor key per run and unique app user ids per test, or later signed requests fail silently.
+
 ### R-08 Shared inboxes
 
 - **Decision**: at publish, recipients are the accepted followers of the author; group them by
