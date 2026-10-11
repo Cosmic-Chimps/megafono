@@ -115,6 +115,44 @@ Traefik) must too:
 The app's profile pages must live on the same domain as Megáfono (as in the reference deployment, where the
 gateway serves both). Mastodon ignores an actor's profile link on another host and links to the actor id instead.
 
+## Replies and threads
+
+Any post the app publishes can be a thread: people on other servers reply to it, the app's users reply too, and a
+reader on Mastodon can load the whole thread. The wire shapes are in
+[`specs/002-replies-threads/contracts/`](../specs/002-replies-threads/contracts/).
+
+**What the app receives.** A reply to a post the app published, or to a reply already in one of its threads, becomes a
+webhook for the author of the thread's root post, however deep the reply is:
+
+- `reply.received` with the reply's id, `url`, sanitized `content`, `summary` (the content warning, as text) and
+  `sensitive`, `language`, `published`, attachments as URLs, the `audience` (`public`, `unlisted`, `followers` or
+  `direct`), the verified author, the `parent` it answers and the `thread` it belongs to. Hide the content behind the
+  warning when `sensitive` is true; what to show for a `followers` or `direct` reply is the app's call.
+- `reply.updated`, the same payload with `updated` set, when the author edits it.
+- `object.deleted` with the reply's id and thread, when the author deletes it. Edits and deletes of replies Megáfono
+  never recorded are ignored.
+
+Megáfono records each reply's id, author, parent and audience, never its content: the app keeps what it needs from
+the webhooks, which are retried until it accepts them.
+
+**What the app sends.** Publish as usual with `object.inReplyTo` set to the `objectUrl` of one of the app's posts or
+the `object.id` of a reply it received. Replies are `public` or `unlisted`; any other audience is `400`, an unknown
+`inReplyTo` is `400` and a deleted one is `410`. The `201` answer adds `thread`. Megáfono addresses the reply to the
+replier's followers, mentions the author of the post replied to when they are on another server and delivers it to
+them. Edit and delete a reply with `PUT` and `DELETE /internal/objects/{id}`: they reach the same recipients.
+
+**What to tell your users.**
+
+- A reply the app hides or removes stays on other servers; Megáfono can only send a `Delete`, and servers may ignore it.
+- A reply only reaches Megáfono when its author's server sends it to one of the app's actors: when the reply
+  mentions or is addressed to that actor, or when that actor follows the reply's author. GoToSocial sends a reply to nobody else,
+  so replies that do not mention the thread owner's account never arrive, and a thread seen on another server can
+  hold replies the app never heard of. Each post's `replies` collection lists only what Megáfono has seen.
+- Pasting the app's page URL into a search finds the thread post on **Mastodon only**, because the page links to its
+  ActivityPub object. On GoToSocial paste the post's own URL (its `objectUrl`) or the account's handle.
+- A `Group` actor (for example one account per series) is a plain account: it is found, followed and posts like a
+  person. Megáfono does not boost its followers' replies, so it is not a Lemmy-style community.
+
 ## What followers-only means
 
 Followers-only (`followers`) is a request, not a guarantee. Megáfono sends such a post only to the inboxes of the
