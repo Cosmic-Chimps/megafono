@@ -25,7 +25,7 @@ Actor id `https://{domain}/ap/actor`, key id `…/ap/actor#main-key` (FR-022). C
 | Column | Type | Rules |
 |---|---|---|
 | `app_user_id` | `text` PK | the app's immutable id; `^[A-Za-z0-9_-]{1,64}$`; never reused (FR-004) |
-| `handle` | `text` | lowercase; `UNIQUE` among rows with `deleted_at IS NULL` |
+| `handle` | `text` | lowercase; `^[a-z0-9_]([a-z0-9_-]{0,28}[a-z0-9_])?$`; `UNIQUE` among rows with `deleted_at IS NULL` |
 | `actor_type` | `text` | `Person`, `Service`, `Group` |
 | `locked` | `boolean` | from the app; drives `manuallyApprovesFollowers` |
 | `name`, `summary` | `text` | from the app (summary is HTML the app owns) |
@@ -203,6 +203,7 @@ Constraint: `UNIQUE (local_actor, seq)`.
   non-empty; attachment and link URLs absolute `https`; extensions need a namespace IRI and a
   prefix matching `^[a-z][a-z0-9]{0,15}$`; request body at most 256 KB.
 - Actor lookup answers from the app: `id` matches the id pattern; `handle` matches
-  `^[a-z0-9_]{1,30}$` after lowercasing; `profileUrl` absolute `https` (or `http` under the test
+  `^[a-z0-9_]([a-z0-9_-]{0,28}[a-z0-9_])?$` after lowercasing (dashes inside only: Mastodon refuses a
+  remote username that starts or ends with one; no dots, so a handle never looks like a domain); `profileUrl` absolute `https` (or `http` under the test
   switch); `type` in `Person | Service | Group` (default `Person`).
 - Remote documents: `id` host must match the URL fetched; `publicKey.owner` must equal the actor id.

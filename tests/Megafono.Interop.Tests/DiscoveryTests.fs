@@ -5,6 +5,7 @@ module Megafono.Interop.Tests.DiscoveryTests
 
 open System
 open System.Threading.Tasks
+open DotNet.Testcontainers.Containers
 open Xunit
 open Megafono.Tests.Fixtures
 open Megafono.Tests.Fixtures.PostgresFixture
@@ -80,6 +81,37 @@ let private discoverByProfileUrl (server: IFediServer) (expectFound: bool) (net:
             Assert.True(first.IsNone && second.IsNone, "the server resolved a pasted profile URL; research R-03 expected it not to follow alternates")
     }
 
+/// A handle with an inner dash (the shape Frunchy usernames take) is found and followed like any other
+let private discoverDashed (server: IFediServer) (front: IContainer) (net: FederationNetwork) (pg: PostgresFixture) : Task =
+    task {
+        use! megafono = MegafonoInterop.start net pg [ server.Domain, front ]
+        // Unique per run, the dash kept inside: the server keeps remote accounts it has seen
+        let handle = uniqueName "anime-fan"
+        let userId = $"u-{handle}"
+        megafono.FakeApp.AddUser { FakeApp.user userId handle with Name = "Anime Fan"; ProfileUrl = $"https://megafono.test/u/{handle}" }
+        use! viewer = server.CreateUser "viewer"
+
+        let! found = viewer.SearchAccount($"{handle}@megafono.test", true)
+        let account = Assert.IsType<Account>(found.Value)
+        Assert.Equal(handle, account.Username)
+        Assert.Equal($"{handle}@megafono.test", account.Acct)
+        Assert.Equal("Anime Fan", account.DisplayName)
+
+        let! _ = viewer.Follow account.Id
+
+        let! _ =
+            pollFor "the follow of the dashed handle to be accepted" (fun () ->
+                task {
+                    let! r = viewer.Relationship account.Id
+                    return (if r.Following then Some r else None)
+                })
+
+        let accepted (e: FakeApp.ReceivedWebhook) =
+            e.Type = "follow.accepted" && e.Json.["user"].["id"].GetValue<string>() = userId
+
+        Assert.Contains(megafono.FakeApp.Received, accepted)
+    }
+
 type DiscoveryTests(net: FederationNetwork, pg: PostgresFixture) =
 
     [<Fact>]
@@ -94,6 +126,13 @@ type DiscoveryTests(net: FederationNetwork, pg: PostgresFixture) =
         task {
             let! gts = net.GoToSocial()
             do! discoverByProfileUrl gts false net pg
+        }
+
+    [<Fact>]
+    member _.``US1 GoToSocial finds and follows a handle with a dash`` () =
+        task {
+            let! gts = net.GoToSocial()
+            do! discoverDashed gts gts.Front net pg
         }
 
 [<Trait("Suite", "mastodon")>]
@@ -111,4 +150,11 @@ type MastodonDiscoveryTests(net: FederationNetwork, pg: PostgresFixture) =
         task {
             let! mastodon = net.Mastodon()
             do! discoverByProfileUrl mastodon true net pg
+        }
+
+    [<Fact>]
+    member _.``US1 Mastodon finds and follows a handle with a dash`` () =
+        task {
+            let! mastodon = net.Mastodon()
+            do! discoverDashed mastodon mastodon.Front net pg
         }

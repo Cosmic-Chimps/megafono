@@ -35,7 +35,7 @@ GET /megafono/actors/{id}
 | Field | Required | Rules |
 |---|---|---|
 | `id` | yes | immutable, never reassigned, `^[A-Za-z0-9_-]{1,64}$` (FR-004) |
-| `handle` | yes | `^[a-z0-9_]{1,30}$` (case-insensitive); the `@handle@domain` people type |
+| `handle` | yes | `^[a-z0-9_]([a-z0-9_-]{0,28}[a-z0-9_])?$` (case-insensitive): 1 to 30 characters, dashes only inside, no dots; the `@handle@domain` people type |
 | `name` | yes | display name |
 | `summary` | no | HTML the app trusts |
 | `iconUrl` | no | absolute URL hosted by the app |

@@ -20,7 +20,7 @@ let private schema =
 
     CREATE TABLE IF NOT EXISTS local_actors (
         app_user_id        text PRIMARY KEY CHECK (app_user_id ~ '^[A-Za-z0-9_-]{1,64}$'),
-        handle             text NOT NULL CHECK (handle ~ '^[a-z0-9_]{1,30}$'),
+        handle             text NOT NULL CHECK (handle ~ '^[a-z0-9_]([a-z0-9_-]{0,28}[a-z0-9_])?$'),
         actor_type         text NOT NULL DEFAULT 'Person' CHECK (actor_type IN ('Person', 'Service', 'Group')),
         locked             boolean NOT NULL DEFAULT false,
         name               text NOT NULL,
@@ -34,6 +34,18 @@ let private schema =
         created_at         timestamptz NOT NULL DEFAULT now(),
         deleted_at         timestamptz NULL
     );
+
+    -- Databases created before handles allowed inner dashes keep the old check: replace it once
+    DO $$
+    BEGIN
+        IF EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'local_actors'::regclass AND conname = 'local_actors_handle_check'
+                     AND pg_get_constraintdef(oid) LIKE '%{1,30}%') THEN
+            ALTER TABLE local_actors DROP CONSTRAINT local_actors_handle_check;
+            ALTER TABLE local_actors ADD CONSTRAINT local_actors_handle_check
+                CHECK (handle ~ '^[a-z0-9_]([a-z0-9_-]{0,28}[a-z0-9_])?$');
+        END IF;
+    END $$;
 
     CREATE UNIQUE INDEX IF NOT EXISTS ux_local_actors_handle
         ON local_actors (handle) WHERE deleted_at IS NULL;

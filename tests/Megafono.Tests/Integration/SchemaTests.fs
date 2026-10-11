@@ -90,6 +90,28 @@ type SchemaTests(pg: PostgresFixture) =
             })
 
     [<Fact>]
+    member _.``a database made before dashed handles gets the new check on the next start``() : Task =
+        withDatabase (fun dataSource connectionString ->
+            task {
+                do! Database.initializeSchema dataSource
+                // Put back the check the first schema created
+                do! execute dataSource "ALTER TABLE local_actors DROP CONSTRAINT local_actors_handle_check"
+                do! execute dataSource "ALTER TABLE local_actors ADD CONSTRAINT local_actors_handle_check CHECK (handle ~ '^[a-z0-9_]{1,30}$')"
+
+                let actor id handle =
+                    $"INSERT INTO local_actors (app_user_id, handle, name, profile_url, public_key_pem, enc_private_key) VALUES ('{id}', '{handle}', 'N', 'https://app/u', 'pem', '\\x00')"
+
+                do! rejected dataSource checkViolation (actor "u1" "anime-fan")
+                do! Database.initializeSchema dataSource
+                do! execute dataSource (actor "u1" "anime-fan")
+                do! rejected dataSource checkViolation (actor "u2" "fan-")
+                // Replaced once: a further start leaves the check alone
+                do! Database.initializeSchema dataSource
+                let! checks = scalar dataSource "SELECT count(*) FROM pg_constraint WHERE conname = 'local_actors_handle_check'"
+                Assert.Equal(1L, checks :?> int64)
+            })
+
+    [<Fact>]
     member _.``T010 the checks and uniques of the data model hold``() : Task =
         withDatabase (fun dataSource connectionString ->
             task {
@@ -103,6 +125,10 @@ type SchemaTests(pg: PostgresFixture) =
                 // FR-004: id and handle patterns
                 do! rejected dataSource checkViolation (actor "bad id" "other")
                 do! rejected dataSource checkViolation (actor "u2" "Alex")
+                do! rejected dataSource checkViolation (actor "u2" "-alex")
+                do! rejected dataSource checkViolation (actor "u2" "alex-")
+                do! rejected dataSource checkViolation (actor "u2" "al.ex")
+                do! execute dataSource (actor "u5" "anime-fan")
                 // handle unique among live actors only
                 do! rejected dataSource uniqueViolation (actor "u3" "alex")
                 do! execute dataSource "UPDATE local_actors SET deleted_at = now() WHERE app_user_id = 'u1'"

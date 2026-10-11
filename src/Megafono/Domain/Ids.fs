@@ -6,7 +6,9 @@ open System.Text.RegularExpressions
 
 // \z, not $: in .NET `$` also matches before a trailing newline
 let private appUserIdPattern = Regex(@"^[A-Za-z0-9_-]{1,64}\z", RegexOptions.Compiled)
-let private handlePattern = Regex(@"^[a-z0-9_]{1,30}\z", RegexOptions.Compiled)
+// Inner dashes only: Mastodon refuses a remote username that starts or ends with one. No dots, so a handle
+// cannot look like a domain (WebFinger relies on it).
+let private handlePattern = Regex(@"^[a-z0-9_]([a-z0-9_-]{0,28}[a-z0-9_])?\z", RegexOptions.Compiled)
 
 /// The app's immutable user id (FR-004); case is significant
 let isValidAppUserId (id: string) = not (isNull id) && appUserIdPattern.IsMatch id
