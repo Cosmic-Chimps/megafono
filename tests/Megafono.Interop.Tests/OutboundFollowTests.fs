@@ -99,6 +99,18 @@ let private outboundFlow (server: IFediServer) (front: IContainer) (net: Federat
                     return (if r.Following then Some r else None)
                 })
 
+        // 3b. bob changes his display name: his server sends Update{Person} and the app hears actor.updated
+        let! _ = bob.UpdateDisplayName "Bob Renamed"
+        let! updated =
+            pollFor "actor.updated for bob" (fun () ->
+                task {
+                    return
+                        megafono.FakeApp.Received
+                        |> List.tryFind (fun e -> e.Type = "actor.updated" && get e.Json "actor.id" = bobActorId && get e.Json "actor.name" = "Bob Renamed")
+                })
+
+        Assert.Equal(alexId, get updated.Json "user.id")
+
         // 4. Both lists show bob as mutual
         let! _, following = internalCall megafono HttpMethod.Get $"/internal/actors/{alexId}/following?status=accepted" None
         let! _, followers = internalCall megafono HttpMethod.Get $"/internal/actors/{alexId}/followers?status=accepted" None

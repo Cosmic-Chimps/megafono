@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-10-11T00:50:06.5934130Z",
+  "activityType": "Accept",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "gotosocial/0.22.2\u002Bgit-fb2bf13 (\u002Bhttps://gts.test)"
+    },
+    {
+      "name": "Accept-Charset",
+      "value": "utf-8"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "zstd,gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/ld\u002Bjson; profile=\u0022https://www.w3.org/ns/activitystreams\u0022"
+    },
+    {
+      "name": "Date",
+      "value": "Sun, 11 Oct 2026 00:50:06 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "457"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=e6Rznlqhosu/jn6DW7b4z5hNP4TW9Y5iIbfUkzjoD50="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://gts.test/users/bobxjjn6/main-key\u0022,algorithm=\u0022hs2019\u0022,headers=\u0022(request-target) host date digest\u0022,signature=\u0022MLBGga5In9qDAsFXEpckS4y77larLo1IFuOZk\u002BoRaAjukomegU8r5gWtqYVYPBPzqeUHF7dJOs7tR8VDLdjX\u002Bqz3S8B4LuMB5fDJ7ZSmmGWva0lggl8J/SKKIvUZEW\u002BPLw3bgg0PoeRwOdv49mp08IobSAc712aFFivUZfUrVOvDSMZwWy4JbXrkkvfnQjTDVX8WrzNsu/VNtTmsgQ5hek/m8qMv/Fa4LbbzRHaFKVTfw2ofSzUst9hLxF3YCMOnt9yfwWRqfXNgu1PqGgCCToIpfGuvojfZsmslAoSpeZodztFLGfWNSjUTOGYDUK4J98yBWmdew77/tZ\u002BLVwIEVA==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.24.0.3"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6Imh0dHBzOi8vd3d3LnczLm9yZy9ucy9hY3Rpdml0eXN0cmVhbXMiLCJhY3RvciI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9ieGpqbjYiLCJpZCI6Imh0dHBzOi8vZ3RzLnRlc3QvMDFNNE03MEYzOVFUM0JCQUtKV0JBMkROWDkiLCJvYmplY3QiOnsiYWN0b3IiOiJodHRwczovL21lZ2Fmb25vLnRlc3QvYXAvYWN0b3JzL3UtYWxleG94cWs3ZSIsImlkIjoiaHR0cHM6Ly9tZWdhZm9uby50ZXN0L2FwL2FjdGl2aXRpZXMvMjEwYmU1ZGUtYTJmMS00ODk0LTlhMzMtOTFhOGJhM2E2ZDQxIiwib2JqZWN0IjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2J4ampuNiIsInRvIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2J4ampuNiIsInR5cGUiOiJGb2xsb3cifSwidG8iOiJodHRwczovL21lZ2Fmb25vLnRlc3QvYXAvYWN0b3JzL3UtYWxleG94cWs3ZSIsInR5cGUiOiJBY2NlcHQifQ==",
+  "body": "{\u0022@context\u0022:\u0022https://www.w3.org/ns/activitystreams\u0022,\u0022actor\u0022:\u0022https://gts.test/users/bobxjjn6\u0022,\u0022id\u0022:\u0022https://gts.test/01M4M70F39QT3BBAKJWBA2DNX9\u0022,\u0022object\u0022:{\u0022actor\u0022:\u0022https://megafono.test/ap/actors/u-alexoxqk7e\u0022,\u0022id\u0022:\u0022https://megafono.test/ap/activities/210be5de-a2f1-4894-9a33-91a8ba3a6d41\u0022,\u0022object\u0022:\u0022https://gts.test/users/bobxjjn6\u0022,\u0022to\u0022:\u0022https://gts.test/users/bobxjjn6\u0022,\u0022type\u0022:\u0022Follow\u0022},\u0022to\u0022:\u0022https://megafono.test/ap/actors/u-alexoxqk7e\u0022,\u0022type\u0022:\u0022Accept\u0022}",
+  "signer": {
+    "actorId": "https://gts.test/users/bobxjjn6",
+    "keyId": "https://gts.test/users/bobxjjn6/main-key",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArESF8QpKI/ZNgU1fywFj\nusLlGd8stqpIq/Ggpxd3\u002BrxzHS5lsYc98TvYH7x7iWPx\u002B6A5o3WFrsWkzr/dsOoL\n\u002BKp380EkvmYSQVIwEcs7JyyPZ1Yq/L/bc4ZOjKrIeyMkIHDrS7QGWuhKZ66Wg3XP\nalNS01fKztBM0FyuSKZmNFTrF1xK3q9YPyfH8O5q0qhnMuevzEOB46VAbSE720Hb\nP5aiRkRWnWGjv3dmfj/yjODAIwrxQUx/UQyF/Fz8SUN1eAz2hLfDtdifhInnx\u002BwL\nhNyOLjLn2kDGI/aBNpUQjyU/EoAODBIc1Kw7iRJWd9w6F6YZHpOCk9s5ZrttCh0a\nlQIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}

@@ -83,6 +83,57 @@ type RemoteActorUpdateTests(pg: PostgresFixture) =
         }
 
     [<Fact>]
+    member _.``FR-015 a complete actor embedded in the Update is stored even when the origin still serves the old copy``() : Task =
+        task {
+            let! w = start pg
+            use _ = MegafonoHost.disposer w.Host
+            use client = new Net.Http.HttpClient()
+            let url = w.Host.FederationUrl + "/inbox"
+            let! _ = postText client w.Stub "alice" url (followBody w.Stub "alice" "1" (ourActor "u-open"))
+            do! waitUntil "follow accepted" (TimeSpan.FromSeconds 20.0) (fun () -> (events w "follow.accepted").Length = 1)
+
+            // The origin keeps answering with the old document (Mastodon does for a few minutes); the Update carries the new one
+            let! current = client.GetStringAsync(w.Stub.ActorId "alice")
+            let embedded = JsonNode.Parse current
+            embedded["name"] <- JsonValue.Create "Fresh From The Update"
+
+            let body =
+                $"""{{"@context":"https://www.w3.org/ns/activitystreams","id":"{w.Stub.ActorId "alice"}#updates/9","type":"Update","actor":"{w.Stub.ActorId "alice"}","object":{embedded.ToJsonString()}}}"""
+
+            let! response = postText client w.Stub "alice" url body
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode)
+            do! waitUntil "actor.updated" (TimeSpan.FromSeconds 20.0) (fun () -> (events w "actor.updated").Length = 1)
+            let! name = nameInDb w "alice"
+            Assert.Equal("Fresh From The Update", name)
+            Assert.Equal("Fresh From The Update", get (events w "actor.updated").Head.Json "actor.name")
+        }
+
+    [<Fact>]
+    member _.``FR-015 an embedded actor that claims another key id host is not stored, the origin is used``() : Task =
+        task {
+            let! w = start pg
+            use _ = MegafonoHost.disposer w.Host
+            use client = new Net.Http.HttpClient()
+            let url = w.Host.FederationUrl + "/inbox"
+            let! _ = postText client w.Stub "alice" url (followBody w.Stub "alice" "1" (ourActor "u-open"))
+            do! waitUntil "follow accepted" (TimeSpan.FromSeconds 20.0) (fun () -> (events w "follow.accepted").Length = 1)
+
+            let! current = client.GetStringAsync(w.Stub.ActorId "alice")
+            let embedded = JsonNode.Parse current
+            embedded["name"] <- JsonValue.Create "Hijacked"
+            embedded["publicKey"]["id"] <- JsonValue.Create "http://127.0.0.2:1/users/alice#main-key"
+
+            let body =
+                $"""{{"@context":"https://www.w3.org/ns/activitystreams","id":"{w.Stub.ActorId "alice"}#updates/10","type":"Update","actor":"{w.Stub.ActorId "alice"}","object":{embedded.ToJsonString()}}}"""
+
+            let! response = postText client w.Stub "alice" url body
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode)
+            do! waitUntil "actor.updated" (TimeSpan.FromSeconds 20.0) (fun () -> (events w "actor.updated").Length = 1)
+            let! name = nameInDb w "alice"
+            Assert.Equal("alice (stub)", name)
+        }
+
+    [<Fact>]
     member _.``FR-013 an Update whose object is not the signer is ignored``() : Task =
         task {
             let! w = start pg

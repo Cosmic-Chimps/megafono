@@ -194,6 +194,12 @@ let private inbox (localUser: string option) : EndpointHandler =
                                 match activity with
                                 | None -> return! status ctx 400
                                 | Some activity ->
+                                    // Test mode only: keep the verified request as a fixture (T085)
+                                    match ctx.GetService<Config.MegafonoOptions>().Testing.CaptureInbound with
+                                    | Some directory ->
+                                        InboundCapture.write directory (env.Time.GetUtcNow()) request signer (defaultArg (str activity "type") "unknown")
+                                    | None -> ()
+
                                     match! dispatch env signer activity with
                                     | Handled -> return! status ctx 202
                                     | Ignored reason ->

@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-10-11T00:50:08.1150890Z",
+  "activityType": "Update",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "gotosocial/0.22.2\u002Bgit-fb2bf13 (\u002Bhttps://gts.test)"
+    },
+    {
+      "name": "Accept-Charset",
+      "value": "utf-8"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "zstd,gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/ld\u002Bjson; profile=\u0022https://www.w3.org/ns/activitystreams\u0022"
+    },
+    {
+      "name": "Date",
+      "value": "Sun, 11 Oct 2026 00:50:08 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "1699"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=vpwV3xEdwlxwKH/jfcIivMePGVnve4YD0owutDfEaUI="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://gts.test/users/bobxjjn6/main-key\u0022,algorithm=\u0022hs2019\u0022,headers=\u0022(request-target) host date digest\u0022,signature=\u0022ep0OZnqBXiH04yBYPhQdqCCEe47YQXTX94dQNyKOZ0Zzzte/GE9R4gXuvAiT\u002BpJSWEDQ6lwVYjGFnwch3a32N1GRopEEeyf2CIriRw1K\u002BQ8wCbVYz37IduO2nyNPWORgc0GVR92LcohR145bNJ3Th9/6\u002B/aL9LZWXZ/ktGqZS9nsIgEn6LejgzHy7mR1bxDkv55d3oJstsdeGXT0vsxMt\u002BiwoNrrXRUzzKPThboK556EdIsydUKTbQF49rlUNpgIAYWITyFHJti6FsK1nVOM2PU3aa24hZp3GiyLBn4n6UE1NHFKjOn/D9cBq3Ot4Fb\u002BRJu4K5wkS4UbLWzbWk0Apw==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.24.0.3"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6WyJodHRwczovL2dvdG9zb2NpYWwub3JnL25zIiwiaHR0cHM6Ly93M2lkLm9yZy9zZWN1cml0eS92MSIsImh0dHBzOi8vd3d3LnczLm9yZy9ucy9hY3Rpdml0eXN0cmVhbXMiLHsiZGlzY292ZXJhYmxlIjoidG9vdDpkaXNjb3ZlcmFibGUiLCJmZWF0dXJlZCI6eyJAaWQiOiJ0b290OmZlYXR1cmVkIiwiQHR5cGUiOiJAaWQifSwiaW5kZXhhYmxlIjoidG9vdDppbmRleGFibGUiLCJtYW51YWxseUFwcHJvdmVzRm9sbG93ZXJzIjoiYXM6bWFudWFsbHlBcHByb3Zlc0ZvbGxvd2VycyIsInRvb3QiOiJodHRwOi8vam9pbm1hc3RvZG9uLm9yZy9ucyMifV0sImFjdG9yIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2J4ampuNiIsImlkIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2J4ampuNi91cGRhdGVzLzAxTTRNNzBHS0JRWVBYUFRYSjNETkU1MFY1Iiwib2JqZWN0Ijp7ImRpc2NvdmVyYWJsZSI6ZmFsc2UsImZlYXR1cmVkIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2J4ampuNi9jb2xsZWN0aW9ucy9mZWF0dXJlZCIsImZvbGxvd2VycyI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9ieGpqbjYvZm9sbG93ZXJzIiwiZm9sbG93aW5nIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2J4ampuNi9mb2xsb3dpbmciLCJoaWRlc0NjUHVibGljRnJvbVVuYXV0aGVkV2ViIjp0cnVlLCJoaWRlc1RvUHVibGljRnJvbVVuYXV0aGVkV2ViIjpmYWxzZSwiaWQiOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2JvYnhqam42IiwiaW5ib3giOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2JvYnhqam42L2luYm94IiwiaW5kZXhhYmxlIjpmYWxzZSwibWFudWFsbHlBcHByb3Zlc0ZvbGxvd2VycyI6dHJ1ZSwibmFtZSI6IkJvYiBSZW5hbWVkIiwib3V0Ym94IjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2J4ampuNi9vdXRib3giLCJwcmVmZXJyZWRVc2VybmFtZSI6ImJvYnhqam42IiwicHVibGljS2V5Ijp7ImlkIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2J4ampuNi9tYWluLWtleSIsIm93bmVyIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2J4ampuNiIsInB1YmxpY0tleVBlbSI6Ii0tLS0tQkVHSU4gUFVCTElDIEtFWS0tLS0tXG5NSUlCSWpBTkJna3Foa2lHOXcwQkFRRUZBQU9DQVE4QU1JSUJDZ0tDQVFFQXJFU0Y4UXBLSS9aTmdVMWZ5d0ZqXG51c0xsR2Q4c3RxcElxL0dncHhkMytyeHpIUzVsc1ljOThUdllIN3g3aVdQeCs2QTVvM1dGcnNXa3pyL2RzT29MXG4rS3AzODBFa3ZtWVNRVkl3RWNzN0p5eVBaMVlxL0wvYmM0Wk9qS3JJZXlNa0lIRHJTN1FHV3VoS1o2NldnM1hQXG5hbE5TMDFmS3p0Qk0wRnl1U0tabU5GVHJGMXhLM3E5WVB5Zkg4TzVxMHFobk11ZXZ6RU9CNDZWQWJTRTcyMEhiXG5QNWFpUmtSV25XR2p2M2RtZmoveWpPREFJd3J4UVV4L1VReUYvRno4U1VOMWVBejJoTGZEdGRpZmhJbm54K3dMXG5oTnlPTGpMbjJrREdJL2FCTnBVUWp5VS9Fb0FPREJJYzFLdzdpUkpXZDl3NkY2WVpIcE9DazlzNVpydHRDaDBhXG5sUUlEQVFBQlxuLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tXG4ifSwicHVibGlzaGVkIjoiMjAyNi0xMC0xMVQwMDo1MDowNVoiLCJ0eXBlIjoiUGVyc29uIiwidXJsIjoiaHR0cHM6Ly9ndHMudGVzdC9AYm9ieGpqbjYifSwidG8iOiJodHRwczovL3d3dy53My5vcmcvbnMvYWN0aXZpdHlzdHJlYW1zI1B1YmxpYyIsInR5cGUiOiJVcGRhdGUifQ==",
+  "body": "{\u0022@context\u0022:[\u0022https://gotosocial.org/ns\u0022,\u0022https://w3id.org/security/v1\u0022,\u0022https://www.w3.org/ns/activitystreams\u0022,{\u0022discoverable\u0022:\u0022toot:discoverable\u0022,\u0022featured\u0022:{\u0022@id\u0022:\u0022toot:featured\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022indexable\u0022:\u0022toot:indexable\u0022,\u0022manuallyApprovesFollowers\u0022:\u0022as:manuallyApprovesFollowers\u0022,\u0022toot\u0022:\u0022http://joinmastodon.org/ns#\u0022}],\u0022actor\u0022:\u0022https://gts.test/users/bobxjjn6\u0022,\u0022id\u0022:\u0022https://gts.test/users/bobxjjn6/updates/01M4M70GKBQYPXPTXJ3DNE50V5\u0022,\u0022object\u0022:{\u0022discoverable\u0022:false,\u0022featured\u0022:\u0022https://gts.test/users/bobxjjn6/collections/featured\u0022,\u0022followers\u0022:\u0022https://gts.test/users/bobxjjn6/followers\u0022,\u0022following\u0022:\u0022https://gts.test/users/bobxjjn6/following\u0022,\u0022hidesCcPublicFromUnauthedWeb\u0022:true,\u0022hidesToPublicFromUnauthedWeb\u0022:false,\u0022id\u0022:\u0022https://gts.test/users/bobxjjn6\u0022,\u0022inbox\u0022:\u0022https://gts.test/users/bobxjjn6/inbox\u0022,\u0022indexable\u0022:false,\u0022manuallyApprovesFollowers\u0022:true,\u0022name\u0022:\u0022Bob Renamed\u0022,\u0022outbox\u0022:\u0022https://gts.test/users/bobxjjn6/outbox\u0022,\u0022preferredUsername\u0022:\u0022bobxjjn6\u0022,\u0022publicKey\u0022:{\u0022id\u0022:\u0022https://gts.test/users/bobxjjn6/main-key\u0022,\u0022owner\u0022:\u0022https://gts.test/users/bobxjjn6\u0022,\u0022publicKeyPem\u0022:\u0022-----BEGIN PUBLIC KEY-----\\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArESF8QpKI/ZNgU1fywFj\\nusLlGd8stqpIq/Ggpxd3\u002BrxzHS5lsYc98TvYH7x7iWPx\u002B6A5o3WFrsWkzr/dsOoL\\n\u002BKp380EkvmYSQVIwEcs7JyyPZ1Yq/L/bc4ZOjKrIeyMkIHDrS7QGWuhKZ66Wg3XP\\nalNS01fKztBM0FyuSKZmNFTrF1xK3q9YPyfH8O5q0qhnMuevzEOB46VAbSE720Hb\\nP5aiRkRWnWGjv3dmfj/yjODAIwrxQUx/UQyF/Fz8SUN1eAz2hLfDtdifhInnx\u002BwL\\nhNyOLjLn2kDGI/aBNpUQjyU/EoAODBIc1Kw7iRJWd9w6F6YZHpOCk9s5ZrttCh0a\\nlQIDAQAB\\n-----END PUBLIC KEY-----\\n\u0022},\u0022published\u0022:\u00222026-10-11T00:50:05Z\u0022,\u0022type\u0022:\u0022Person\u0022,\u0022url\u0022:\u0022https://gts.test/@bobxjjn6\u0022},\u0022to\u0022:\u0022https://www.w3.org/ns/activitystreams#Public\u0022,\u0022type\u0022:\u0022Update\u0022}",
+  "signer": {
+    "actorId": "https://gts.test/users/bobxjjn6",
+    "keyId": "https://gts.test/users/bobxjjn6/main-key",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArESF8QpKI/ZNgU1fywFj\nusLlGd8stqpIq/Ggpxd3\u002BrxzHS5lsYc98TvYH7x7iWPx\u002B6A5o3WFrsWkzr/dsOoL\n\u002BKp380EkvmYSQVIwEcs7JyyPZ1Yq/L/bc4ZOjKrIeyMkIHDrS7QGWuhKZ66Wg3XP\nalNS01fKztBM0FyuSKZmNFTrF1xK3q9YPyfH8O5q0qhnMuevzEOB46VAbSE720Hb\nP5aiRkRWnWGjv3dmfj/yjODAIwrxQUx/UQyF/Fz8SUN1eAz2hLfDtdifhInnx\u002BwL\nhNyOLjLn2kDGI/aBNpUQjyU/EoAODBIc1Kw7iRJWd9w6F6YZHpOCk9s5ZrttCh0a\nlQIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}
