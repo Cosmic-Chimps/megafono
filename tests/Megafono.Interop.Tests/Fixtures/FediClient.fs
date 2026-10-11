@@ -16,7 +16,10 @@ type Account =
       DisplayName: string
       Note: string
       Avatar: string
-      Locked: bool }
+      Locked: bool
+      /// Mastodon's `group` flag (a Group actor); GoToSocial may not expose it
+      Group: bool
+      Bot: bool }
 
 type Status =
     { Id: string
