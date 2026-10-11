@@ -73,7 +73,7 @@ it threaded and the remote author receives it.
 
 ## Phase 5: User Story 4 - Series and other non-user accounts (P2)
 
-- [ ] T019 [P] [US4] Interop test in `tests/Megafono.Interop.Tests/GroupActorTests.fs`: GTS and Mastodon find a `Group` actor (Mastodon's API reports `group: true`), follow it (accepted at once), and its next public post reaches the follower's home timeline (FR-030)
+- [X] T019 [P] [US4] Interop test in `tests/Megafono.Interop.Tests/GroupActorTests.fs`: GTS and Mastodon find a `Group` actor (Mastodon's API reports `group: true`), follow it (accepted at once), and its next public post reaches the follower's home timeline (FR-030)
 
 ---
 

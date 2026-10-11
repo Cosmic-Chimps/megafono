@@ -72,6 +72,9 @@ Numbering continues 001's research (R-01 to R-15). **Unverified** items are conf
 - **Rationale**: Mastodon and GoToSocial accept `Group` like `Person`; `Service` and `Application` get a bot badge,
   `Group` does not. Lemmy-style software expects a Group to `Announce` contributions (FEP-1b12); without it a
   series may look inactive there (unverified). That is acceptable: Lemmy semantics are out of scope.
+- **Verified (T019)**: Mastodon 4.7.3 reports the Group with `group: true`, `bot: false`; GoToSocial 0.22.2
+  shows no group flag (`group: false`) and `bot: false`. Both follow an unlocked Group at once and show its posts
+  in followers' home timelines.
 
 ### R-26 Content warnings
 
