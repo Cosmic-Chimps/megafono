@@ -228,21 +228,65 @@ type Extensions =
       Prefix: string
       Data: JsonObject }
 
+/// Terms Megáfono defines itself in the `@context` of an object (R-24); an app's extension prefix is never one of these
+let private ownTerms = set [ "ostatus"; "conversation"; "gts"; "interactionPolicy"; "canReply"; "automaticApproval" ]
+
 let private noteContext (extensions: Extensions option) : JsonNode =
-    match extensions with
-    | None -> str "https://www.w3.org/ns/activitystreams"
-    | Some e ->
-        let terms = JsonObject()
-        terms[e.Prefix] <- str e.Namespace
-        JsonArray(str "https://www.w3.org/ns/activitystreams", terms)
+    let terms = JsonObject()
+    terms["ostatus"] <- str "http://ostatus.org#"
+    terms["conversation"] <- str "ostatus:conversation"
+    terms["gts"] <- str "https://gotosocial.org/ns#"
+    let policy = JsonObject()
+    policy["@id"] <- str "gts:interactionPolicy"
+    policy["@type"] <- str "@id"
+    terms["interactionPolicy"] <- policy
+    let canReply = JsonObject()
+    canReply["@id"] <- str "gts:canReply"
+    canReply["@type"] <- str "@id"
+    terms["canReply"] <- canReply
+    let approval = JsonObject()
+    approval["@id"] <- str "gts:automaticApproval"
+    approval["@type"] <- str "@id"
+    terms["automaticApproval"] <- approval
+    extensions |> Option.iter (fun e -> terms[e.Prefix] <- str e.Namespace)
+    JsonArray(str "https://www.w3.org/ns/activitystreams", terms)
 
-let private addressingNodes (domain: string) (appUserId: string) (audience: Audience.Audience) =
-    let addressing = Audience.addressing (Ids.actorFollowers domain appUserId) audience
-    let toArray (items: string list) = JsonArray(items |> List.map str |> Array.ofList)
-    toArray addressing.To, toArray addressing.Cc
+/// The string-valued terms of a received `@context` that are not Megáfono's own: `(prefix, namespace)` pairs.
+/// An app's extension arrives as one of these (FR-046: matched by the full namespace, never by the prefix).
+let extensionTerms (context: JsonNode) : (string * string) list =
+    let ofObject (o: JsonObject) =
+        [ for entry in o do
+              match entry.Value with
+              | :? JsonValue as v when v.GetValueKind() = JsonValueKind.String && not (ownTerms.Contains entry.Key) ->
+                  yield entry.Key, v.GetValue<string>()
+              | _ -> () ]
 
-/// The Note or Article as served at `/ap/objects/{id}`. `updated` is set from the first edit on.
-let noteObject
+    match context with
+    | :? JsonObject as o -> ofObject o
+    | :? JsonArray as a -> [ for item in a do match item with :? JsonObject as o -> yield! ofObject o | _ -> () ]
+    | _ -> []
+
+/// An actor a reply mentions: `name` is `@user@host`
+type Mention = { Href: string; Name: string }
+
+/// What makes an object part of a thread (research R-23, R-24): the root it belongs to, the actors addressed in
+/// `cc` besides the audience's own addressing, and the Mentions that go with them
+type ThreadInfo =
+    { Root: Guid
+      ExtraCc: string list
+      Mentions: Mention list }
+
+/// The `canReply` declaration every object carries: anyone may reply, no approval round trip (R-24)
+let private interactionPolicy () : JsonNode =
+    let canReply = JsonObject()
+    canReply["automaticApproval"] <- JsonArray(str publicAudience)
+    let policy = JsonObject()
+    policy["canReply"] <- canReply
+    policy
+
+/// The Note or Article as served at `/ap/objects/{id}`, a member of the thread `thread`. `updated` is set from the
+/// first edit on. `replies` is not part of it: it is computed when the object is served.
+let noteObjectIn
     (domain: string)
     (appUserId: string)
     (objectGuid: Guid)
@@ -251,6 +295,7 @@ let noteObject
     (updated: DateTimeOffset option)
     (content: ObjectContent)
     (extensions: Extensions option)
+    (thread: ThreadInfo)
     : JsonNode =
     let doc = JsonObject()
     doc["@context"] <- noteContext extensions
@@ -264,9 +309,27 @@ let noteObject
     content.Summary |> Option.iter (fun s -> doc["summary"] <- str s)
     content.InReplyTo |> Option.iter (fun r -> doc["inReplyTo"] <- str r)
     doc["sensitive"] <- flag content.Sensitive
-    let toNode, ccNode = addressingNodes domain appUserId audience
-    doc["to"] <- toNode
-    doc["cc"] <- ccNode
+    let addressing = Audience.addressing (Ids.actorFollowers domain appUserId) audience
+    let nodes (items: string list) = JsonArray(items |> List.map str |> Array.ofList)
+    doc["to"] <- nodes addressing.To
+    doc["cc"] <- nodes (addressing.Cc @ thread.ExtraCc |> List.distinct)
+
+    let context = Ids.contextId domain thread.Root
+    doc["context"] <- str context
+    doc["conversation"] <- str context
+    doc["interactionPolicy"] <- interactionPolicy ()
+
+    if not thread.Mentions.IsEmpty then
+        let tags = JsonArray()
+
+        for m in thread.Mentions do
+            let tag = JsonObject()
+            tag["type"] <- str "Mention"
+            tag["href"] <- str m.Href
+            tag["name"] <- str m.Name
+            tags.Add tag
+
+        doc["tag"] <- tags
 
     if not content.Attachments.IsEmpty then
         let attachments = JsonArray()
@@ -289,6 +352,10 @@ let noteObject
 
     doc
 
+/// A root post: its own thread, nobody mentioned
+let noteObject domain appUserId (objectGuid: Guid) audience published updated content extensions =
+    noteObjectIn domain appUserId objectGuid audience published updated content extensions { Root = objectGuid; ExtraCc = []; Mentions = [] }
+
 /// The `Create` or `Update` for an object: same addressing as the object, the object embedded without its own context
 let private objectActivity
     (activityType: string)
@@ -306,9 +373,9 @@ let private objectActivity
     doc["type"] <- str activityType
     doc["actor"] <- str (Ids.actorId domain appUserId)
     doc["published"] <- str (iso now)
-    let toNode, ccNode = addressingNodes domain appUserId audience
-    doc["to"] <- toNode
-    doc["cc"] <- ccNode
+    // The activity mirrors its object's addressing (a reply's `cc` holds more than the audience's own)
+    doc["to"] <- objectDocument["to"].DeepClone()
+    doc["cc"] <- objectDocument["cc"].DeepClone()
     let embedded = objectDocument.DeepClone().AsObject()
     embedded.Remove "@context" |> ignore
     doc["object"] <- embedded
@@ -323,22 +390,26 @@ let update domain appUserId activityId (now: DateTimeOffset) audience extensions
     doc["updated"] <- str (iso now)
     doc
 
-/// `Delete{Tombstone}`, addressed to the same audience as the object: never to Public for a followers-only one
-let deleteObject (domain: string) (appUserId: string) (activityId: string) (now: DateTimeOffset) (audience: Audience.Audience) (objectGuid: Guid) : JsonNode =
+/// `Delete{Tombstone}` to exactly these `to` and `cc`: those of the object it removes
+let deleteObjectAddressed (domain: string) (appUserId: string) (activityId: string) (now: DateTimeOffset) (addressing: Audience.Addressing) (objectGuid: Guid) : JsonNode =
     let doc = JsonObject()
     doc["@context"] <- str "https://www.w3.org/ns/activitystreams"
     doc["id"] <- str activityId
     doc["type"] <- str "Delete"
     doc["actor"] <- str (Ids.actorId domain appUserId)
     doc["published"] <- str (iso now)
-    let toNode, ccNode = addressingNodes domain appUserId audience
-    doc["to"] <- toNode
-    doc["cc"] <- ccNode
+    let nodes (items: string list) = JsonArray(items |> List.map str |> Array.ofList)
+    doc["to"] <- nodes addressing.To
+    doc["cc"] <- nodes addressing.Cc
     let tombstone = JsonObject()
     tombstone["id"] <- str (Ids.objectId domain objectGuid)
     tombstone["type"] <- str "Tombstone"
     doc["object"] <- tombstone
     doc
+
+/// `Delete{Tombstone}`, addressed to the same audience as the object: never to Public for a followers-only one
+let deleteObject (domain: string) (appUserId: string) (activityId: string) (now: DateTimeOffset) (audience: Audience.Audience) (objectGuid: Guid) : JsonNode =
+    deleteObjectAddressed domain appUserId activityId now (Audience.addressing (Ids.actorFollowers domain appUserId) audience) objectGuid
 
 /// What a deleted object's URL answers (410)
 let tombstone (domain: string) (objectGuid: Guid) (formerType: string) (deleted: DateTimeOffset) : JsonNode =
@@ -349,6 +420,49 @@ let tombstone (domain: string) (objectGuid: Guid) (formerType: string) (deleted:
     doc["formerType"] <- str formerType
     doc["deleted"] <- str (iso deleted)
     doc
+
+// ---- replies and threads (feature 002; research R-20, R-24) ------------------------------------------
+
+/// Replies and context pages hold at most this many ids
+let pageSize = 50
+
+let private page (collectionId: string) (number: int) (items: string list) (hasNext: bool) : JsonObject =
+    let doc = JsonObject()
+    doc["id"] <- str $"{collectionId}?page={number}"
+    doc["type"] <- str "CollectionPage"
+    doc["partOf"] <- str collectionId
+    doc["items"] <- JsonArray(items |> List.map str |> Array.ofList)
+
+    if hasNext then
+        doc["next"] <- str $"{collectionId}?page={number + 1}"
+
+    doc
+
+/// A `Collection` of ids: `totalItems` and an embedded first page, the following ones linked by URL. `items`
+/// (never `orderedItems`) because the type is `Collection`; Mastodon ignores a collection's own `items` once
+/// `first` exists, so the ids live in the page.
+let idCollection (collectionId: string) (totalItems: int64) (firstItems: string list) (hasNext: bool) : JsonObject =
+    let doc = JsonObject()
+    doc["id"] <- str collectionId
+    doc["type"] <- str "Collection"
+    doc["totalItems"] <- JsonValue.Create totalItems
+    doc["first"] <- page collectionId 1 firstItems hasNext
+    doc
+
+/// The `replies` property of an object, as embedded in its document
+let replies (objectIri: string) (totalItems: int64) (firstItems: string list) (hasNext: bool) : JsonNode =
+    idCollection (Ids.repliesId objectIri) totalItems firstItems hasNext
+
+/// Page `number` (from 2) of a collection, served on its own
+let collectionPage (collectionId: string) (number: int) (items: string list) (hasNext: bool) : JsonNode =
+    let doc = page collectionId number items hasNext
+    doc["@context"] <- str "https://www.w3.org/ns/activitystreams"
+    doc
+
+/// A collection served on its own (`/replies`, `/ap/contexts/{root}`): the embedded form with a context
+let standaloneCollection (collection: JsonObject) : JsonNode =
+    collection["@context"] <- str "https://www.w3.org/ns/activitystreams"
+    collection
 
 // ======================================================================================================
 // Follow traffic (User Story 2, research R-05): Follow, Accept, Reject, Undo

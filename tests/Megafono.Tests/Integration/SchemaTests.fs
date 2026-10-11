@@ -10,7 +10,7 @@ open Megafono.Tests.Fixtures.PostgresFixture
 
 let private expectedTables =
     [ "activities"; "app_events"; "deliveries"; "follows"; "instance_actor"; "local_actors"; "objects"
-      "processed_activities"; "remote_actors"; "remote_hosts" ]
+      "processed_activities"; "remote_actors"; "remote_hosts"; "replies" ]
 
 let private scalar (dataSource: NpgsqlDataSource) (sql: string) =
     task {
@@ -148,4 +148,83 @@ type SchemaTests(pg: PostgresFixture) =
                 let evt id = $"INSERT INTO app_events (id, local_actor, seq, event_type, payload) VALUES ('{id}', 'u4', 1, 'follow.requested', '{{}}')"
                 do! execute dataSource (evt "evt_1")
                 do! rejected dataSource uniqueViolation (evt "evt_2")
+            })
+
+    [<Fact>]
+    member _.``002 T001 replies: exactly one of local_object and remote_actor, state and audience checks, one row per local object``() : Task =
+        withDatabase (fun dataSource connectionString ->
+            task {
+                do! Database.initializeSchema dataSource
+
+                do!
+                    execute
+                        dataSource
+                        "INSERT INTO local_actors (app_user_id, handle, name, profile_url, public_key_pem, enc_private_key) VALUES ('g1', 'frieren', 'F', 'https://app/f', 'pem', '\\x00')"
+
+                let rootSql id = $"INSERT INTO objects (id, local_actor, audience, object_type, document) VALUES ('{id}', 'g1', 'public', 'Note', '{{}}')"
+                do! execute dataSource (rootSql "00000000-0000-4000-8000-0000000000a1")
+                do! execute dataSource (rootSql "00000000-0000-4000-8000-0000000000a2")
+
+                do!
+                    execute
+                        dataSource
+                        "INSERT INTO remote_actors (id, host, actor_type, inbox, key_id, public_key_pem) VALUES ('https://h/a', 'h', 'Person', 'https://h/i', 'https://h/a#k', 'p')"
+
+                let reply id local remote audience state =
+                    $"""INSERT INTO replies (id, local_object, remote_actor, parent, thread_root, audience, state, published_at)
+                        VALUES ('{id}', {local}, {remote}, 'https://megafono.test/ap/objects/00000000-0000-4000-8000-0000000000a1',
+                                '00000000-0000-4000-8000-0000000000a1', '{audience}', '{state}', now())"""
+
+                let remote = "'https://h/a'"
+                let local = "'00000000-0000-4000-8000-0000000000a2'"
+                do! execute dataSource (reply "https://h/r1" "NULL" remote "public" "live")
+                // both set, neither set
+                do! rejected dataSource checkViolation (reply "https://h/r2" local remote "public" "live")
+                do! rejected dataSource checkViolation (reply "https://h/r3" "NULL" "NULL" "public" "live")
+                // audience and state
+                do! rejected dataSource checkViolation (reply "https://h/r4" "NULL" remote "mutuals" "live")
+                do! rejected dataSource checkViolation (reply "https://h/r5" "NULL" remote "public" "gone")
+                do! execute dataSource (reply "https://h/r6" "NULL" remote "direct" "deleted")
+                // a local object has one reply row
+                do! execute dataSource (reply "https://megafono.test/ap/objects/a2" local "NULL" "public" "live")
+                do! rejected dataSource uniqueViolation (reply "https://megafono.test/ap/objects/a2b" local "NULL" "public" "live")
+                // the parent object must exist
+                do!
+                    rejected
+                        dataSource
+                        "23503"
+                        "INSERT INTO replies (id, remote_actor, parent, parent_object, thread_root, audience, published_at) VALUES ('https://h/r7', 'https://h/a', 'p', gen_random_uuid(), '00000000-0000-4000-8000-0000000000a1', 'public', now())"
+            })
+
+    [<Fact>]
+    member _.``002 T001 a 001 database gets the reply columns and table, keeping its data``() : Task =
+        withDatabase (fun dataSource connectionString ->
+            task {
+                do! Database.initializeSchema dataSource
+
+                do!
+                    execute
+                        dataSource
+                        "INSERT INTO local_actors (app_user_id, handle, name, profile_url, public_key_pem, enc_private_key) VALUES ('g1', 'frieren', 'F', 'https://app/f', 'pem', '\\x00')"
+
+                do!
+                    execute
+                        dataSource
+                        "INSERT INTO objects (id, local_actor, audience, object_type, document) VALUES (gen_random_uuid(), 'g1', 'public', 'Note', '{}')"
+
+                // Back to what feature 001 created, then start again
+                do! execute dataSource "DROP TABLE replies; ALTER TABLE objects DROP COLUMN thread_root; ALTER TABLE objects DROP COLUMN in_reply_to"
+                do! Database.initializeSchema dataSource
+                do! Database.initializeSchema dataSource
+
+                let! columns =
+                    scalar
+                        dataSource
+                        "SELECT count(*) FROM information_schema.columns WHERE table_name = 'objects' AND column_name IN ('in_reply_to', 'thread_root')"
+
+                Assert.Equal(2L, columns :?> int64)
+                let! objects = scalar dataSource "SELECT count(*) FROM objects WHERE in_reply_to IS NULL AND thread_root IS NULL"
+                Assert.Equal(1L, objects :?> int64)
+                let! names = tables dataSource
+                Assert.Contains("replies", names)
             })

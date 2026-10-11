@@ -22,6 +22,7 @@
     <Compile Include="OutboundFollowTests.fs" />
     <Compile Include="PublishTests.fs" />
     <Compile Include="GroupActorTests.fs" />
+    <Compile Include="RepliesTests.fs" />
     <Compile Include="DeploymentShapeTests.fs" />
   </ItemGroup>
 

@@ -13,6 +13,9 @@ type EventType =
     | FollowRemoved
     | ActorUpdated
     | DeliveryFailed
+    | ReplyReceived
+    | ReplyUpdated
+    | ObjectDeleted
 
 let typeName (eventType: EventType) : string =
     match eventType with
@@ -22,6 +25,9 @@ let typeName (eventType: EventType) : string =
     | FollowRemoved -> "follow.removed"
     | ActorUpdated -> "actor.updated"
     | DeliveryFailed -> "delivery.failed"
+    | ReplyReceived -> "reply.received"
+    | ReplyUpdated -> "reply.updated"
+    | ObjectDeleted -> "object.deleted"
 
 /// The remote actor an event is about; `Name` is plain text
 type ActorSummary =
@@ -111,7 +117,10 @@ let envelope (eventId: string) (occurredAt: DateTimeOffset) (seq: int64) (userId
     for name, value in body.Extra do
         json[name] <- value
 
-    json["extensions"] <- null
+    // A body may bring its own `extensions` (a reply carrying the app's namespace); otherwise the field is null
+    if not (json.ContainsKey "extensions") then
+        json["extensions"] <- null
+
     json.ToJsonString()
 
 /// `Megafono-Signature` value: `t=<unix>,v1=<lowercase hex HMAC-SHA256 of "t.body">` with the webhook secret
@@ -120,3 +129,99 @@ let signature (secret: string) (timestamp: int64) (body: byte[]) : string =
     let message = Array.append prefix body
     let mac = HMACSHA256.HashData(Encoding.UTF8.GetBytes secret, message)
     $"t={timestamp},v1={Convert.ToHexString(mac).ToLowerInvariant()}"
+
+// ---- replies (feature 002, contracts/app-contract.md) --------------------------------------------------
+
+type ReplyAttachment =
+    { Type: string
+      MediaType: string option
+      Url: string
+      /// Alt text
+      Name: string option }
+
+/// The parent of a reply: one of the app's own objects (`Local`, with Megáfono's object id and the user who
+/// published it), or a remote reply already recorded in the thread
+type ReplyParent =
+    { Local: bool
+      ObjectId: Guid option
+      UserId: string option }
+
+/// The root the app published
+type ThreadRef = { ObjectId: Guid; Id: string }
+
+/// The reply as the app sees it. `Content` is already sanitized HTML, `Summary` plain text.
+type ReplyObject =
+    { Id: string
+      Url: string option
+      /// `Note` or `Article`
+      Type: string
+      Content: string
+      Summary: string option
+      Sensitive: bool
+      Language: string option
+      Published: DateTimeOffset
+      /// Set on `reply.updated`
+      Updated: DateTimeOffset option
+      /// `public`, `unlisted`, `followers` or `direct`
+      Audience: string
+      InReplyTo: string
+      Parent: ReplyParent
+      Thread: ThreadRef
+      Attachments: ReplyAttachment list }
+
+let private iso (time: DateTimeOffset) : JsonNode =
+    JsonValue.Create(time.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"))
+
+let private threadNode (thread: ThreadRef) : JsonNode =
+    let node = JsonObject()
+    node["objectId"] <- JsonValue.Create(thread.ObjectId.ToString "D")
+    node["id"] <- JsonValue.Create thread.Id
+    node
+
+/// `reply.received` and `reply.updated`; `extensions` (the app's namespace, data under its prefix) is null when absent
+let replyBody (eventType: EventType) (actor: ActorSummary) (reply: ReplyObject) (extensions: JsonNode option) : EventBody =
+    let o = JsonObject()
+    o["id"] <- JsonValue.Create reply.Id
+    o["url"] <- optionalString reply.Url
+    o["type"] <- JsonValue.Create reply.Type
+    o["content"] <- JsonValue.Create reply.Content
+    o["summary"] <- optionalString reply.Summary
+    o["sensitive"] <- JsonValue.Create reply.Sensitive
+    o["language"] <- optionalString reply.Language
+    o["published"] <- iso reply.Published
+    o["updated"] <- (match reply.Updated with Some u -> iso u | None -> null)
+    o["audience"] <- JsonValue.Create reply.Audience
+    o["inReplyTo"] <- JsonValue.Create reply.InReplyTo
+
+    let parent = JsonObject()
+    parent["local"] <- JsonValue.Create reply.Parent.Local
+    parent["objectId"] <- (match reply.Parent.ObjectId with Some g -> JsonValue.Create(g.ToString "D") | None -> null)
+    parent["userId"] <- optionalString reply.Parent.UserId
+    o["parent"] <- parent
+    o["thread"] <- threadNode reply.Thread
+
+    let attachments = JsonArray()
+
+    for a in reply.Attachments do
+        let node = JsonObject()
+        node["type"] <- JsonValue.Create a.Type
+        node["mediaType"] <- optionalString a.MediaType
+        node["url"] <- JsonValue.Create a.Url
+        node["name"] <- optionalString a.Name
+        attachments.Add node
+
+    o["attachment"] <- attachments
+
+    let extra = [ "object", (o :> JsonNode) ]
+
+    { Type = eventType
+      Actor = Some actor
+      Follow = None
+      Extra = match extensions with Some e -> extra @ [ "extensions", e ] | None -> extra }
+
+/// `object.deleted` for a reply: only its id and thread
+let deletedBody (actor: ActorSummary) (replyId: string) (thread: ThreadRef) : EventBody =
+    let o = JsonObject()
+    o["id"] <- JsonValue.Create replyId
+    o["thread"] <- threadNode thread
+    { Type = ObjectDeleted; Actor = Some actor; Follow = None; Extra = [ "object", (o :> JsonNode) ] }

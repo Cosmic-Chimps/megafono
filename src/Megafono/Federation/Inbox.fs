@@ -139,7 +139,11 @@ let private dispatch (env: Env) (signer: RemoteActor) (activity: JsonNode) : Tas
     match str activity "type" with
     | Some "Follow" -> InboxFollows.handleFollow env signer activity
     | Some "Undo" -> InboxFollows.handleUndo env signer activity
+    | Some "Create" -> InboxReplies.handleCreate env signer activity
+    // An edited Note is a reply's Update; anything else is a profile update
+    | Some "Update" when InboxReplies.isNoteUpdate activity -> InboxReplies.handleUpdate env signer activity
     | Some "Update" -> InboxActors.handleUpdate env signer activity
+    | Some "Delete" -> InboxReplies.handleDelete env signer activity
     | Some "Accept" -> InboxFollows.handleAccept env signer activity
     | Some "Reject" -> InboxFollows.handleReject env signer activity
     // Everything else is not ours

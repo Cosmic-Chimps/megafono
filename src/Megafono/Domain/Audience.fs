@@ -41,3 +41,40 @@ let addressing (followersUrl: string) (audience: Audience) : Addressing =
 
 /// Only a followers-only object needs a signed fetch; public and unlisted ones are served to anyone
 let isPrivate (audience: Audience) : bool = audience = Followers
+
+/// How an inbound object was addressed (feature 002, research R-22). Unlike `Audience` this includes `direct`,
+/// which Megáfono receives but never publishes.
+type Received =
+    | ReceivedPublic
+    | ReceivedUnlisted
+    | ReceivedFollowers
+    | ReceivedDirect
+
+let receivedName (audience: Received) : string =
+    match audience with
+    | ReceivedPublic -> "public"
+    | ReceivedUnlisted -> "unlisted"
+    | ReceivedFollowers -> "followers"
+    | ReceivedDirect -> "direct"
+
+let receivedFromName (text: string) : Received option =
+    match text with
+    | "public" -> Some ReceivedPublic
+    | "unlisted" -> Some ReceivedUnlisted
+    | "followers" -> Some ReceivedFollowers
+    | "direct" -> Some ReceivedDirect
+    | _ -> None
+
+/// Servers spell the public collection three ways
+let private isPublic (iri: string) = iri = publicCollection || iri = "as:Public" || iri = "Public"
+
+/// `public` when Public is in `to`; `unlisted` when it is in `cc`; `followers` when `to` holds the author's own
+/// followers collection; anything else (only mentioned actors) is `direct`.
+let fromAddressing (authorFollowers: string option) (to': string list) (cc: string list) : Received =
+    if to' |> List.exists isPublic then ReceivedPublic
+    elif cc |> List.exists isPublic then ReceivedUnlisted
+    elif authorFollowers |> Option.exists (fun f -> List.contains f to') then ReceivedFollowers
+    else ReceivedDirect
+
+/// Replies carry the audiences a thread collection may list: public and unlisted only
+let isListable (audience: Received) : bool = audience = ReceivedPublic || audience = ReceivedUnlisted
