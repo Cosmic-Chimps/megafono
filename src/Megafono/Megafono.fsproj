@@ -31,6 +31,7 @@
     <Compile Include="Federation/Inbox.fs" />
     <Compile Include="Internal/Actors.fs" />
     <Compile Include="Internal/Objects.fs" />
+    <Compile Include="Internal/RemoteActors.fs" />
     <Compile Include="Internal/Follows.fs" />
     <Compile Include="Workers/Dispatcher.fs" />
     <Compile Include="Workers/Deliveries.fs" />

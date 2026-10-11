@@ -189,6 +189,7 @@ let buildAppWith (configure: IServiceCollection -> unit) (args: string[]) (overr
         // US3: objects, activities and publishing
         @ Federation.Objects.endpoints
         @ Internal.Objects.endpoints
+        @ Internal.RemoteActors.endpoints
         @ Internal.Follows.endpoints
 
     app.UseRouting().UseOxpecker endpoints |> ignore
