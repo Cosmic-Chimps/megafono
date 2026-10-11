@@ -43,6 +43,17 @@ type Relationship =
       FollowedBy: bool
       Blocking: bool }
 
+/// A notification; `Status` is null for kinds that have none (follows)
+type Notification =
+    { Id: string
+      Type: string
+      Status: Status }
+
+/// A status with its thread around it
+type StatusContext =
+    { Ancestors: Status list
+      Descendants: Status list }
+
 /// A non-2xx answer from the server under test.
 exception FediClientException of method': string * path: string * status: int * body: string
 
@@ -239,6 +250,19 @@ type FediClient(http: HttpClient, baseUri: string, token: string, username: stri
 
             let! body = post "/api/v1/statuses" ([ "status", text; "visibility", visibility; "in_reply_to_id", inReplyToId ] @ spoilerFields)
             return parse<Status> body
+        }
+
+    /// The statuses above and below `id` in its thread, as this server knows them
+    member _.Context(id: string) : Task<StatusContext> =
+        task {
+            let! body = get $"/api/v1/statuses/{id}/context"
+            return parse<StatusContext> body
+        }
+
+    member _.Notifications() : Task<Notification list> =
+        task {
+            let! body = get "/api/v1/notifications?limit=40"
+            return parse<Notification list> body
         }
 
     /// Edits one of the user's own statuses (`PUT /api/v1/statuses/:id`); the server sends an `Update` of the Note

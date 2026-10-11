@@ -125,12 +125,15 @@ type PublishTests(pg: PostgresFixture) =
         task {
             let! rig = start pg []
             use _ = disposeRig rig
+            // A reply must answer one of our objects (feature 002, FR-010)
+            let! parent = publish rig "u-1" "public" "<p>the post replied to</p>"
+            let parentUrl = $"https://megafono.test/ap/objects/{parent}"
 
             let body =
                 bodyWith (fun b ->
                     let o = objectOf b
                     o["url"] <- JsonValue.Create "https://app.example.com/u/alex/watch/123"
-                    o["inReplyTo"] <- JsonValue.Create "https://mastodon.example/users/bob/statuses/1"
+                    o["inReplyTo"] <- JsonValue.Create parentUrl
                     o["summary"] <- JsonValue.Create "spoilers"
                     o["sensitive"] <- JsonValue.Create true
 
@@ -143,7 +146,7 @@ type PublishTests(pg: PostgresFixture) =
             let! served = response.Content.ReadAsStringAsync()
             let note = json served
             Assert.Equal("https://app.example.com/u/alex/watch/123", jstr ((at note "url")))
-            Assert.Equal("https://mastodon.example/users/bob/statuses/1", jstr ((at note "inReplyTo")))
+            Assert.Equal(parentUrl, jstr ((at note "inReplyTo")))
             Assert.Equal("spoilers", jstr ((at note "summary")))
             Assert.True(boolOf ((at note "sensitive")))
             Assert.Equal("Document", jstr ((at note "attachment.0.type")))

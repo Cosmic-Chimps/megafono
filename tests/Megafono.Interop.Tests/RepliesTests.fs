@@ -91,7 +91,7 @@ let private explain (server: IFediServer) (megafono: MegafonoInterop.InteropMega
             | :? GoToSocialServer.GoToSocialServer as gts ->
                 task {
                     let! text = gts.Logs()
-                    return text.Split('\n') |> Array.filter (fun l -> l.Contains "megafono" || l.Contains "eliver" || l.Contains "level=ERROR") |> Array.rev |> Array.truncate 40 |> Array.rev |> String.concat "\n"
+                    return text.Split('\n') |> Array.filter (fun l -> (l.Contains "level=ERROR" || l.Contains "level=WARN") && not (l.Contains "migrations") && not (l.Contains "couldn't count")) |> Array.rev |> Array.truncate 40 |> Array.rev |> String.concat "\n"
                 }
             | _ -> Task.FromResult ""
 
@@ -194,6 +194,128 @@ let private threadFlow (server: IFediServer) (front: IContainer) (net: Federatio
             return raise explained
     }
 
+/// The app's user `userId` replies to `inReplyTo`; returns the reply's object id and URL
+let private publishReply
+    (megafono: MegafonoInterop.InteropMegafono)
+    (userId: string)
+    (inReplyTo: string)
+    (content: string)
+    (spoiler: string option)
+    : Task<string * string> =
+    task {
+        let o = JsonObject()
+        o["audience"] <- JsonValue.Create "public"
+        let inner = JsonObject()
+        inner["type"] <- JsonValue.Create "Note"
+        inner["content"] <- JsonValue.Create $"<p>{content}</p>"
+        inner["inReplyTo"] <- JsonValue.Create inReplyTo
+
+        spoiler
+        |> Option.iter (fun warning ->
+            inner["summary"] <- JsonValue.Create warning
+            inner["sensitive"] <- JsonValue.Create true)
+
+        o["object"] <- inner
+        let! status, answer = internalCall megafono HttpMethod.Post $"/internal/actors/{userId}/objects" (Some(o.ToJsonString()))
+        Assert.Equal(201, status)
+        let id = answer["id"].GetValue<string>()
+        return id, answer["objectUrl"].GetValue<string>()
+    }
+
+/// US2 (T014): the app's user alex replies in the Group's thread. A follower on the remote server sees the reply
+/// threaded under the post with its content warning; alex's reply to a remote user's reply reaches that user,
+/// threaded under their reply, with a mention notification (SC-002).
+let private outboundScenario (server: IFediServer) (megafono: MegafonoInterop.InteropMegafono) : Task =
+    task {
+        let groupHandle = uniqueName "series"
+        let groupId = $"series-{groupHandle}"
+        let alexHandle = uniqueName "alex"
+        let alexId = $"u-{alexHandle}"
+        megafono.FakeApp.AddUser { FakeApp.user groupId groupHandle with Name = "A Series"; Type = "Group"; Locked = false; ProfileUrl = $"https://megafono.test/u/{groupHandle}" }
+        megafono.FakeApp.AddUser { FakeApp.user alexId alexHandle with Name = "Alex"; Locked = false; ProfileUrl = $"https://megafono.test/u/{alexHandle}" }
+
+        let! rootId, rootUrl = publishNote megafono groupId "Episode 6 thread"
+        use! carol = server.CreateUser "carol"
+        use! alice = server.CreateUser "alice"
+
+        // carol follows alex and the series, so replies in the thread reach her home timeline
+        for handle in [ alexHandle; groupHandle ] do
+            let! account = pollFor $"carol finds {handle}" (fun () -> task { return! carol.SearchAccount($"{handle}@megafono.test", true) })
+            let! _ = carol.Follow account.Id
+
+            let! _ =
+                pollFor $"carol follows {handle}" (fun () ->
+                    task {
+                        let! r = carol.Relationship account.Id
+                        return (if r.Following then Some r else None)
+                    })
+
+            ()
+
+        // alice replies to the thread post first, so there is a remote reply to answer
+        let! aliceThread = pollFor "alice resolves the thread post" (fun () -> task { let! f = alice.SearchStatus rootUrl in return List.tryHead f })
+        let aliceMarker = uniqueName "alice"
+        let! aliceReply = alice.PostReply(aliceThread.Id, "public", $"@{groupHandle}@megafono.test {aliceMarker} that ending!", None)
+        let! _ = eventWhere megafono "reply.received" "alice's reply" (fun e -> (get e "object.content").Contains aliceMarker)
+
+        // alex replies to the thread post with a content warning
+        let marker = uniqueName "alexreply"
+        let! alexReplyId, alexReplyUrl = publishReply megafono alexId rootUrl $"{marker} fern carried this" (Some "Spoilers: S2 E6")
+
+        // carol's server knows the thread post (she follows the series) and so shows the reply below it. Read through
+        // the thread's context rather than the home timeline: GoToSocial leaves a reply to a followed account's post out
+        // of the home timeline even when it stores it.
+        let! carolThread = pollFor "carol resolves the thread post" (fun () -> task { let! f = carol.SearchStatus rootUrl in return List.tryHead f })
+
+        let! seen =
+            pollFor "alex's reply below the thread post on carol's server" (fun () ->
+                task {
+                    let! context = carol.Context carolThread.Id
+                    return context.Descendants |> List.tryFind (fun s -> s.Content.Contains marker)
+                })
+
+        Assert.Equal("Spoilers: S2 E6", seen.SpoilerText)
+        Assert.True seen.Sensitive
+        Assert.Equal(carolThread.Id, seen.InReplyToId)
+        Assert.Equal(alexReplyUrl, seen.Uri)
+
+        // alex replies to alice's reply: alice sees it under her own status and is notified of the mention
+        let nestedMarker = uniqueName "nested"
+        let! _, nestedUrl = publishReply megafono alexId aliceReply.Uri $"{nestedMarker} thanks for watching" None
+
+        let! below =
+            pollFor "alex's reply in alice's thread" (fun () ->
+                task {
+                    let! context = alice.Context aliceReply.Id
+                    return context.Descendants |> List.tryFind (fun s -> s.Content.Contains nestedMarker)
+                })
+
+        Assert.Equal(aliceReply.Id, below.InReplyToId)
+        Assert.Equal(nestedUrl, below.Uri)
+
+        let! notification =
+            pollFor "alice's mention notification" (fun () ->
+                task {
+                    let! all = alice.Notifications()
+                    return all |> List.tryFind (fun n -> n.Type = "mention" && not (obj.ReferenceEquals(n.Status, null)) && n.Status.Content.Contains nestedMarker)
+                })
+
+        Assert.Equal("mention", notification.Type)
+        ignore alexReplyId
+        ignore rootId
+    }
+
+let private outboundFlow (server: IFediServer) (front: IContainer) (net: FederationNetwork) (pg: PostgresFixture) : Task =
+    task {
+        use! megafono = MegafonoInterop.start net pg [ server.Domain, front ]
+
+        try
+            do! outboundScenario server megafono
+        with e ->
+            let! explained = explain server megafono e
+            return raise explained
+    }
+
 type RepliesTests(net: FederationNetwork, pg: PostgresFixture) =
 
     [<Fact>]
@@ -201,6 +323,13 @@ type RepliesTests(net: FederationNetwork, pg: PostgresFixture) =
         task {
             let! gts = net.GoToSocial()
             do! threadFlow gts gts.Front net pg
+        }
+
+    [<Fact>]
+    member _.``US2 GoToSocial: the app's replies are threaded for a follower and reach the remote author with a mention`` () =
+        task {
+            let! gts = net.GoToSocial()
+            do! outboundFlow gts gts.Front net pg
         }
 
 [<Trait("Suite", "mastodon")>]
@@ -211,4 +340,11 @@ type MastodonRepliesTests(net: FederationNetwork, pg: PostgresFixture) =
         task {
             let! mastodon = net.Mastodon()
             do! threadFlow mastodon mastodon.Front net pg
+        }
+
+    [<Fact>]
+    member _.``US2 Mastodon: the app's replies are threaded for a follower and reach the remote author with a mention`` () =
+        task {
+            let! mastodon = net.Mastodon()
+            do! outboundFlow mastodon mastodon.Front net pg
         }

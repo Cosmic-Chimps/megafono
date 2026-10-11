@@ -245,6 +245,17 @@ let markUpdated (tx: NpgsqlTransaction) (time: TimeProvider) (replyId: string) :
         ()
     }
 
+/// The remote actor who wrote the reply `replyIri`, live or deleted: whoever a reply to it addresses (research R-23)
+let remoteAuthorOf (tx: NpgsqlTransaction) (replyIri: string) : Task<string option> =
+    task {
+        use c = command tx "SELECT remote_actor FROM replies WHERE id = @id" [ "id", box replyIri ]
+        let! value = c.ExecuteScalarAsync()
+
+        match value with
+        | :? string as actor -> return Some actor
+        | _ -> return None
+    }
+
 // ---- collections -----------------------------------------------------------------------------------------
 
 type CollectionPage =
