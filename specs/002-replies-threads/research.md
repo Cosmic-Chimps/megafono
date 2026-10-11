@@ -63,6 +63,11 @@ Numbering continues 001's research (R-01 to R-15). **Unverified** items are conf
   author, so the Mention plus direct delivery is what guarantees the replied-to person sees it. Receiving servers
   fetch the parent if unknown (signed), which our public objects allow.
 
+- **Verified in US2 (T014)**: our replies thread under the parent on GTS and Mastodon (`in_reply_to_id`,
+  `spoiler_text`, `sensitive`), and the remote author of the parent reply gets a mention notification from the
+  `Mention` tag alone (no `@handle` needed in the content). On GTS a reply in the Group's thread did not show in a
+  follower's home timeline (it is in the thread's context); not tested on Mastodon.
+
 ### R-24 Thread identity and reply policy
 
 - **Decision**: every object carries `context` and `conversation` =
