@@ -35,6 +35,7 @@
     <Compile Include="Integration/FetchPrivacyTests.fs" />
     <Compile Include="Integration/UpdateDeleteTests.fs" />
     <Compile Include="Integration/DeliveryTests.fs" />
+    <Compile Include="Load/FanOutTests.fs" />
     <Compile Include="SmokeTests.fs" />
     <Compile Include="Integration/GatewayTests.fs" />
     <Compile Include="Integration/SampleAppTests.fs" />
