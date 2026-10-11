@@ -32,6 +32,8 @@ let private register (options: Config.MegafonoOptions) (services: IServiceCollec
         KeyVault.masterKeys (Config.decodeMasterKey options.MasterKey).Value (options.MasterKeyPrevious |> Option.bind Config.decodeMasterKey)
 
     services.TryAddSingleton<TimeProvider>(TimeProvider.System)
+    // US3: the fetch rate limit defaults to "allow"; the inbound rate limiter replaces it
+    services.TryAddSingleton<Federation.Objects.FetchRateLimit>(Federation.Objects.allowAll)
     services.AddSingleton options |> ignore
     services.AddSingleton masterKeys |> ignore
     Database.register services options.Database |> ignore
@@ -168,6 +170,9 @@ let buildAppWith (configure: IServiceCollection -> unit) (args: string[]) (overr
         @ Federation.NodeInfo.endpoints
         @ Federation.Actors.endpoints
         @ Internal.Actors.endpoints
+        // US3: objects, activities and publishing
+        @ Federation.Objects.endpoints
+        @ Internal.Objects.endpoints
 
     app.UseRouting().UseOxpecker endpoints |> ignore
 

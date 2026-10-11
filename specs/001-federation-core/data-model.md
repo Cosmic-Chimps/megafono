@@ -68,6 +68,7 @@ Index: `UNIQUE (key_id)`.
 | `first_failure_at` | `timestamptz` null | set on the first failure after a success |
 | `last_success_at` | `timestamptz` null | |
 | `unreachable_since` | `timestamptz` null | set when every delivery failed for 7 days; cleared on any success (FR-052) |
+| `last_probe_at` | `timestamptz` null | while unreachable, one delivery an hour is still tried to find the host again; cleared with `unreachable_since` |
 
 ## Relationships
 
