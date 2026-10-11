@@ -464,6 +464,50 @@ let standaloneCollection (collection: JsonObject) : JsonNode =
     collection["@context"] <- str "https://www.w3.org/ns/activitystreams"
     collection
 
+// ---- serve-time thread fields (feature 002, US3; research R-20, R-24) ----------------------------------
+
+/// A stored object document as served: `replies` (computed now), `context`, `conversation` and `interactionPolicy`
+/// are set whatever the stored copy holds, so objects stored before 002 carry them too, and the terms the last
+/// two need are added to `@context` when it lacks them. The document's `id` is left as stored.
+let withThreadFields (domain: string) (root: Guid) (repliesProperty: JsonNode) (doc: JsonObject) : JsonNode =
+    let context = Ids.contextId domain root
+    doc["context"] <- str context
+    doc["conversation"] <- str context
+    doc["interactionPolicy"] <- interactionPolicy ()
+    doc["replies"] <- repliesProperty
+
+    let terms =
+        match noteContext None with
+        | :? JsonArray as a -> a[1] :?> JsonObject
+        | _ -> JsonObject()
+
+    let existing: JsonNode =
+        match doc["@context"] with
+        | null -> null
+        | n -> n.DeepClone()
+
+    let items = JsonArray()
+
+    match existing with
+    | :? JsonArray as a -> for item in a do items.Add(item.DeepClone())
+    | null -> items.Add(str "https://www.w3.org/ns/activitystreams")
+    | single -> items.Add single
+
+    let target =
+        match items |> Seq.tryPick (fun n -> match n with :? JsonObject as o -> Some o | _ -> None) with
+        | Some o -> o
+        | None ->
+            let o = JsonObject()
+            items.Add o
+            o
+
+    for entry in terms do
+        if not (target.ContainsKey entry.Key) then
+            target[entry.Key] <- entry.Value.DeepClone()
+
+    doc["@context"] <- items
+    doc :> JsonNode
+
 // ======================================================================================================
 // Follow traffic (User Story 2, research R-05): Follow, Accept, Reject, Undo
 // ======================================================================================================

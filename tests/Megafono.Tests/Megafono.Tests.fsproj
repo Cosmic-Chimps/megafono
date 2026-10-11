@@ -45,6 +45,7 @@
     <Compile Include="Integration/OutboundFollowTests.fs" />
     <Compile Include="Integration/FollowListTests.fs" />
     <Compile Include="Integration/ThreadsTests.fs" />
+    <Compile Include="Integration/RepliesCollectionTests.fs" />
     <Compile Include="Integration/InboundRepliesTests.fs" />
     <Compile Include="Integration/InboundReplyChangesTests.fs" />
     <Compile Include="Integration/CapturedRepliesTests.fs" />
