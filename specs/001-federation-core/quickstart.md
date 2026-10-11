@@ -82,6 +82,14 @@ search `@test@$DOMAIN` and follow; the sample app's page shows the follower. Tim
 `docker compose up`: under 10 minutes. Check that the internal port is not reachable from outside:
 `curl -m 5 https://$DOMAIN:8081/health` must fail.
 
+The same shape runs automatically, against a real GoToSocial, with the images built from `deploy/Dockerfile.*`
+(about a minute with warm image caches; it is `Explicit`, so a plain `dotnet test` skips it, and the nightly
+workflow runs it):
+
+```bash
+dotnet test --project tests/Megafono.Interop.Tests -- --explicit on --filter-trait "Suite=deployment"
+```
+
 ## 6. Integration size (SC-007)
 
 ```bash

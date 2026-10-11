@@ -33,7 +33,11 @@ let private masterKey = RandomNumberGenerator.GetBytes 32
 let private vault = KeyVault.masterKeys masterKey None
 let private instanceActorKey = lazy (KeyVault.createActorKey vault (Ids.instanceActorId MegafonoDomain))
 
-let private seedInstanceKey (connectionString: string) : Task =
+/// The per-run master key, base64, for hosts that are not started through `start` (the deployment test's container)
+let masterKeyBase64 = Convert.ToBase64String masterKey
+
+/// Stores the per-run instance actor key in a fresh database (creating the schema first)
+let seedInstanceKey (connectionString: string) : Task =
     task {
         use dataSource = NpgsqlDataSource.Create connectionString
         do! Database.initializeSchema dataSource

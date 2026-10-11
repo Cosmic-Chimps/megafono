@@ -216,7 +216,7 @@ account follows the sample app's test user (quickstart section 5).
 
 - [X] T073 [P] [US5] Integration tests in `tests/Megafono.Tests/Integration/GatewayTests.fs` running `Megafono.Gateway` in process against two stub upstreams: each Megáfono route goes to Megáfono and everything else (including `/.well-known/acme-challenge/x` and `/u/alex`) to the app; the original `Host` reaches Megáfono; path and body are unchanged byte for byte; a request signed through the gateway verifies at Megáfono; `X-Forwarded-For`/`-Proto` are set (FR-063)
 - [X] T074 [P] [US5] Test in `tests/Megafono.Tests/Integration/SampleAppTests.fs`: the sample app answers the actor lookup by handle and id, verifies webhook signatures (rejects a bad or old one), and its profile page carries the `rel=alternate` link and `Link` header (FR-005, FR-064)
-- [ ] T075 [US5] Interop test in `tests/Megafono.Interop.Tests/DeploymentShapeTests.fs`: build the Megáfono, gateway and sample app images, run them with Postgres on the federation network behind the `megafono.test` front, and check that GTS finds and follows the sample app's `test` user through the gateway and that the internal port is not reachable from the network (US5 scenarios 1, 3)
+- [X] T075 [US5] Interop test in `tests/Megafono.Interop.Tests/DeploymentShapeTests.fs`: build the Megáfono, gateway and sample app images, run them with Postgres on the federation network behind the `megafono.test` front, and check that GTS finds and follows the sample app's `test` user through the gateway and that the internal port is not reachable from the network (US5 scenarios 1, 3)
 
 ### Implementation for User Story 5
 
@@ -226,7 +226,7 @@ account follows the sample app's test user (quickstart section 5).
 - [X] T079 [US5] Create `deploy/compose.yaml` and `deploy/.env.example` (gateway on 443 with mounted cert, sample app, Megáfono with 8081 on an internal-only network, Postgres 17) following the vision's deployment section, with `/ap/*` routing
 - [X] T080 [P] [US5] Create `scripts/count-integration-lines.sh` counting non-blank, non-comment lines of `samples/SampleApp/Megafono.fs` and failing above 99 (SC-007)
 - [X] T081 [US5] Write `docs/operating.md`: setup from compose in under 10 minutes, every `Megafono__` setting, master key generation and backup apart from the database, gateway routing rules, and the plain statement that a delivered followers-only post can be shown to anyone by the receiving server (FR-065, Principle II)
-- [ ] T082 [US5] Make T073–T075 pass and run quickstart section 6
+- [X] T082 [US5] Make T073–T075 pass and run quickstart section 6
 
 **Checkpoint**: all five stories work and can be deployed.
 

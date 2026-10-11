@@ -38,11 +38,15 @@ The deployment has four services and two networks:
 | Service | Network | Notes |
 |---|---|---|
 | `gateway` | `edge` | The only published port (443). TLS from the mounted certificate. |
-| `megafono` | `edge`, `internal` | Federation port 8080 on `edge`; internal API port 8081 only on `internal`. |
+| `megafono` | `edge`, `internal` | Federation port 8080 is routed by the gateway; the internal API (8081) is used by your app over `internal`. |
 | `sample` | `edge`, `internal` | Your app's stand-in. Reaches the internal API over `internal`. |
 | `db` | `internal` | Postgres 17, data in the `db-data` volume. |
 
-`internal` is a Docker network with no route to the outside. Nothing publishes 8081.
+`internal` is a Docker network with no route to the outside. Nothing publishes 8081, and the gateway has no route to it.
+Be aware that Megáfono listens on every interface of the networks it joins, so a container on `edge` can open a
+connection to `megafono:8081`; what stops it is the bearer token (`/internal/*` answers 401 without it, and nothing
+else is served on that port). Keep other containers off `edge` and keep the token secret. The deployment test
+(`DeploymentShapeTests`) checks exactly this.
 
 Megáfono creates its own schema at startup and answers `GET /health` (on the internal port) with `200` when the
 database is reachable and `503` when it is not.

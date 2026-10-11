@@ -20,6 +20,22 @@ open Megafono.Interop.Tests.FederationContext
 open Megafono.Interop.Tests.GoToSocialServer
 open Megafono.Interop.Tests.MastodonServer
 
+/// Exclusive ownership of the name `megafono.test` for a test that runs its own containers behind it (the deployment
+/// shape test). The name normally belongs to the Caddy front that proxies to the in-process host; while this lease is
+/// held that front is stopped, so the test's gateway container can carry the network alias `megafono.test` itself.
+/// Disposing it starts the front again and releases the host port lease.
+type DomainLease(port: PortLease, front: IContainer) =
+    interface IAsyncDisposable with
+        member _.DisposeAsync() =
+            ValueTask(
+                task {
+                    try
+                        do! front.StartAsync()
+                    finally
+                        (port :> IDisposable).Dispose()
+                }
+            )
+
 type FederationNetwork() =
     let mutable ctx: FederationContext option = None
     let mutable network: INetwork option = None
@@ -46,6 +62,15 @@ type FederationNetwork() =
 
     /// The host port for a host with its own Kestrel (the real Megáfono); see `FederationContext.PortLease`.
     member _.LeasePort() = ctx.Value.LeasePort()
+
+    /// The name `megafono.test` for a test with its own containers: waits for any host-based test to finish, stops the
+    /// Caddy front, and starts it again when the lease is disposed (see `DomainLease`).
+    member _.LeaseDomain() : Task<DomainLease> =
+        task {
+            let! port = ctx.Value.LeasePort()
+            do! front.Value.StopAsync()
+            return new DomainLease(port, front.Value)
+        }
 
     /// A host that serves `/probe.json` and records every request.
     member _.AttachProbe() = ctx.Value.AttachProbe()
