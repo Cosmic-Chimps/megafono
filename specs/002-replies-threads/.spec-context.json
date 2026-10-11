@@ -1,0 +1,23 @@
+{
+  "workflow": "speckit",
+  "specName": "Replies and Threads",
+  "branch": "002-replies-threads",
+  "currentStep": "plan",
+  "status": "planned",
+  "history": [
+    {
+      "step": "specify",
+      "substep": null,
+      "kind": "start",
+      "by": "extension",
+      "at": "2026-10-11T02:25:00.269Z"
+    },
+    {
+      "step": "plan",
+      "substep": null,
+      "kind": "complete",
+      "by": "extension",
+      "at": "2026-10-11T02:30:22.068Z"
+    }
+  ]
+}
