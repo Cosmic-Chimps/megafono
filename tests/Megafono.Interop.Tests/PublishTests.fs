@@ -2,11 +2,6 @@
 /// fetch it, public and unlisted keep their visibility, an edit and a delete reach the follower, and a post with app
 /// extension data displays normally. The follower and the stranger are real GoToSocial (or Mastodon) users; the
 /// stranger's server does its own signed GET of the object URL when asked to resolve it.
-///
-/// Every scenario has a poster and a follower of its own and publishes one post (an edit or delete a second activity).
-/// GoToSocial (v0.20 in the harness) silently loses some of the posts that follow the first one from the same author
-/// within a minute: Megáfono's queue shows each as `delivered` (202), GoToSocial logs nothing about it, and the
-/// post never reaches the timeline. One scenario per poster keeps the tests about our behaviour, not that one.
 module Megafono.Interop.Tests.PublishTests
 
 open System
@@ -99,7 +94,8 @@ let private plainGet (megafono: MegafonoInterop.InteropMegafono) (path: string) 
         return response.StatusCode
     }
 
-/// A fresh poster (an unlocked user of the fake app) followed by a fresh follower on the server under test
+/// A fresh poster (an unlocked user of the fake app, with an id of its own: servers cache actor keys) followed by a
+/// fresh follower on the server under test
 let private withFollower
     (server: IFediServer)
     (front: IContainer)
@@ -116,20 +112,12 @@ let private withFollower
         let! account = carol.SearchAccount($"{handle}@megafono.test", true)
         let! _ = carol.Follow account.Value.Id
 
-        try
-            let! _ =
-                pollFor "carol follows the poster" (fun () ->
-                    task {
-                        let! r = carol.Relationship account.Value.Id
-                        return (if r.Following then Some r else None)
-                    })
-
-            ()
-        with e ->
-            let! summary = deliverySummary megafono
-            let inbox = megafono.InboxRequests |> List.map (fun r -> $"{r.Path} {r.Status}") |> String.concat ", "
-            let events = megafono.FakeApp.Received |> List.map (fun w -> w.Type) |> String.concat ", "
-            raise (Exception($"{e.Message} | account {account.Value.Acct} | deliveries: {summary} | inbox: {inbox} | events: {events}"))
+        let! _ =
+            pollFor "carol follows the poster" (fun () ->
+                task {
+                    let! r = carol.Relationship account.Value.Id
+                    return (if r.Following then Some r else None)
+                })
 
         do! scenario megafono userId carol
     }
@@ -213,9 +201,8 @@ let private scenarios (server: IFediServer) : (string * (MegafonoInterop.Interop
           }
           :> Task ]
 
-/// A stranger's server fetches objects nobody has delivered to it, so the fetch is really made (and in a run of its
-/// own: a fetch next to a delivery for the same author made GoToSocial lose the delivered post). Nobody on the server
-/// follows, so nothing is delivered: a followers-only object must stay hidden (404) and a public one is fetched and
+/// A stranger's server fetches objects nobody has delivered to it, so the fetch is really made (a server that already
+/// holds a delivered copy would answer from its own database). Nobody on the server follows, so nothing is delivered: a followers-only object must stay hidden (404) and a public one is fetched and
 /// shown as public.
 let private strangerFlow (server: IFediServer) (front: IContainer) (net: FederationNetwork) (pg: PostgresFixture) : Task =
     task {
@@ -235,31 +222,21 @@ let private strangerFlow (server: IFediServer) (front: IContainer) (net: Federat
         Assert.Equal("public", strangerPublic.Head.Visibility)
     }
 
+/// Every scenario in turn, with one poster and one follower
+let private followerFlow (server: IFediServer) (front: IContainer) (net: FederationNetwork) (pg: PostgresFixture) : Task =
+    withFollower server front net pg (fun megafono userId carol ->
+        task {
+            for _, scenario in scenarios server do
+                do! scenario megafono userId carol
+        })
+
 type PublishTests(net: FederationNetwork, pg: PostgresFixture) =
 
     [<Fact>]
-    member _.``US3 GoToSocial: followers-only is private, public is public, unlisted is unlisted, extension data displays`` () =
+    member _.``US3 GoToSocial: private, public and unlisted keep their visibility, extension data displays, an edit and a delete follow`` () =
         task {
             let! gts = net.GoToSocial()
-            for name, scenario in scenarios gts do
-                if not (name.StartsWith "an edit" || name.StartsWith "a delete") then
-                    do! withFollower gts gts.Front net pg scenario
-        }
-
-    [<Fact>]
-    member _.``US3 GoToSocial: an edit reaches the follower`` () =
-        task {
-            let! gts = net.GoToSocial()
-            let name, scenario = scenarios gts |> List.find (fun (n, _) -> n.StartsWith "an edit")
-            do! withFollower gts gts.Front net pg scenario
-        }
-
-    [<Fact>]
-    member _.``US3 GoToSocial: a delete removes it and the URL hides it`` () =
-        task {
-            let! gts = net.GoToSocial()
-            let name, scenario = scenarios gts |> List.find (fun (n, _) -> n.StartsWith "a delete")
-            do! withFollower gts gts.Front net pg scenario
+            do! followerFlow gts gts.Front net pg
         }
 
     [<Fact>]
@@ -273,11 +250,15 @@ type PublishTests(net: FederationNetwork, pg: PostgresFixture) =
 type MastodonPublishTests(net: FederationNetwork, pg: PostgresFixture) =
 
     [<Fact>]
-    member _.``US3 Mastodon: followers-only is private, public, unlisted, extension data, edit and delete`` () =
+    member _.``US3 Mastodon: private, public and unlisted keep their visibility, extension data displays, an edit and a delete follow`` () =
         task {
             let! mastodon = net.Mastodon()
-            for _, scenario in scenarios mastodon do
-                do! withFollower mastodon mastodon.Front net pg scenario
+            do! followerFlow mastodon mastodon.Front net pg
+        }
 
+    [<Fact>]
+    member _.``US3 Mastodon: a non-follower's server cannot fetch a followers-only object`` () =
+        task {
+            let! mastodon = net.Mastodon()
             do! strangerFlow mastodon mastodon.Front net pg
         }
