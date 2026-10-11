@@ -20,6 +20,13 @@ Three pieces, all described in [`specs/001-federation-core/contracts/`](specs/00
 [`samples/SampleApp`](samples/SampleApp) shows all three in under 100 lines of integration code
 (`samples/SampleApp/Megafono.fs`).
 
+## Replies and threads
+
+Posts can be conversations. A reply from Mastodon or GoToSocial to a post your app published reaches it as
+`reply.received` (edits as `reply.updated`, deletions as `object.deleted`), and your app publishes a reply with
+`inReplyTo`. A reply your app removes stays on other servers, and replies that never mention one of your actors never
+reach Megáfono. [`docs/operating.md`](docs/operating.md#replies-and-threads) has the details and the limits.
+
 ## Quick start
 
 [`deploy/compose.yaml`](deploy/compose.yaml) runs the gateway, Megáfono, the sample app and Postgres. Copy
@@ -51,8 +58,9 @@ The stack is F# on .NET 10, Oxpecker, raw Npgsql and Postgres. Tests use xUnit v
 
 ## Status
 
-Feature 001 (federation core) is in progress: [`specs/001-federation-core`](specs/001-federation-core) holds its spec,
-plan and tasks, and [`docs/vision.md`](docs/vision.md) the product vision. Expect changes until it is done.
+Feature 001 (federation core) is done: [`specs/001-federation-core`](specs/001-federation-core) holds its spec, plan and
+tasks. Feature 002 (replies and threads) is in progress in [`specs/002-replies-threads`](specs/002-replies-threads).
+[`docs/vision.md`](docs/vision.md) holds the product vision. Expect changes until 002 is done.
 
 ## Related projects
 
