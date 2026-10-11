@@ -26,6 +26,11 @@ type Status =
       Content: string
       /// ISO time of the last edit; null when the status was never edited or the server does not say
       EditedAt: string
+      /// The local id of the status this one replies to; null for a post that replies to nothing
+      InReplyToId: string
+      /// The content warning text ("" when there is none)
+      SpoilerText: string
+      Sensitive: bool
       Account: Account }
 
 type Relationship =
@@ -218,6 +223,38 @@ type FediClient(http: HttpClient, baseUri: string, token: string, username: stri
         task {
             let! body = post "/api/v1/statuses" [ "status", text; "visibility", visibility ]
             return parse<Status> body
+        }
+
+    /// Replies to the status with this local id (`visibility`: public, unlisted, private, direct). A `spoiler` makes
+    /// it a content warning, with `sensitive` set to match.
+    member _.PostReply(inReplyToId: string, visibility: string, text: string, spoiler: string option) : Task<Status> =
+        task {
+            let spoilerFields =
+                match spoiler with
+                | Some warning -> [ "spoiler_text", warning; "sensitive", "true" ]
+                | None -> []
+
+            let! body = post "/api/v1/statuses" ([ "status", text; "visibility", visibility; "in_reply_to_id", inReplyToId ] @ spoilerFields)
+            return parse<Status> body
+        }
+
+    /// Edits one of the user's own statuses (`PUT /api/v1/statuses/:id`); the server sends an `Update` of the Note
+    member _.EditStatus(id: string, text: string, spoiler: string option) : Task<Status> =
+        task {
+            let spoilerFields =
+                match spoiler with
+                | Some warning -> [ "spoiler_text", warning; "sensitive", "true" ]
+                | None -> []
+
+            let! body = send HttpMethod.Put $"/api/v1/statuses/{id}" (Some([ "status", text ] @ spoilerFields))
+            return parse<Status> body
+        }
+
+    /// Deletes one of the user's own statuses; the server sends a `Delete`
+    member _.DeleteStatus(id: string) : Task =
+        task {
+            let! _ = send HttpMethod.Delete $"/api/v1/statuses/{id}" None
+            ()
         }
 
     interface IDisposable with

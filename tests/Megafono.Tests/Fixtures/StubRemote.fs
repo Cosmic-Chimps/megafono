@@ -57,6 +57,7 @@ type StubRemote() =
     let mutable sharedInbox: string option = None
     let mutable mutate: (string -> JsonObject -> unit) option = None
     let users = ConcurrentDictionary<string, unit>()
+    let notes = ConcurrentDictionary<string, JsonObject>()
     let mutable app: WebApplication = null
 
     let baseUrl () =
@@ -174,6 +175,8 @@ type StubRemote() =
                         key["type"] <- JsonValue.Create "Key"
                         write ctx 200 "application/activity+json" (key.ToJsonString())
                     | Fragment -> write ctx 404 "application/json" "{}"
+                elif parts.Length = 3 && parts[1] = "statuses" && notes.ContainsKey path then
+                    write ctx 200 "application/activity+json" (notes[path].ToJsonString())
                 else
                     write ctx 404 "application/json" "{}"
             else
@@ -206,6 +209,10 @@ type StubRemote() =
         and set v = mutate <- v
 
     member _.AddUser(name: string) = users[name] <- ()
+
+    /// Serves a Note of `name` at `/users/{name}/statuses/{suffix}` (what a server does for a reply it sent)
+    member _.ServeNote(name: string, suffix: string, note: JsonObject) = notes[$"/users/{name}/statuses/{suffix}"] <- note
+    member _.RemoveNote(name: string, suffix: string) = notes.TryRemove $"/users/{name}/statuses/{suffix}" |> ignore
     member _.ActorId(name: string) = actorId name
     member _.KeyId(name: string) = keyIdOf name
     member _.InboxUrl(name: string) = $"{actorId name}/inbox"

@@ -42,3 +42,7 @@ let sharedInbox (domain: string) = $"{origin domain}/inbox"
 // Objects and activities: UUIDs, never derived from content
 let objectId (domain: string) (id: Guid) = $"{origin domain}/ap/objects/{id:D}"
 let activityId (domain: string) (id: Guid) = $"{origin domain}/ap/activities/{id:D}"
+
+// Threads (feature 002): the context of every object in a thread is named after the root object
+let contextId (domain: string) (root: Guid) = $"{origin domain}/ap/contexts/{root:D}"
+let repliesId (objectIri: string) = $"{objectIri}/replies"
