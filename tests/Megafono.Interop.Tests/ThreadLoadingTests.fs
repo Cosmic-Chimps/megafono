@@ -9,7 +9,6 @@ open System.Text.Json.Nodes
 open System.Threading.Tasks
 open DotNet.Testcontainers.Containers
 open Npgsql
-open NpgsqlTypes
 open Xunit
 open Megafono.Domain
 open Megafono.Tests.Fixtures
@@ -17,7 +16,7 @@ open Megafono.Tests.Fixtures.PostgresFixture
 open Megafono.Interop.Tests.FediClient
 open Megafono.Interop.Tests.FederationContext
 
-let private publishNote (megafono: MegafonoInterop.InteropMegafono) (userId: string) (content: string) : Task<Guid * string> =
+let private publishNoteIn (megafono: MegafonoInterop.InteropMegafono) (userId: string) (content: string) (inReplyTo: string option) : Task<Guid * string> =
     task {
         use client = new HttpClient()
         client.DefaultRequestHeaders.Authorization <- Headers.AuthenticationHeaderValue("Bearer", MegafonoInterop.token)
@@ -26,6 +25,7 @@ let private publishNote (megafono: MegafonoInterop.InteropMegafono) (userId: str
         let inner = JsonObject()
         inner["type"] <- JsonValue.Create "Note"
         inner["content"] <- JsonValue.Create $"<p>{content}</p>"
+        inReplyTo |> Option.iter (fun r -> inner["inReplyTo"] <- JsonValue.Create r)
         o["object"] <- inner
         use request = new HttpRequestMessage(HttpMethod.Post, $"{megafono.InternalUrl}/internal/actors/{userId}/objects")
         request.Content <- new StringContent(o.ToJsonString(), Text.Encoding.UTF8, "application/json")
@@ -36,46 +36,14 @@ let private publishNote (megafono: MegafonoInterop.InteropMegafono) (userId: str
         return id, $"https://megafono.test/ap/objects/{id}"
     }
 
+let private publishNote megafono userId content = publishNoteIn megafono userId content None
+
 /// A series Group of the fake app (unique id and handle per run: servers cache what they have seen)
 let private addGroup (megafono: MegafonoInterop.InteropMegafono) : string * string =
     let handle = uniqueName "series"
     let id = $"series-{handle}"
     megafono.FakeApp.AddUser { FakeApp.user id handle with Name = "A Series"; Type = "Group"; Locked = false; ProfileUrl = $"https://megafono.test/u/{handle}" }
     id, handle
-
-/// The app's own reply to `rootGuid`, stored the way the publish path will store it (a stored document and a row of
-/// `replies`). Publishing a reply is user story 2's job; this test is about how readers load what is stored.
-let private storeLocalReply (megafono: MegafonoInterop.InteropMegafono) (userId: string) (rootGuid: Guid) (text: string) : Task<string> =
-    task {
-        let db = megafono.Services.GetService(typeof<NpgsqlDataSource>) :?> NpgsqlDataSource
-        let id = Guid.NewGuid()
-        let rootIri = Ids.objectId MegafonoDomain rootGuid
-        let replyIri = Ids.objectId MegafonoDomain id
-        let published = DateTimeOffset.UtcNow
-
-        let content: ActivityStreams.ObjectContent =
-            { ObjectType = "Note"; Content = $"<p>{text}</p>"; Url = None; InReplyTo = Some rootIri; Summary = None; Sensitive = false; Attachments = [] }
-
-        let document =
-            ActivityStreams.noteObjectIn MegafonoDomain userId id Audience.Public published None content None { Root = rootGuid; ExtraCc = []; Mentions = [] }
-
-        use command =
-            db.CreateCommand
-                """INSERT INTO objects (id, local_actor, audience, object_type, document, in_reply_to, thread_root)
-                   VALUES (@id, @user, 'public', 'Note', @document, @parent, @root);
-                   INSERT INTO replies (id, local_object, parent, parent_object, thread_root, audience, state, published_at)
-                   VALUES (@iri, @id, @parent, @root, @root, 'public', 'live', @published)"""
-
-        command.Parameters.AddWithValue("id", id) |> ignore
-        command.Parameters.AddWithValue("user", userId) |> ignore
-        command.Parameters.AddWithValue("document", NpgsqlDbType.Jsonb, document.ToJsonString()) |> ignore
-        command.Parameters.AddWithValue("parent", rootIri) |> ignore
-        command.Parameters.AddWithValue("root", rootGuid) |> ignore
-        command.Parameters.AddWithValue("iri", replyIri) |> ignore
-        command.Parameters.AddWithValue("published", published.UtcDateTime) |> ignore
-        let! _ = command.ExecuteNonQueryAsync()
-        return replyIri
-    }
 
 let private resolveStatus (reader: FediClient) (url: string) : Task<Status> =
     pollFor $"{reader.Handle} resolves {url}" (fun () ->
@@ -89,9 +57,10 @@ let private localReplyFlow (server: IFediServer) (front: IContainer) (net: Feder
     task {
         use! megafono = MegafonoInterop.start net pg [ server.Domain, front ]
         let groupId, _ = addGroup megafono
-        let! rootGuid, rootUrl = publishNote megafono groupId "Episode 7 thread"
+        let! _, rootUrl = publishNote megafono groupId "Episode 7 thread"
         let marker = uniqueName "local"
-        let! _ = storeLocalReply megafono groupId rootGuid $"{marker} the app answers"
+        // The app's own reply, published through the internal API with inReplyTo = the thread post
+        let! _ = publishNoteIn megafono groupId $"{marker} the app answers" (Some rootUrl)
 
         use! reader = server.CreateUser "reader"
         let! thread = resolveStatus reader rootUrl
@@ -99,7 +68,8 @@ let private localReplyFlow (server: IFediServer) (front: IContainer) (net: Feder
         let! _, descendants =
             pollFor "the app's reply in the thread's context" (fun () ->
                 task {
-                    let! _, below = reader.Context thread.Id
+                    let! context = reader.Context thread.Id
+                    let below = context.Descendants
                     return (if below |> List.exists (fun s -> s.Content.Contains marker) then Some((), below) else None)
                 })
 
@@ -138,7 +108,8 @@ let private remoteReplyFlow (mastodon: IFediServer) (front: IContainer) (net: Fe
         let! seen =
             pollUntil (TimeSpan.FromMinutes 7.5) "the GoToSocial reply in the Mastodon thread" (fun () ->
                 task {
-                    let! _, below = reader.Context thread.Id
+                    let! context = reader.Context thread.Id
+                    let below = context.Descendants
                     do! Task.Delay 10000
                     return (if below |> List.exists (fun s -> s.Content.Contains marker) then Some below else None)
                 })
