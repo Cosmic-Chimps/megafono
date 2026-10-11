@@ -17,9 +17,9 @@ type World =
       Paths: string list
       ObjectPath: string }
 
-let private world (pg: PostgresFixture) : Task<World> =
+let private worldWith (pg: PostgresFixture) (extra: (string * string) list) : Task<World> =
     task {
-        let! rig = start pg [ "alice"; "bob"; "carol"; "dave"; "instance"; "erin" ]
+        let! rig = startWith pg extra [ "alice"; "bob"; "carol"; "dave"; "instance"; "erin" ]
         rig.Stub.Mutate <- Some(fun name doc -> if name = "instance" then doc["type"] <- Text.Json.Nodes.JsonValue.Create "Application")
         do! addFollower rig.Db "u-1" rig.Stub "alice" "accepted" None
         do! addFollower rig.Db "u-1" rig.Stub "bob" "pending" None
@@ -30,6 +30,8 @@ let private world (pg: PostgresFixture) : Task<World> =
         let! activity = createActivityId rig id
         return { Rig = rig; Paths = [ objectPath id; $"/ap/activities/{activity}" ]; ObjectPath = objectPath id }
     }
+
+let private world (pg: PostgresFixture) : Task<World> = worldWith pg []
 
 let private expect (status: HttpStatusCode) (label: string) (response: HttpResponseMessage) =
     Assert.True((response.StatusCode = status), $"{label}: expected {status}, got {response.StatusCode}")
@@ -152,6 +154,33 @@ type FetchPrivacyTests(pg: PostgresFixture) =
             w.Rig.Stub.RotateKey()
             use! after = signedGet w.Rig w.Rig.Stub "alice" w.ObjectPath
             expect HttpStatusCode.OK "after rotation" after
+        }
+
+    [<Fact>]
+    member _.``FR-014 signed fetches are limited per verified host with 429 and Retry-After, unsigned ones never by that layer``() : Task =
+        task {
+            let! w = worldWith pg [ "Megafono:RateLimit:PerHost", "2" ]
+            use _ = disposeRig w.Rig
+
+            // The first two signed fetches from the follower's host are served
+            for n in 1..2 do
+                use! response = signedGet w.Rig w.Rig.Stub "alice" w.ObjectPath
+                expect HttpStatusCode.OK $"signed fetch {n}" response
+
+            // The third, from the same verified host, is told to wait: 429, not 404, and with Retry-After
+            use! limited = signedGet w.Rig w.Rig.Stub "alice" w.ObjectPath
+            Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode)
+            Assert.True(limited.Headers.Contains "Retry-After")
+            Assert.True(int (Seq.head (limited.Headers.GetValues "Retry-After")) > 0)
+
+            // The limit is by host, whoever signs: another user of the same server is limited too
+            use! sameHost = signedGet w.Rig w.Rig.Stub "dave" w.ObjectPath
+            Assert.Equal(HttpStatusCode.TooManyRequests, sameHost.StatusCode)
+
+            // Unsigned requests never reach the per-host layer: always the plain 404 for a private object
+            for n in 1..6 do
+                use! unsigned = federationGet w.Rig w.ObjectPath []
+                expectHidden $"unsigned fetch {n}" unsigned
         }
 
     [<Fact>]
