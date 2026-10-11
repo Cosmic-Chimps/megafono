@@ -38,7 +38,7 @@ type Rig =
       Stub: StubRemote.StubRemote }
 
 /// Megáfono with two app users (`u-1` alex, `u-2` bea) and one stub remote server with the given users
-let start (pg: PostgresFixture) (stubUsers: string list) : Task<Rig> =
+let startWith (pg: PostgresFixture) (extra: (string * string) list) (stubUsers: string list) : Task<Rig> =
     task {
         let! cs = pg.CreateDatabase()
         let! app = FakeApp.start MegafonoHost.token MegafonoHost.webhookSecret
@@ -46,7 +46,7 @@ let start (pg: PostgresFixture) (stubUsers: string list) : Task<Rig> =
         app.AddUser(FakeApp.user "u-2" "bea")
         let! stub = StubRemote.start stubUsers
         let time = FakeTime()
-        let! host = MegafonoHost.start (MegafonoHost.settings cs app.Url time)
+        let! host = MegafonoHost.start { MegafonoHost.settings cs app.Url time with Extra = extra }
         // The users get their rows (and keys) the first time Megáfono looks them up
         use client = host.FederationClient()
 
@@ -56,6 +56,8 @@ let start (pg: PostgresFixture) (stubUsers: string list) : Task<Rig> =
 
         return { App = app; Host = host; Db = NpgsqlDataSource.Create cs; Time = time; Stub = stub }
     }
+
+let start (pg: PostgresFixture) (stubUsers: string list) : Task<Rig> = startWith pg [] stubUsers
 
 /// An inbound follow of `localUser` by `name` on `stub`, with that stub's real public key, so signed requests
 /// from it verify. `status` is pending, accepted, rejected or removed.

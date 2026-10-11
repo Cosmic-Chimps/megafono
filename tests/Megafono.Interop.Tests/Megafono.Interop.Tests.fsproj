@@ -20,6 +20,7 @@
     <Compile Include="DiscoveryTests.fs" />
     <Compile Include="InboundFollowTests.fs" />
     <Compile Include="OutboundFollowTests.fs" />
+    <Compile Include="PublishTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

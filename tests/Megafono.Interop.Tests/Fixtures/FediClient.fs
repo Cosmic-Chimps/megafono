@@ -24,6 +24,8 @@ type Status =
       Url: string
       Visibility: string
       Content: string
+      /// ISO time of the last edit; null when the status was never edited or the server does not say
+      EditedAt: string
       Account: Account }
 
 type Relationship =
@@ -193,6 +195,16 @@ type FediClient(http: HttpClient, baseUri: string, token: string, username: stri
         task {
             let! body = get "/api/v1/timelines/home?limit=40"
             return parse<Status list> body
+        }
+
+    /// Asks the server to resolve a status URL (it fetches the object itself, signed as this user's server).
+    /// Empty when the server could not fetch it, which is what a 404 from the origin looks like.
+    member _.SearchStatus(url: string) : Task<Status list> =
+        task {
+            let q = Uri.EscapeDataString url
+            let! body = get $"/api/v2/search?q={q}&resolve=true&type=statuses&limit=5"
+            use doc = JsonDocument.Parse body
+            return doc.RootElement.GetProperty("statuses").GetRawText() |> parse<Status list>
         }
 
     member _.GetStatus(id: string) : Task<Status> =
