@@ -239,7 +239,7 @@ account follows the sample app's test user (quickstart section 5).
 - [ ] T085 [P] Capture the real inbound payloads and headers seen in the interop runs into `tests/Megafono.Interop.Tests/Payloads/` and `tests/Megafono.Tests/Fixtures/payloads/` behind a test-mode logging switch, and add verification tests for them (Principle VI)
 - [X] T086 [P] CI workflows in `.github/workflows/ci.yml` (build, `Megafono.Tests`, GoToSocial interop on every push) and `.github/workflows/nightly.yml` (nightly schedule and manual dispatch for `Suite=mastodon` and `Suite=load`)
 - [X] T087 [P] Write `README.md`: what Megáfono is, the three-call integration, link to `docs/operating.md`, contracts and the privacy limit
-- [ ] T088 Update `CLAUDE.md` (build and test commands, layout) and mark the decided open questions in `docs/vision.md` (per-actor keys, draft-cavage only, events only, no activity table) as decided by this feature
+- [X] T088 Update `CLAUDE.md` (build and test commands, layout) and mark the decided open questions in `docs/vision.md` (per-actor keys, draft-cavage only, events only, no activity table) as decided by this feature
 - [ ] T089 Run the whole of `specs/001-federation-core/quickstart.md` and record results; confirm every FR and SC of spec.md has a test that names it
 
 ---

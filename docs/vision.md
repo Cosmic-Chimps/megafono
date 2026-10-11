@@ -212,7 +212,7 @@ Edge cases
 Open questions
 [ ] Name: check that "megafono" is free on GitHub, NuGet and Docker Hub. The brand keeps the accent (Megáfono); code, packages and images use megafono.
 [x] Actor URL: a separate /ap/actors/{immutableId} path whose url is the app's profile, no Accept-header routing (specs/001-federation-core, clarified 2026-10-10).
-[ ] Keys per actor, or one instance key with per-actor key ids? Per actor is the common choice.
-[ ] Support RFC 9421 signatures in v1, or only draft-cavage?
-[ ] Is a webhook enough for apps that want a timeline of friends' posts, or does v1 need an inbox query API?
-[ ] Activity stream: besides webhooks, should apps on the same Postgres server read a versioned activities table or LISTEN to its notifications? If so, that table becomes part of the public contract, like the webhook payload.
+[x] Keys: one RSA-2048 key pair per actor, plus one instance actor key for fetches not made on behalf of a user (specs/001-federation-core, FR-006 and FR-022).
+[x] Signatures: draft-cavage only in v1, behind a SignatureScheme seam; Mastodon signs draft-cavage first and only falls back to RFC 9421 after a 4xx (specs/001-federation-core, research R-01).
+[x] Inbox query API: not in v1; apps keep what they need from webhooks, which are never dropped (specs/001-federation-core, FR-055). Revisit when replies and mentions arrive (US4 of this vision).
+[x] Activity stream table: not in v1; webhooks are the only public channel, so the database schema stays private (specs/001-federation-core).
