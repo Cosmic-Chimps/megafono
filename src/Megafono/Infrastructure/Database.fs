@@ -65,6 +65,9 @@ let private schema =
         unreachable_since timestamptz NULL
     );
 
+    -- When an unreachable host was last tried: one delivery an hour is let through to find it again
+    ALTER TABLE remote_hosts ADD COLUMN IF NOT EXISTS last_probe_at timestamptz NULL;
+
     -- Relationships
     CREATE TABLE IF NOT EXISTS follows (
         id                 uuid PRIMARY KEY,

@@ -188,3 +188,148 @@ let nodeInfo (version: string) (softwareName: string) (softwareVersion: string) 
     doc["usage"] <- usage
     doc["metadata"] <- JsonObject()
     doc
+
+// ---- objects and their activities (US3; research R-06, R-07) ---------------------------------------------
+
+type Attachment =
+    { Url: string
+      MediaType: string option
+      Name: string option }
+
+/// What the app sends in `object` of a publish or update call, already validated
+type ObjectContent =
+    { ObjectType: string
+      Content: string
+      Url: string option
+      InReplyTo: string option
+      Summary: string option
+      Sensitive: bool
+      Attachments: Attachment list }
+
+/// App data carried under its namespace: `Data`'s top-level keys become `prefix:key` properties (FR-046)
+type Extensions =
+    { Namespace: string
+      Prefix: string
+      Data: JsonObject }
+
+let private noteContext (extensions: Extensions option) : JsonNode =
+    match extensions with
+    | None -> str "https://www.w3.org/ns/activitystreams"
+    | Some e ->
+        let terms = JsonObject()
+        terms[e.Prefix] <- str e.Namespace
+        JsonArray(str "https://www.w3.org/ns/activitystreams", terms)
+
+let private addressingNodes (domain: string) (appUserId: string) (audience: Audience.Audience) =
+    let addressing = Audience.addressing (Ids.actorFollowers domain appUserId) audience
+    let toArray (items: string list) = JsonArray(items |> List.map str |> Array.ofList)
+    toArray addressing.To, toArray addressing.Cc
+
+/// The Note or Article as served at `/ap/objects/{id}`. `updated` is set from the first edit on.
+let noteObject
+    (domain: string)
+    (appUserId: string)
+    (objectGuid: Guid)
+    (audience: Audience.Audience)
+    (published: DateTimeOffset)
+    (updated: DateTimeOffset option)
+    (content: ObjectContent)
+    (extensions: Extensions option)
+    : JsonNode =
+    let doc = JsonObject()
+    doc["@context"] <- noteContext extensions
+    doc["id"] <- str (Ids.objectId domain objectGuid)
+    doc["type"] <- str content.ObjectType
+    doc["attributedTo"] <- str (Ids.actorId domain appUserId)
+    doc["published"] <- str (iso published)
+    updated |> Option.iter (fun u -> doc["updated"] <- str (iso u))
+    doc["content"] <- str content.Content
+    content.Url |> Option.iter (fun u -> doc["url"] <- str u)
+    content.Summary |> Option.iter (fun s -> doc["summary"] <- str s)
+    content.InReplyTo |> Option.iter (fun r -> doc["inReplyTo"] <- str r)
+    doc["sensitive"] <- flag content.Sensitive
+    let toNode, ccNode = addressingNodes domain appUserId audience
+    doc["to"] <- toNode
+    doc["cc"] <- ccNode
+
+    if not content.Attachments.IsEmpty then
+        let attachments = JsonArray()
+
+        for a in content.Attachments do
+            let node = JsonObject()
+            node["type"] <- str "Document"
+            a.MediaType |> Option.iter (fun m -> node["mediaType"] <- str m)
+            node["url"] <- str a.Url
+            a.Name |> Option.iter (fun n -> node["name"] <- str n)
+            attachments.Add node
+
+        doc["attachment"] <- attachments
+
+    match extensions with
+    | Some e ->
+        for entry in e.Data do
+            doc[$"{e.Prefix}:{entry.Key}"] <- if isNull entry.Value then null else entry.Value.DeepClone()
+    | None -> ()
+
+    doc
+
+/// The `Create` or `Update` for an object: same addressing as the object, the object embedded without its own context
+let private objectActivity
+    (activityType: string)
+    (domain: string)
+    (appUserId: string)
+    (activityId: string)
+    (now: DateTimeOffset)
+    (audience: Audience.Audience)
+    (extensions: Extensions option)
+    (objectDocument: JsonNode)
+    : JsonNode =
+    let doc = JsonObject()
+    doc["@context"] <- noteContext extensions
+    doc["id"] <- str activityId
+    doc["type"] <- str activityType
+    doc["actor"] <- str (Ids.actorId domain appUserId)
+    doc["published"] <- str (iso now)
+    let toNode, ccNode = addressingNodes domain appUserId audience
+    doc["to"] <- toNode
+    doc["cc"] <- ccNode
+    let embedded = objectDocument.DeepClone().AsObject()
+    embedded.Remove "@context" |> ignore
+    doc["object"] <- embedded
+    doc
+
+let create domain appUserId activityId now audience extensions objectDocument =
+    objectActivity "Create" domain appUserId activityId now audience extensions objectDocument
+
+/// `Update` of an object that carries `updated` (Mastodon applies an edit only then); `updated` is repeated on the activity
+let update domain appUserId activityId (now: DateTimeOffset) audience extensions objectDocument =
+    let doc = objectActivity "Update" domain appUserId activityId now audience extensions objectDocument
+    doc["updated"] <- str (iso now)
+    doc
+
+/// `Delete{Tombstone}`, addressed to the same audience as the object: never to Public for a followers-only one
+let deleteObject (domain: string) (appUserId: string) (activityId: string) (now: DateTimeOffset) (audience: Audience.Audience) (objectGuid: Guid) : JsonNode =
+    let doc = JsonObject()
+    doc["@context"] <- str "https://www.w3.org/ns/activitystreams"
+    doc["id"] <- str activityId
+    doc["type"] <- str "Delete"
+    doc["actor"] <- str (Ids.actorId domain appUserId)
+    doc["published"] <- str (iso now)
+    let toNode, ccNode = addressingNodes domain appUserId audience
+    doc["to"] <- toNode
+    doc["cc"] <- ccNode
+    let tombstone = JsonObject()
+    tombstone["id"] <- str (Ids.objectId domain objectGuid)
+    tombstone["type"] <- str "Tombstone"
+    doc["object"] <- tombstone
+    doc
+
+/// What a deleted object's URL answers (410)
+let tombstone (domain: string) (objectGuid: Guid) (formerType: string) (deleted: DateTimeOffset) : JsonNode =
+    let doc = JsonObject()
+    doc["@context"] <- str "https://www.w3.org/ns/activitystreams"
+    doc["id"] <- str (Ids.objectId domain objectGuid)
+    doc["type"] <- str "Tombstone"
+    doc["formerType"] <- str formerType
+    doc["deleted"] <- str (iso deleted)
+    doc

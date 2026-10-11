@@ -27,6 +27,8 @@ type Outcome =
     | Failed of error: string
     /// Stop trying: the row ends in the queue's terminal status (queues without one retry instead)
     | GaveUp of error: string
+    /// Do not try at all: the row ends in the queue's skipped status (queues without one retry instead)
+    | Skipped of reason: string
 
 type QueueSpec =
     { Name: string
@@ -39,6 +41,11 @@ type QueueSpec =
       GroupColumn: string option
       /// Status a `GaveUp` ends in
       TerminalStatus: string option
+      /// Status a `Skipped` ends in
+      SkippedStatus: string option
+      /// Runs in the same transaction as the write of a terminal or skipped status, with the job, the status and
+      /// the error; only when this write won (the lease was still ours)
+      OnTerminal: (Job -> string -> string -> NpgsqlTransaction -> Task) option
       GlobalLimit: int
       GroupLimit: int
       Process: Job -> Task<Outcome> }
@@ -139,7 +146,33 @@ let create
             return List.ofSeq jobs
         }
 
-    let complete (job: Job) (outcome: Outcome) : Task =
+    /// Terminal and skipped statuses are written in a transaction, so `OnTerminal` commits with them
+    let completeTerminal (job: Job) (status: string) (error: string) : Task =
+        task {
+            use! connection = dataSource.OpenConnectionAsync()
+            use! tx = connection.BeginTransactionAsync()
+
+            use command =
+                new NpgsqlCommand(
+                    $"UPDATE {spec.Table} SET status = @status, last_error = @error, lease_until = NULL, lease_token = NULL WHERE id = @id::{spec.IdType} AND lease_token = @token",
+                    connection,
+                    tx
+                )
+
+            command.Parameters.AddWithValue("id", job.Id) |> ignore
+            command.Parameters.AddWithValue("token", job.Token) |> ignore
+            command.Parameters.AddWithValue("status", status) |> ignore
+            command.Parameters.AddWithValue("error", error) |> ignore
+            let! rows = command.ExecuteNonQueryAsync()
+
+            match spec.OnTerminal with
+            | Some callback when rows = 1 -> do! callback job status error tx
+            | _ -> ()
+
+            do! tx.CommitAsync()
+        }
+
+    let completeSimple (job: Job) (outcome: Outcome) : Task =
         task {
             let now = time.GetUtcNow()
 
@@ -150,13 +183,9 @@ let create
                     null,
                     null,
                     TimeSpan.Zero
-                | GaveUp error when spec.TerminalStatus.IsSome ->
-                    $"UPDATE {spec.Table} SET status = @status, last_error = @error, lease_until = NULL, lease_token = NULL WHERE id = @id::{spec.IdType} AND lease_token = @token",
-                    error,
-                    spec.TerminalStatus.Value,
-                    TimeSpan.Zero
                 | Failed error
-                | GaveUp error ->
+                | GaveUp error
+                | Skipped error ->
                     $"UPDATE {spec.Table} SET status = 'pending', next_attempt_at = @next, last_error = @error, lease_until = NULL, lease_token = NULL WHERE id = @id::{spec.IdType} AND lease_token = @token",
                     error,
                     null,
@@ -172,6 +201,12 @@ let create
             let! _ = command.ExecuteNonQueryAsync()
             ()
         }
+
+    let complete (job: Job) (outcome: Outcome) : Task =
+        match outcome with
+        | GaveUp error when spec.TerminalStatus.IsSome -> completeTerminal job spec.TerminalStatus.Value error
+        | Skipped reason when spec.SkippedStatus.IsSome -> completeTerminal job spec.SkippedStatus.Value reason
+        | _ -> completeSimple job outcome
 
     let runJob (job: Job) : Task =
         task {
