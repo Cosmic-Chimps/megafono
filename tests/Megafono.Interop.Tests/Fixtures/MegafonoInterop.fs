@@ -19,8 +19,34 @@ open Megafono.Tests.Fixtures
 open Megafono.Tests.Fixtures.PostgresFixture
 open Megafono.Interop.Tests.FederationContext
 
+open Npgsql
+open Megafono.Domain
+
 let token = "interop-token"
 let webhookSecret = "interop-secret"
+
+// The fake servers (GoToSocial, Mastodon) live for the whole run and cache the keys they have seen for
+// `megafono.test`. Every test starts Megáfono on a fresh database, so without this each one would invent a new
+// instance actor key and the server's cached copy would reject its signed fetches. A real deployment keeps its key;
+// the tests keep one per run: one master key, and the instance actor's key stored encrypted under it.
+let private masterKey = RandomNumberGenerator.GetBytes 32
+let private vault = KeyVault.masterKeys masterKey None
+let private instanceActorKey = lazy (KeyVault.createActorKey vault (Ids.instanceActorId MegafonoDomain))
+
+let private seedInstanceKey (connectionString: string) : Task =
+    task {
+        use dataSource = NpgsqlDataSource.Create connectionString
+        do! Database.initializeSchema dataSource
+        let key = instanceActorKey.Value
+
+        use command =
+            dataSource.CreateCommand "INSERT INTO instance_actor (id, public_key_pem, enc_private_key) VALUES (1, @pem, @enc)"
+
+        command.Parameters.AddWithValue("pem", key.PublicKeyPem) |> ignore
+        command.Parameters.AddWithValue("enc", key.EncryptedPrivateKey) |> ignore
+        let! _ = command.ExecuteNonQueryAsync()
+        ()
+    }
 
 /// A 1x1 PNG, served by the host as the avatar the fake app points to
 let private avatarPng =
@@ -50,6 +76,8 @@ type InboxRequest =
       Algorithm: string
       KeyId: string
       SignedHeaders: string
+      /// The request body as sent (activities are small)
+      Body: string
       Status: int }
 
 let private signatureParam (header: string) (name: string) =
@@ -64,9 +92,19 @@ type private InboxLogFilter(log: Collections.Concurrent.ConcurrentQueue<InboxReq
                 app.Use(
                     Func<HttpContext, Func<Task>, Task>(fun ctx continuation ->
                         task {
+                            let isInbox = ctx.Request.Method = "POST" && ctx.Request.Path.Value.EndsWith "inbox"
+                            let mutable body = ""
+
+                            if isInbox then
+                                // Read the body here and hand the pipeline a copy of it
+                                use buffer = new IO.MemoryStream()
+                                do! ctx.Request.Body.CopyToAsync buffer
+                                body <- Text.Encoding.UTF8.GetString(buffer.ToArray())
+                                ctx.Request.Body <- new IO.MemoryStream(buffer.ToArray())
+
                             do! continuation.Invoke()
 
-                            if ctx.Request.Method = "POST" && ctx.Request.Path.Value.EndsWith "inbox" then
+                            if isInbox then
                                 let signature = string ctx.Request.Headers["Signature"]
 
                                 log.Enqueue
@@ -74,6 +112,7 @@ type private InboxLogFilter(log: Collections.Concurrent.ConcurrentQueue<InboxReq
                                       Algorithm = signatureParam signature "algorithm"
                                       KeyId = signatureParam signature "keyId"
                                       SignedHeaders = signatureParam signature "headers"
+                                      Body = body
                                       Status = ctx.Response.StatusCode }
                         }
                         :> Task)
@@ -122,6 +161,7 @@ let start (net: FederationNetwork) (pg: PostgresFixture) (fronts: (string * ICon
 
         try
             let! connectionString = pg.CreateDatabase()
+            do! seedInstanceKey connectionString
             let! fakeApp = FakeApp.start token webhookSecret
 
             let testNetwork: SafeHttp.TestNetwork =
@@ -142,7 +182,7 @@ let start (net: FederationNetwork) (pg: PostgresFixture) (fronts: (string * ICon
 
             let overrides =
                 [ "Megafono:Domain", MegafonoDomain
-                  "Megafono:MasterKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes 32)
+                  "Megafono:MasterKey", Convert.ToBase64String masterKey
                   "Megafono:App:BaseUrl", fakeApp.Url
                   "Megafono:App:Token", token
                   "Megafono:App:WebhookSecret", webhookSecret

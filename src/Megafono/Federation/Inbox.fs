@@ -140,7 +140,9 @@ let private dispatch (env: Env) (signer: RemoteActor) (activity: JsonNode) : Tas
     | Some "Follow" -> InboxFollows.handleFollow env signer activity
     | Some "Undo" -> InboxFollows.handleUndo env signer activity
     | Some "Update" -> InboxActors.handleUpdate env signer activity
-    // Accept and Reject of our own follows arrive with outbound follows (User Story 4); everything else is not ours
+    | Some "Accept" -> InboxFollows.handleAccept env signer activity
+    | Some "Reject" -> InboxFollows.handleReject env signer activity
+    // Everything else is not ours
     | _ -> Task.FromResult(Ignored "activity type not handled")
 
 let private inbox (localUser: string option) : EndpointHandler =

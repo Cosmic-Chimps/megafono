@@ -29,6 +29,20 @@ Sources are listed per decision. Mastodon links point at `main` on GitHub, GoToS
   returns a partial actor stub; fetch it signed). Strip the fragment, fetch, use the `publicKey`
   whose `id` equals the keyId, take the actor from `publicKey.owner`. GTS signs with the query
   string first; use path plus query in `(request-target)`.
+- **Verified in US2 (T045)**, against GoToSocial 0.22.2 and Mastodon 4.7.3 posting follow traffic to
+  Megáfono (recorded from the real requests):
+
+  | | GoToSocial | Mastodon |
+  |---|---|---|
+  | inbox used | the shared `/inbox` (Megáfono advertises `endpoints.sharedInbox`) | the personal `/ap/actors/{id}/inbox` |
+  | `algorithm` | `hs2019` | `rsa-sha256` |
+  | key id | `https://gts.test/users/<name>/main-key` | `https://mastodon.test/ap/users/<id>#rsa-<hex>`: since 4.7 an actor publishes several keys and signs with a per-key id, not `#main-key` |
+  | signed `headers` | `(request-target) host date digest` | `host date content-type digest (request-target)`, i.e. `(request-target)` last and `content-type` covered |
+  | `Content-Type` | `application/ld+json; profile="https://www.w3.org/ns/activitystreams"` | `application/activity+json` |
+
+  The signing string follows the declared order, so both verify unchanged. The key lookup therefore keeps
+  the key whose `id` equals the keyId and does not assume `#main-key` (`RemoteActors.parseActor` takes the
+  preferred key id). Megáfono answered 202 to every real delivery and 401 to a forged body.
 - **Alternatives**: a NuGet draft-cavage library (none found that is maintained; not surveyed in
   depth); RFC 9421 now (deferred by the spec).
 - **Sources**: [Mastodon signed_request.rb](https://github.com/mastodon/mastodon/blob/main/app/lib/signed_request.rb),
@@ -54,6 +68,15 @@ Sources are listed per decision. Mastodon links point at `main` on GitHub, GoToS
   no user is involved; living under `/ap/*` keeps the gateway rule unchanged.
 - **Gotcha**: the `id` in the body must equal the request URL byte for byte (no trailing slash, no
   case drift).
+- **Verified in US2 (T045)**: the instance actor must be **WebFinger-resolvable** as
+  `acct:{domain}@{domain}` (subject, `aliases`, a `self` link of type `application/activity+json` to
+  `https://{domain}/ap/actor`), and the actor document carries the matching `webfinger` field. GoToSocial
+  fetched our key document (200), then refused the signed GET with 401 `keyOwnerFetchError: could not
+  dereference pub key owner https://megafono.test/ap/actor … error webfingering
+  megafono.test@megafono.test … host-meta … 404`: GoToSocial (and Mastodon) webfinger every actor they
+  dereference to check `preferredUsername@host`. Without this, every signed fetch Megáfono makes as the
+  instance actor (key lookup, actor fetch) is refused. A user handle never contains a dot, so the domain
+  cannot collide with a user.
 - **Verified in US1 (T035)**: GTS and Mastodon 4.7.3 both resolve the actor and show name, note and
   avatar (both cache the avatar). Mastodon only uses `url` when it is on the actor's host; on another
   host it shows the actor id instead. Fine in the reference deployment (the app is behind the same
@@ -76,6 +99,9 @@ Sources are listed per decision. Mastodon links point at `main` on GitHub, GoToS
   `preferredUsername` must equal the handle. Mastodon's `FetchResourceService` follows one
   `Link`/`<link rel=alternate>` hop for pasted profile URLs. GTS does not appear to follow alternates
   (inferred from source), so on GTS people paste the handle.
+- **Verified in US2 (T045)**: `GET /.well-known/webfinger?resource=acct:{domain}@{domain}` also answers
+  200 with the instance actor (see R-02); GoToSocial and Mastodon both also probe `/.well-known/host-meta`
+  (404 is fine) and `/.well-known/nodeinfo` when they meet a new host.
 - **Sources**: [webfinger.rb](https://github.com/mastodon/mastodon/blob/main/app/lib/webfinger.rb),
   [webfinger_serializer.rb](https://github.com/mastodon/mastodon/blob/main/app/serializers/webfinger_serializer.rb),
   [fetch_resource_service.rb](https://github.com/mastodon/mastodon/blob/main/app/services/fetch_resource_service.rb).

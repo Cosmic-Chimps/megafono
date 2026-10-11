@@ -19,6 +19,7 @@
     <Compile Include="MastodonHarnessTests.fs" />
     <Compile Include="DiscoveryTests.fs" />
     <Compile Include="InboundFollowTests.fs" />
+    <Compile Include="OutboundFollowTests.fs" />
   </ItemGroup>
 
   <ItemGroup>
