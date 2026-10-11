@@ -108,17 +108,18 @@ type UpdateDeleteTests(pg: PostgresFixture) =
             let! deletes = Db.count rig.Db "SELECT count(*) FROM activities WHERE activity_type = 'Delete'"
             Assert.Equal(1L, deletes)
 
-            // The URL answers 410 with a Tombstone, to anyone, for the object and its Create
+            // Principle II: a deleted followers-only object answers 410 with a Tombstone only to an accepted
+            // follower; to anyone else it is 404, so its existence is not revealed (object and its Create)
             let! activity = createActivityId rig id
 
             for path in [ objectPath id; $"/ap/activities/{activity}" ] do
                 use! unsigned = federationGet rig path []
-                Assert.Equal(HttpStatusCode.Gone, unsigned.StatusCode)
-                let! body = unsigned.Content.ReadAsStringAsync()
-                Assert.Equal("Tombstone", jstr ((at (json body) "type")))
-                Assert.Equal($"https://megafono.test/ap/objects/{id}", jstr ((at (json body) "id")))
+                Assert.Equal(HttpStatusCode.NotFound, unsigned.StatusCode)
                 use! signed = signedGet rig rig.Stub "alice" path
                 Assert.Equal(HttpStatusCode.Gone, signed.StatusCode)
+                let! body = signed.Content.ReadAsStringAsync()
+                Assert.Equal("Tombstone", jstr ((at (json body) "type")))
+                Assert.Equal($"https://megafono.test/ap/objects/{id}", jstr ((at (json body) "id")))
 
             // An edit after the delete is refused, and deleting what does not exist is 404
             let! status, text = put rig id """{"object":{"type":"Note","content":"back"}}"""
@@ -139,4 +140,7 @@ type UpdateDeleteTests(pg: PostgresFixture) =
             Assert.Equal(202, status)
             do! waitForPosts rig.Stub "Delete" 1
             Assert.Equal<string list>([ publicUrl ], strings (at (ofType "Delete" rig.Stub).Head "to"))
+            // A deleted public object answers 410 to anyone
+            use! unsigned = federationGet rig (objectPath id) []
+            Assert.Equal(HttpStatusCode.Gone, unsigned.StatusCode)
         }

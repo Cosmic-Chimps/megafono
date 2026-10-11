@@ -1,6 +1,7 @@
 /// `GET /ap/objects/{id}` and `GET /ap/activities/{id}` with the fetch rules of contracts/federation.md
 /// (FR-045, constitution Principle II): public and unlisted objects go to anyone; a followers-only one only to a
 /// validly signed request from an accepted follower of the author, right now; everything else is 404, never 403.
+/// Deleted objects answer 410 under the same rule: a deleted followers-only object is 404 to the unauthorized.
 module Megafono.Federation.Objects
 
 open System
@@ -175,16 +176,18 @@ let private serve (kind: string) (load: NpgsqlDataSource -> Guid -> Task<Row opt
 
                 match! load (ctx.GetService<NpgsqlDataSource>()) id with
                 | None -> return! notFound ctx
-                | Some row when row.Deleted.IsSome ->
-                    let tombstone = ActivityStreams.tombstone options.Domain row.ObjectId row.ObjectType row.Deleted.Value
-                    return! respond ctx 410 activityJson tombstone
                 | Some row ->
+                    // Checked before the deleted state too: a deleted followers-only object answers 410 only to
+                    // someone who could have seen it, and 404 to everyone else, so its existence stays hidden
                     let! verdict =
                         if Audience.isPrivate row.Audience then authorize ctx row.Author else Task.FromResult Allowed
 
                     match verdict with
                     | RateLimited -> return! tooManyRequests ctx
                     | NotAllowed -> return! notFound ctx
+                    | Allowed when row.Deleted.IsSome ->
+                        let tombstone = ActivityStreams.tombstone options.Domain row.ObjectId row.ObjectType row.Deleted.Value
+                        return! respond ctx 410 activityJson tombstone
                     | Allowed ->
                         ctx.SetStatusCode 200
                         ctx.SetContentType activityJson

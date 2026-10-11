@@ -23,7 +23,8 @@ rewriting the path or body (FR-063). Wire shapes follow [research.md](../researc
 |---|---|---|
 | `public`, `unlisted` | anyone (signed or not) | n/a |
 | `followers` | a valid signed GET whose key owner is an accepted follower of the author now | **404** (never 403), including unsigned requests and remote instance actors |
-| any, deleted | n/a | **410** with a Tombstone |
+| `public`, `unlisted`, deleted | anyone gets **410** with a Tombstone | n/a |
+| `followers`, deleted | an accepted follower (signed, as above) gets **410** with a Tombstone | **404**, so the object's existence stays hidden |
 
 Signatures on GETs are verified when present (they are required to see followers-only objects).
 Actor documents and collections are public.
