@@ -57,6 +57,26 @@ type SchemaTests(pg: PostgresFixture) =
         }
 
     [<Fact>]
+    member _.``002 FR-003 the replies table holds references only, never a reply's content``() : Task =
+        withDatabase (fun dataSource _ ->
+            task {
+                do! Database.initializeSchema dataSource
+                use command =
+                    dataSource.CreateCommand
+                        "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'replies'"
+                use! reader = command.ExecuteReaderAsync()
+                let columns = ResizeArray<string>()
+
+                while reader.Read() do
+                    columns.Add(reader.GetString 0)
+
+                Assert.NotEmpty columns
+                // The app owns content (research R-27): no body, warning, media or document column may appear here
+                for forbidden in [ "content"; "summary"; "body"; "document"; "attachment"; "payload"; "name" ] do
+                    Assert.DoesNotContain(forbidden, columns)
+            })
+
+    [<Fact>]
     member _.``T010 initializeSchema creates every table and is safe to run twice``() : Task =
         withDatabase (fun dataSource connectionString ->
             task {

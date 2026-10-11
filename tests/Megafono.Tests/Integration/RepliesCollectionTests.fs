@@ -37,9 +37,14 @@ let private remoteReplies (db: NpgsqlDataSource) (root: string) (parent: string)
             FROM generate_series(1, {count}) AS n"""
 
 /// A reply of the app: its own object (a child of `root`) and its row in `replies`; returns its IRI
+// Each seeded local reply gets its own, later published_at: two replies in the same instant would be ordered by
+// their random ids, and the collection's order (local first, then by time) would look flaky
+let mutable private localSeq = 0
+
 let private localReply (db: NpgsqlDataSource) (root: string) (parent: string) (audience: string) : Task<string> =
     task {
         let id = Guid.NewGuid()
+        let second = System.Threading.Interlocked.Increment(&localSeq)
         let replyIri = iri (string id)
 
         do!
@@ -48,7 +53,7 @@ let private localReply (db: NpgsqlDataSource) (root: string) (parent: string) (a
                 $"""INSERT INTO objects (id, local_actor, audience, object_type, document, in_reply_to, thread_root)
                     VALUES ('{id}', 'u-2', '{(if audience = "direct" then "followers" else audience)}', 'Note', '{{}}', '{parent}', '{root}');
                     INSERT INTO replies (id, local_object, parent, parent_object, thread_root, audience, state, published_at)
-                    VALUES ('{replyIri}', '{id}', '{parent}', NULL, '{root}', '{audience}', 'live', timestamptz '2026-10-13 12:00:00+00')"""
+                    VALUES ('{replyIri}', '{id}', '{parent}', NULL, '{root}', '{audience}', 'live', timestamptz '2026-10-13 12:00:00+00' + make_interval(secs => {second}))"""
 
         return replyIri
     }

@@ -81,7 +81,7 @@ it threaded and the remote author receives it.
 
 - [X] T020 [P] Document replies in `docs/operating.md` and `README.md`: what the app receives and sends, that a reply hidden or removed by the app stays on other servers (FR-041), that pasted page URLs resolve on Mastodon only, and that replies which never reach Megáfono are not seen
 - [X] T021 [P] Record 002 in `docs/vision.md` (US4 replies done, likes/mentions still open) and in `CLAUDE.md` (active feature, new modules)
-- [ ] T022 Run [quickstart.md](quickstart.md), record results, and check that every FR and SC of spec.md is named by a test
+- [X] T022 Run [quickstart.md](quickstart.md), record results, and check that every FR and SC of spec.md is named by a test
 
 ---
 
