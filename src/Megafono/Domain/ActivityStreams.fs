@@ -107,6 +107,7 @@ let instanceActor (domain: string) (publicKeyPem: string) : JsonNode =
     doc["outbox"] <- str $"{id}/outbox"
     doc["manuallyApprovesFollowers"] <- flag true
     doc["discoverable"] <- flag false
+    doc["webfinger"] <- str $"acct:{domain}@{domain}"
     doc["publicKey"] <- publicKey (Ids.instanceActorKeyId domain) id publicKeyPem
     doc
 
@@ -147,6 +148,21 @@ let webFinger (domain: string) (profile: ActorProfile) : JsonNode =
     jrd["subject"] <- str $"acct:{profile.Handle}@{domain}"
     jrd["aliases"] <- JsonArray(str profile.ProfileUrl, str actorId)
     jrd["links"] <- JsonArray(self, page)
+    jrd
+
+/// WebFinger JRD for the instance actor, `acct:{domain}@{domain}` (what Mastodon does too). GoToSocial and Mastodon
+/// webfinger every actor they dereference to check its `preferredUsername@host`; without this answer they refuse
+/// the instance actor's signed GETs and so every key and actor fetch Megáfono makes.
+let instanceWebFinger (domain: string) : JsonNode =
+    let actorId = Ids.instanceActorId domain
+    let self = JsonObject()
+    self["rel"] <- str "self"
+    self["type"] <- str "application/activity+json"
+    self["href"] <- str actorId
+    let jrd = JsonObject()
+    jrd["subject"] <- str $"acct:{domain}@{domain}"
+    jrd["aliases"] <- JsonArray(str actorId)
+    jrd["links"] <- JsonArray(self)
     jrd
 
 let private nodeInfoSchema (version: string) =
@@ -333,3 +349,54 @@ let tombstone (domain: string) (objectGuid: Guid) (formerType: string) (deleted:
     doc["formerType"] <- str formerType
     doc["deleted"] <- str (iso deleted)
     doc
+
+// ======================================================================================================
+// Follow traffic (User Story 2, research R-05): Follow, Accept, Reject, Undo
+// ======================================================================================================
+
+/// The three ids that identify a Follow
+type FollowRef =
+    { Id: string
+      /// Who follows
+      Actor: string
+      /// Who is followed
+      Object: string }
+
+let private followNode (follow: FollowRef) : JsonNode =
+    let node = JsonObject()
+    node["id"] <- str follow.Id
+    node["type"] <- str "Follow"
+    node["actor"] <- str follow.Actor
+    node["object"] <- str follow.Object
+    node
+
+let private followActivity (kind: string) (activityId: string) (actorId: string) (obj: JsonNode) : JsonNode =
+    let doc = JsonObject()
+    doc["@context"] <- str "https://www.w3.org/ns/activitystreams"
+    doc["id"] <- str activityId
+    doc["type"] <- str kind
+    doc["actor"] <- str actorId
+    doc["object"] <- obj
+    doc
+
+/// A Follow of `targetId` by the local actor `actorId`
+let follow (activityId: string) (actorId: string) (targetId: string) : JsonNode =
+    let doc = JsonObject()
+    doc["@context"] <- str "https://www.w3.org/ns/activitystreams"
+    doc["id"] <- str activityId
+    doc["type"] <- str "Follow"
+    doc["actor"] <- str actorId
+    doc["object"] <- str targetId
+    doc
+
+/// Accept by the local actor, with its own id and the FULL Follow embedded: GoToSocial refuses an Accept
+/// without an id and only understands the embedded form, Mastodon matches on it (R-05)
+let accept (activityId: string) (localActorId: string) (followed: FollowRef) : JsonNode =
+    followActivity "Accept" activityId localActorId (followNode followed)
+
+let reject (activityId: string) (localActorId: string) (followed: FollowRef) : JsonNode =
+    followActivity "Reject" activityId localActorId (followNode followed)
+
+/// Undo of a Follow by the local actor
+let undoFollow (activityId: string) (localActorId: string) (followed: FollowRef) : JsonNode =
+    followActivity "Undo" activityId localActorId (followNode followed)

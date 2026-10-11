@@ -150,6 +150,10 @@ let validate (environmentName: string) (options: MegafonoOptions) : string list 
       if String.IsNullOrWhiteSpace options.App.WebhookSecret then
           "Megafono:App:WebhookSecret is required (signs the webhooks sent to the app)"
 
+      for proxy in options.TrustedProxies do
+          if not (fst (Net.IPAddress.TryParse proxy) || fst (Net.IPNetwork.TryParse proxy)) then
+              $"Megafono:TrustedProxies entry '{proxy}' is not an IP address or CIDR range"
+
       if not (fst (Net.IPAddress.TryParse options.Ports.BindAddress)) then
           "Megafono:Ports:BindAddress must be an IP address"
 

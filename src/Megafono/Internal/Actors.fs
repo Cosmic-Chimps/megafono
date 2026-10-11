@@ -2,7 +2,7 @@
 module Megafono.Internal.Actors
 
 open System
-open System.Text.Json.Nodes
+open System.Threading.Tasks
 open Microsoft.AspNetCore.Http
 open Npgsql
 open Oxpecker
@@ -36,57 +36,75 @@ let private followerInboxes (tx: NpgsqlTransaction) (appUserId: string) =
         return List.ofSeq inboxes
     }
 
-/// Stores an `Update{Person}` (the exact bytes, so every retry is identical) and queues it, in one transaction
-let private announce (dataSource: NpgsqlDataSource) (time: TimeProvider) (domain: string) (actor: LocalActor) =
+/// Stores the new profile and queues the `Update{Person}` for the followers' servers in ONE transaction: either
+/// both are saved or neither is, so a crash cannot leave a stored change that was never announced (Principle V).
+/// The Update carries the exact bytes every retry will send.
+let private storeAndAnnounce
+    (dataSource: NpgsqlDataSource)
+    (time: TimeProvider)
+    (domain: string)
+    (app: AppClient)
+    (profile: AppProfile)
+    : Task<LocalActor * bool * int> =
     task {
-        let now = time.GetUtcNow()
-        let activityGuid = Guid.NewGuid()
-        let profile = Megafono.Federation.Actors.profileOf actor
-
-        let body =
-            ActivityStreams.updateActor domain actor.AppUserId (Ids.activityId domain activityGuid) now (ActivityStreams.actor domain profile)
-            |> ActivityStreams.toBytes
-
         use! connection = dataSource.OpenConnectionAsync()
         use! tx = connection.BeginTransactionAsync()
-        let! inboxes = followerInboxes tx actor.AppUserId
+        let! actor, changed = app.StoreIn tx profile
 
-        if inboxes.IsEmpty then
-            do! tx.RollbackAsync()
-            return 0
-        else
-            use insert =
-                new NpgsqlCommand(
-                    """INSERT INTO activities (id, local_actor, activity_type, audience, body, created_at)
-                       VALUES (@id, @actor, 'Update', 'direct', @body, @now)""",
-                    connection,
-                    tx
-                )
-
-            insert.Parameters.AddWithValue("id", activityGuid) |> ignore
-            insert.Parameters.AddWithValue("actor", actor.AppUserId) |> ignore
-            insert.Parameters.AddWithValue("body", body) |> ignore
-            insert.Parameters.AddWithValue("now", now.UtcDateTime) |> ignore
-            let! _ = insert.ExecuteNonQueryAsync()
-            let! queued = Outbox.enqueueDeliveries tx time activityGuid inboxes
+        if not changed then
             do! tx.CommitAsync()
-            return queued
+            return actor, false, 0
+        else
+            let! inboxes = followerInboxes tx actor.AppUserId
+
+            if inboxes.IsEmpty then
+                do! tx.CommitAsync()
+                return actor, true, 0
+            else
+                let now = time.GetUtcNow()
+                let activityGuid = Guid.NewGuid()
+                let document = ActivityStreams.actor domain (Megafono.Federation.Actors.profileOf actor)
+
+                let body =
+                    ActivityStreams.updateActor domain actor.AppUserId (Ids.activityId domain activityGuid) now document
+                    |> ActivityStreams.toBytes
+
+                use insert =
+                    new NpgsqlCommand(
+                        """INSERT INTO activities (id, local_actor, activity_type, audience, body, created_at)
+                           VALUES (@id, @actor, 'Update', 'direct', @body, @now)""",
+                        connection,
+                        tx
+                    )
+
+                insert.Parameters.AddWithValue("id", activityGuid) |> ignore
+                insert.Parameters.AddWithValue("actor", actor.AppUserId) |> ignore
+                insert.Parameters.AddWithValue("body", body) |> ignore
+                insert.Parameters.AddWithValue("now", now.UtcDateTime) |> ignore
+                let! _ = insert.ExecuteNonQueryAsync()
+                let! queued = Outbox.enqueueDeliveries tx time activityGuid inboxes
+                do! tx.CommitAsync()
+                return actor, true, queued
     }
 
 let private refresh (appUserId: string) : EndpointHandler =
     fun ctx ->
         task {
-            match! ctx.GetService<AppClient>().Refresh appUserId with
-            | RefreshNotFound -> return! error ctx 404 "not_found" "The app does not know this user"
-            | RefreshUnavailable -> return! error ctx 503 "app_unavailable" "The app did not answer the actor lookup; nothing was changed"
-            | Refreshed(actor, false) ->
-                ctx.SetStatusCode 202
-                return! ctx.WriteJson {| changed = false; deliveries = 0 |}
-            | Refreshed(actor, true) ->
+            match! ctx.GetService<AppClient>().Fetch appUserId with
+            | FetchNotFound -> return! error ctx 404 "not_found" "The app does not know this user"
+            | FetchUnavailable -> return! error ctx 503 "app_unavailable" "The app did not answer the actor lookup; nothing was changed"
+            | Fetched profile ->
                 let options = ctx.GetService<Config.MegafonoOptions>()
-                let! queued = announce (ctx.GetService<NpgsqlDataSource>()) (ctx.GetService<TimeProvider>()) options.Domain actor
-                ctx.SetStatusCode 202
-                return! ctx.WriteJson {| changed = true; deliveries = queued |}
+
+                try
+                    let! _, changed, queued =
+                        storeAndAnnounce (ctx.GetService<NpgsqlDataSource>()) (ctx.GetService<TimeProvider>()) options.Domain (ctx.GetService<AppClient>()) profile
+
+                    ctx.SetStatusCode 202
+                    return! ctx.WriteJson {| changed = changed; deliveries = queued |}
+                with :? PostgresException as e when e.SqlState = PostgresErrorCodes.UniqueViolation ->
+                    // The new handle is held by another live user
+                    return! error ctx 409 "conflict" "That handle belongs to another user"
         }
 
 let endpoints: Endpoint list = [ PUT [ routef "/internal/actors/{%s}" refresh ] ]

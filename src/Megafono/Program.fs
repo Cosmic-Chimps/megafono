@@ -82,6 +82,20 @@ let private register (options: Config.MegafonoOptions) (services: IServiceCollec
         env)
     |> ignore
 
+    services.AddSingleton<RateLimits.RateLimits>(RateLimits.create options) |> ignore
+
+    // Signed fetches of objects: the per-address layer already ran in the middleware; this adds the
+    // per-verified-host layer once the signer is known (FR-016). Registered after the allow-all default, so it wins.
+    services.AddSingleton<Federation.Objects.FetchRateLimit>(fun sp ->
+        let limits = sp.GetRequiredService<RateLimits.RateLimits>()
+
+        { Federation.Objects.FetchRateLimit.Allow =
+            fun _ host ->
+                match host with
+                | None -> System.Threading.Tasks.Task.FromResult true
+                | Some h -> System.Threading.Tasks.Task.FromResult((RateLimits.tryHost limits h).IsNone) })
+    |> ignore
+
     services.AddSingleton<Workers>(fun sp ->
         let dataSource = sp.GetRequiredService<NpgsqlDataSource>()
         let time = sp.GetRequiredService<TimeProvider>()
@@ -163,16 +177,19 @@ let buildAppWith (configure: IServiceCollection -> unit) (args: string[]) (overr
 
     let ports = lazy (PortGuard.boundPorts (app.Services.GetRequiredService<IServer>()) options.Ports)
     app.Use(PortGuard.middleware options.App.Token ports) |> ignore
+    app.Use(RateLimits.middleware (app.Services.GetRequiredService<RateLimits.RateLimits>())) |> ignore
 
     let endpoints =
         [ GET [ route "/health" (Health.handler (app.Services.GetRequiredService<NpgsqlDataSource>())) ] ]
         @ Federation.WebFinger.endpoints
         @ Federation.NodeInfo.endpoints
         @ Federation.Actors.endpoints
+        @ Federation.Inbox.endpoints
         @ Internal.Actors.endpoints
         // US3: objects, activities and publishing
         @ Federation.Objects.endpoints
         @ Internal.Objects.endpoints
+        @ Internal.Follows.endpoints
 
     app.UseRouting().UseOxpecker endpoints |> ignore
 

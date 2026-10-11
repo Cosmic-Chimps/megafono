@@ -35,12 +35,22 @@ let private handler: EndpointHandler =
             | Some resource ->
                 let options = ctx.GetService<Config.MegafonoOptions>()
                 // Domains are case-insensitive; handles are lowercase once normalized
-                let local =
+                let ours =
                     parseAcct resource
                     |> Option.filter (fun (_, domain) -> String.Equals(domain, options.Domain, StringComparison.OrdinalIgnoreCase))
-                    |> Option.bind (fun (user, _) -> Ids.normalizeHandle user)
+
+                let isInstanceActor =
+                    match ours with
+                    | Some(user, _) -> String.Equals(user, options.Domain, StringComparison.OrdinalIgnoreCase)
+                    | None -> false
+
+                // Handles never contain a dot, so a domain cannot be a user's handle
+                let local = ours |> Option.bind (fun (user, _) -> Ids.normalizeHandle user)
 
                 match local with
+                | None when isInstanceActor ->
+                    ctx.SetHttpHeader("Access-Control-Allow-Origin", "*")
+                    return! respond ctx 200 jrdJson (ActivityStreams.instanceWebFinger options.Domain)
                 | None -> return! notFound ctx
                 | Some handle ->
                     match! ctx.GetService<AppClient>().ByHandle handle with

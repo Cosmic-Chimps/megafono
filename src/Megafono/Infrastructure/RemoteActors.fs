@@ -378,6 +378,15 @@ let private fetchKey (env: Env) (keyId: string) : Task<Result<RemoteActor, Remot
                             })
     }
 
+/// The cached owner of a key when the copy is fresh; never fetches. Lets the inbox charge a key fetch to the rate limit
+/// only when one is really needed.
+let findCachedKey (env: Env) (keyId: string) : Task<RemoteActor option> =
+    task {
+        match! storedBy env "key_id" keyId with
+        | Some actor when isFresh env actor -> return Some actor
+        | _ -> return None
+    }
+
 /// The actor that owns a signing key: from the cache while fresh, else fetched. `keyId` may use either form
 /// (`#main-key` or `/main-key`); it is matched exactly against what the actor declares.
 let findKey (env: Env) (keyId: string) : Task<Result<RemoteActor, RemoteError>> =
