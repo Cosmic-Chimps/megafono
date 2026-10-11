@@ -234,6 +234,7 @@ let private storeActivity
     (activityType: string)
     (audience: Audience.Audience)
     (body: byte[])
+    (extraInboxes: string list)
     =
     task {
         use insert =
@@ -253,14 +254,44 @@ let private storeActivity
         insert.Parameters.AddWithValue("now", time.GetUtcNow().UtcDateTime) |> ignore
         let! _ = insert.ExecuteNonQueryAsync()
         let! inboxes = recipientInboxes tx appUserId
-        let! _ = Outbox.enqueueDeliveries tx time activityGuid inboxes
+        // Enqueued once per distinct inbox: a parent's author who also follows is not sent the same request twice
+        let! _ = Outbox.enqueueDeliveries tx time activityGuid (inboxes @ extraInboxes)
         ()
     }
 
-let private publishResponse (domain: string) (objectGuid: Guid) =
+/// What a reply adds to its object and its recipients (research R-23): the parent's remote author is addressed in
+/// `cc`, mentioned, and gets the activity at their own inbox. A parent of ours, or one of a local user's, adds nothing.
+type private ReplyPlan =
+    { Thread: ActivityStreams.ThreadInfo
+      PersonalInboxes: string list }
+
+let private planReply (tx: NpgsqlTransaction) (root: Guid) (parentRemoteAuthor: string option) : Task<ReplyPlan> =
+    task {
+        let plain = { Thread = { Root = root; ExtraCc = []; Mentions = [] }; PersonalInboxes = [] }
+
+        match parentRemoteAuthor with
+        | None -> return plain
+        | Some actorId ->
+            match! Megafono.Federation.InboxCommon.loadRemote tx actorId with
+            | None -> return plain
+            | Some author ->
+                let name = author.Handle |> Option.map (fun h -> "@" + h) |> Option.defaultValue author.Id
+
+                return
+                    { Thread = { Root = root; ExtraCc = [ author.Id ]; Mentions = [ { Href = author.Id; Name = name } ] }
+                      PersonalInboxes = [ author.Inbox ] }
+    }
+
+/// The thread an object belongs to: its root's id (its own when it is a root)
+let private threadOf (domain: string) (objectGuid: Guid) (threadRoot: Guid option) =
+    let root = defaultArg threadRoot objectGuid
+    {| objectId = root.ToString "D"; id = Ids.objectId domain root |}
+
+let private publishResponse (domain: string) (objectGuid: Guid) (threadRoot: Guid option) =
     {| id = objectGuid.ToString "D"
        objectUrl = Ids.objectId domain objectGuid
-       deliveriesUrl = $"/internal/objects/{objectGuid:D}/deliveries" |}
+       deliveriesUrl = $"/internal/objects/{objectGuid:D}/deliveries"
+       thread = threadOf domain objectGuid threadRoot |}
 
 let private jsonb (text: string) = NpgsqlParameter("doc", NpgsqlDbType.Jsonb, Value = text)
 
@@ -299,64 +330,97 @@ let private publish (appUserId: string) : EndpointHandler =
                         return! error ctx 400 "invalid_request" $"Idempotency-Key is over {maxIdempotencyKeyLength} characters"
                     | _, Error message -> return! error ctx 400 "invalid_request" message
                     | _, Ok parsed when parsed.Audience.IsNone -> return! error ctx 400 "invalid_request" "'audience' is required"
+                    | _, Ok parsed when parsed.Content.InReplyTo.IsSome && parsed.Audience = Some Audience.Followers ->
+                        return! error ctx 400 "invalid_request" "A reply must be public or unlisted"
                     | _, Ok parsed ->
                         let audience = parsed.Audience.Value
                         let now = time.GetUtcNow()
                         let objectGuid = Guid.NewGuid()
                         let activityGuid = Guid.NewGuid()
-
-                        let document =
-                            ActivityStreams.noteObject options.Domain actor.AppUserId objectGuid audience now None parsed.Content parsed.Extensions
-
-                        let activity =
-                            ActivityStreams.create options.Domain actor.AppUserId (Ids.activityId options.Domain activityGuid) now audience parsed.Extensions document
-                            |> ActivityStreams.toBytes
-
                         use! connection = dataSource.OpenConnectionAsync()
                         use! tx = connection.BeginTransactionAsync()
 
-                        use insert =
-                            new NpgsqlCommand(
-                                """INSERT INTO objects (id, local_actor, audience, object_type, document, idempotency_key, request_hash, created_at, updated_at)
-                                   VALUES (@id, @actor, @audience, @type, @doc, @key, @hash, @now, @now)
-                                   ON CONFLICT (local_actor, idempotency_key) DO NOTHING""",
-                                connection,
-                                tx
-                            )
+                        // A reply is to one of our objects or to a reply recorded in one of our threads (FR-010)
+                        let! resolution =
+                            task {
+                                match parsed.Content.InReplyTo with
+                                | Some iri ->
+                                    let! resolved = Threads.resolveParent tx options.Domain iri
+                                    return Some resolved
+                                | None -> return None
+                            }
 
-                        insert.Parameters.AddWithValue("id", objectGuid) |> ignore
-                        insert.Parameters.AddWithValue("actor", actor.AppUserId) |> ignore
-                        insert.Parameters.AddWithValue("audience", Audience.name audience) |> ignore
-                        insert.Parameters.AddWithValue("type", parsed.Content.ObjectType) |> ignore
-                        insert.Parameters.Add(jsonb (document.ToJsonString ActivityStreams.jsonOptions)) |> ignore
-                        insert.Parameters.AddWithValue("key", (match key with Some k -> box k | None -> box DBNull.Value)) |> ignore
-                        insert.Parameters.AddWithValue("hash", requestHash root) |> ignore
-                        insert.Parameters.AddWithValue("now", now.UtcDateTime) |> ignore
-                        let! inserted = insert.ExecuteNonQueryAsync()
+                        match resolution with
+                        | Some Threads.Unknown -> return! error ctx 400 "invalid_request" "unknown inReplyTo"
+                        | Some Threads.Gone -> return! error ctx 410 "gone" "The object replied to was deleted"
+                        | _ ->
+                            let parent =
+                                match resolution with
+                                | Some(Threads.Resolved p) -> Some p
+                                | _ -> None
 
-                        if inserted = 1 then
-                            do! storeActivity tx time actor.AppUserId objectGuid activityGuid "Create" audience activity
-                            do! tx.CommitAsync()
-                            ctx.SetStatusCode 201
-                            return! ctx.WriteJson(publishResponse options.Domain objectGuid)
-                        else
-                            // The key was used before (possibly by a request still committing, which the insert waited for)
-                            do! tx.RollbackAsync()
+                            let threadRoot = parent |> Option.map (fun p -> p.Root)
+                            let! plan = planReply tx (defaultArg threadRoot objectGuid) (parent |> Option.bind (fun p -> p.RemoteAuthor))
 
-                            // On the connection already held: a second one could starve a pool full of waiting twins
-                            use existing =
-                                new NpgsqlCommand("SELECT id, request_hash FROM objects WHERE local_actor = @actor AND idempotency_key = @key", connection)
-                            existing.Parameters.AddWithValue("actor", actor.AppUserId) |> ignore
-                            existing.Parameters.AddWithValue("key", key.Value) |> ignore
-                            use! reader = existing.ExecuteReaderAsync()
-                            reader.Read() |> ignore
-                            let originalId = reader.GetGuid 0
-                            let originalHash = reader.GetFieldValue<byte[]> 1
+                            let document =
+                                ActivityStreams.noteObjectIn options.Domain actor.AppUserId objectGuid audience now None parsed.Content parsed.Extensions plan.Thread
 
-                            if CryptographicOperations.FixedTimeEquals(originalHash, requestHash root) then
-                                return! ctx.WriteJson(publishResponse options.Domain originalId)
+                            let activity =
+                                ActivityStreams.create options.Domain actor.AppUserId (Ids.activityId options.Domain activityGuid) now audience parsed.Extensions document
+                                |> ActivityStreams.toBytes
+
+                            use insert =
+                                new NpgsqlCommand(
+                                    """INSERT INTO objects (id, local_actor, audience, object_type, document, idempotency_key, request_hash, in_reply_to, thread_root, created_at, updated_at)
+                                       VALUES (@id, @actor, @audience, @type, @doc, @key, @hash, @inReplyTo, @root, @now, @now)
+                                       ON CONFLICT (local_actor, idempotency_key) DO NOTHING""",
+                                    connection,
+                                    tx
+                                )
+
+                            insert.Parameters.AddWithValue("id", objectGuid) |> ignore
+                            insert.Parameters.AddWithValue("actor", actor.AppUserId) |> ignore
+                            insert.Parameters.AddWithValue("audience", Audience.name audience) |> ignore
+                            insert.Parameters.AddWithValue("type", parsed.Content.ObjectType) |> ignore
+                            insert.Parameters.Add(jsonb (document.ToJsonString ActivityStreams.jsonOptions)) |> ignore
+                            insert.Parameters.AddWithValue("key", (match key with Some k -> box k | None -> box DBNull.Value)) |> ignore
+                            insert.Parameters.AddWithValue("hash", requestHash root) |> ignore
+                            insert.Parameters.AddWithValue("inReplyTo", (match parent with Some p -> box p.Iri | None -> box DBNull.Value)) |> ignore
+                            insert.Parameters.AddWithValue("root", (match threadRoot with Some r -> box r | None -> box DBNull.Value)) |> ignore
+                            insert.Parameters.AddWithValue("now", now.UtcDateTime) |> ignore
+                            let! inserted = insert.ExecuteNonQueryAsync()
+
+                            if inserted = 1 then
+                                match parent with
+                                | Some p ->
+                                    let! _ = Threads.recordLocalReply tx time objectGuid (Ids.objectId options.Domain objectGuid) p audience now
+                                    ()
+                                | None -> ()
+
+                                do! storeActivity tx time actor.AppUserId objectGuid activityGuid "Create" audience activity plan.PersonalInboxes
+                                do! tx.CommitAsync()
+                                ctx.SetStatusCode 201
+                                return! ctx.WriteJson(publishResponse options.Domain objectGuid threadRoot)
                             else
-                                return! error ctx 409 "conflict" "This Idempotency-Key was used with a different request"
+                                // The key was used before (possibly by a request still committing, which the insert waited for)
+                                do! tx.RollbackAsync()
+
+                                // On the connection already held: a second one could starve a pool full of waiting twins
+                                use existing =
+                                    new NpgsqlCommand("SELECT id, request_hash, thread_root FROM objects WHERE local_actor = @actor AND idempotency_key = @key", connection)
+
+                                existing.Parameters.AddWithValue("actor", actor.AppUserId) |> ignore
+                                existing.Parameters.AddWithValue("key", key.Value) |> ignore
+                                use! reader = existing.ExecuteReaderAsync()
+                                reader.Read() |> ignore
+                                let originalId = reader.GetGuid 0
+                                let originalHash = reader.GetFieldValue<byte[]> 1
+                                let originalRoot = if reader.IsDBNull 2 then None else Some(reader.GetGuid 2)
+
+                                if CryptographicOperations.FixedTimeEquals(originalHash, requestHash root) then
+                                    return! ctx.WriteJson(publishResponse options.Domain originalId originalRoot)
+                                else
+                                    return! error ctx 409 "conflict" "This Idempotency-Key was used with a different request"
         }
 
 // ---- update and delete -----------------------------------------------------------------------------------
@@ -367,7 +431,10 @@ type private StoredObject =
       ObjectType: string
       Deleted: bool
       Document: JsonNode
-      CreatedAt: DateTimeOffset }
+      CreatedAt: DateTimeOffset
+      /// Set on a reply: what it answers and the root of its thread
+      InReplyTo: string option
+      ThreadRoot: Guid option }
 
 let private parseGuid (text: string) : Guid option =
     match Guid.TryParseExact(text, "D") with
@@ -379,7 +446,7 @@ let private loadObject (tx: NpgsqlTransaction) (objectGuid: Guid) : Task<StoredO
     task {
         use command =
             new NpgsqlCommand(
-                "SELECT local_actor, audience, object_type, state, document::text, created_at FROM objects WHERE id = @id FOR UPDATE",
+                "SELECT local_actor, audience, object_type, state, document::text, created_at, in_reply_to, thread_root FROM objects WHERE id = @id FOR UPDATE",
                 tx.Connection,
                 tx
             )
@@ -395,9 +462,21 @@ let private loadObject (tx: NpgsqlTransaction) (objectGuid: Guid) : Task<StoredO
                       ObjectType = reader.GetString 2
                       Deleted = (reader.GetString 3 = "deleted")
                       Document = JsonNode.Parse(reader.GetString 4)
-                      CreatedAt = reader.GetFieldValue<DateTimeOffset> 5 }
+                      CreatedAt = reader.GetFieldValue<DateTimeOffset> 5
+                      InReplyTo = (if reader.IsDBNull 6 then None else Some(reader.GetString 6))
+                      ThreadRoot = (if reader.IsDBNull 7 then None else Some(reader.GetGuid 7)) }
         else
             return None
+    }
+
+/// A reply's addressing and recipients, rebuilt for its edits and deletion: the same as when it was published
+let private planFor (tx: NpgsqlTransaction) (objectGuid: Guid) (stored: StoredObject) : Task<ReplyPlan> =
+    task {
+        match stored.InReplyTo with
+        | None -> return { Thread = { Root = objectGuid; ExtraCc = []; Mentions = [] }; PersonalInboxes = [] }
+        | Some parentIri ->
+            let! author = Threads.remoteAuthorOf tx parentIri
+            return! planReply tx (defaultArg stored.ThreadRoot objectGuid) author
     }
 
 let private gone (ctx: HttpContext) = error ctx 410 "gone" "The object was deleted"
@@ -434,20 +513,26 @@ let private update (objectId: string) : EndpointHandler =
                             return! error ctx 400 "invalid_request" "The audience of an object cannot change"
                         | Ok parsed when parsed.Content.ObjectType <> stored.ObjectType ->
                             return! error ctx 400 "invalid_request" "The type of an object cannot change"
+                        | Ok parsed when parsed.Content.InReplyTo |> Option.exists (fun r -> Some r <> stored.InReplyTo) ->
+                            return! error ctx 400 "invalid_request" "inReplyTo cannot change"
                         | Ok parsed ->
                             let now = time.GetUtcNow()
                             let activityGuid = Guid.NewGuid()
+                            let! plan = planFor tx objectGuid stored
+                            // Whatever the body says, a reply stays a reply to what it answered
+                            let content = { parsed.Content with InReplyTo = stored.InReplyTo }
 
                             let document =
-                                ActivityStreams.noteObject
+                                ActivityStreams.noteObjectIn
                                     options.Domain
                                     stored.AppUserId
                                     objectGuid
                                     stored.Audience
                                     stored.CreatedAt
                                     (Some now)
-                                    parsed.Content
+                                    content
                                     parsed.Extensions
+                                    plan.Thread
 
                             let activity =
                                 ActivityStreams.update
@@ -465,9 +550,9 @@ let private update (objectId: string) : EndpointHandler =
                             command.Parameters.AddWithValue("now", now.UtcDateTime) |> ignore
                             command.Parameters.AddWithValue("id", objectGuid) |> ignore
                             let! _ = command.ExecuteNonQueryAsync()
-                            do! storeActivity tx time stored.AppUserId objectGuid activityGuid "Update" stored.Audience activity
+                            do! storeActivity tx time stored.AppUserId objectGuid activityGuid "Update" stored.Audience activity plan.PersonalInboxes
                             do! tx.CommitAsync()
-                            return! ctx.WriteJson(publishResponse options.Domain objectGuid)
+                            return! ctx.WriteJson(publishResponse options.Domain objectGuid stored.ThreadRoot)
         }
 
 let private delete (objectId: string) : EndpointHandler =
@@ -493,8 +578,22 @@ let private delete (objectId: string) : EndpointHandler =
                     let now = time.GetUtcNow()
                     let activityGuid = Guid.NewGuid()
 
+                    let! plan = planFor tx objectGuid stored
+
+                    // The same `to` and `cc` as the object had, so the Delete reaches everyone the object did
+                    let strings (name: string) =
+                        match stored.Document[name] with
+                        | :? JsonArray as items -> [ for item in items -> item.GetValue<string>() ]
+                        | _ -> []
+
                     let activity =
-                        ActivityStreams.deleteObject options.Domain stored.AppUserId (Ids.activityId options.Domain activityGuid) now stored.Audience objectGuid
+                        ActivityStreams.deleteObjectAddressed
+                            options.Domain
+                            stored.AppUserId
+                            (Ids.activityId options.Domain activityGuid)
+                            now
+                            { To = strings "to"; Cc = strings "cc" }
+                            objectGuid
                         |> ActivityStreams.toBytes
 
                     use command =
@@ -503,7 +602,9 @@ let private delete (objectId: string) : EndpointHandler =
                     command.Parameters.AddWithValue("now", now.UtcDateTime) |> ignore
                     command.Parameters.AddWithValue("id", objectGuid) |> ignore
                     let! _ = command.ExecuteNonQueryAsync()
-                    do! storeActivity tx time stored.AppUserId objectGuid activityGuid "Delete" stored.Audience activity
+                    // A reply leaves its parent's `replies` collection with it
+                    let! _ = Threads.markDeleted tx time (Ids.objectId options.Domain objectGuid)
+                    do! storeActivity tx time stored.AppUserId objectGuid activityGuid "Delete" stored.Audience activity plan.PersonalInboxes
                     do! tx.CommitAsync()
                     ctx.SetStatusCode 202
                     return! ctx.WriteJson {| id = objectGuid.ToString "D"; deliveriesUrl = $"/internal/objects/{objectGuid:D}/deliveries" |}
