@@ -98,3 +98,17 @@ scripts/count-integration-lines.sh samples/SampleApp
 
 Expected: under 100 lines of integration code (actor lookup, event receiver, internal API calls),
 excluding the sample's own UI.
+
+## Results (T089, 2026-10-10, macOS arm64, Docker Desktop 29.8, images cached)
+
+| Section | Command | Result |
+|---|---|---|
+| Build | `dotnet build`, `dotnet build -c Release` | 0 warnings, 0 errors |
+| 1 | `dotnet test --project tests/Megafono.Tests` | 439 passed |
+| 2, 3, 5 (automated) | `dotnet test --project tests/Megafono.Interop.Tests -- --explicit on` | 20 passed (GoToSocial 0.22.2, Mastodon 4.7.3, deployment shape), 2 min 34 s |
+| 4 | `dotnet test --project tests/Megafono.Tests -- --filter-trait "Suite=load"` | 2 passed: 1,000 requests to 200 hosts in 3.2 s, 200 shared-inbox requests in 0.5 s; never more than 2 open per host or 32 overall |
+| 5 (manual, real domain) | `docker compose -f deploy/compose.yaml up` on a public host | not run here (no public domain); the automated deployment-shape test runs the same images behind the gateway with TLS |
+| 6 | `scripts/count-integration-lines.sh samples/SampleApp` | 70 lines (limit 99) |
+
+Every FR and SC of [spec.md](spec.md) is named by at least one test (52 of 52). SC-006's 10-minute
+target is measured only by the manual run of section 5.

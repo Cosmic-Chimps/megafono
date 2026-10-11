@@ -240,7 +240,7 @@ account follows the sample app's test user (quickstart section 5).
 - [X] T086 [P] CI workflows in `.github/workflows/ci.yml` (build, `Megafono.Tests`, GoToSocial interop on every push) and `.github/workflows/nightly.yml` (nightly schedule and manual dispatch for `Suite=mastodon` and `Suite=load`)
 - [X] T087 [P] Write `README.md`: what Megáfono is, the three-call integration, link to `docs/operating.md`, contracts and the privacy limit
 - [X] T088 Update `CLAUDE.md` (build and test commands, layout) and mark the decided open questions in `docs/vision.md` (per-actor keys, draft-cavage only, events only, no activity table) as decided by this feature
-- [ ] T089 Run the whole of `specs/001-federation-core/quickstart.md` and record results; confirm every FR and SC of spec.md has a test that names it
+- [X] T089 Run the whole of `specs/001-federation-core/quickstart.md` and record results; confirm every FR and SC of spec.md has a test that names it
 
 ---
 
