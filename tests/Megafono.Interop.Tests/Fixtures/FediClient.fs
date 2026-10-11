@@ -226,6 +226,15 @@ type FediClient(http: HttpClient, baseUri: string, token: string, username: stri
             return doc.RootElement.GetProperty("statuses").GetRawText() |> parse<Status list>
         }
 
+    /// The thread around a status (`/api/v1/statuses/:id/context`): the statuses above and below it
+    member _.Context(id: string) : Task<Status list * Status list> =
+        task {
+            let! body = get $"/api/v1/statuses/{id}/context"
+            use doc = JsonDocument.Parse body
+            let read (name: string) = doc.RootElement.GetProperty(name).GetRawText() |> parse<Status list>
+            return read "ancestors", read "descendants"
+        }
+
     member _.GetStatus(id: string) : Task<Status> =
         task {
             let! body = get $"/api/v1/statuses/{id}"
