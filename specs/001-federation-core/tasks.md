@@ -189,17 +189,17 @@ lists show `mutual: true`.
 
 ### Tests for User Story 4 (REQUIRED) ⚠️
 
-- [ ] T065 [P] [US4] Integration tests in `tests/Megafono.Tests/Integration/RemoteActorLookupTests.fs`: handle and URL resolve to sanitized `{id, handle, name, iconUrl, profileUrl, type}`; unknown → 404; a handle whose WebFinger or actor points to a private address → 400 (FR-033, FR-021)
-- [ ] T066 [P] [US4] Integration tests in `tests/Megafono.Tests/Integration/OutboundFollowTests.fs` with `StubRemote`: follow by handle and by URL → signed Follow delivered, `pending`; remote Accept → `accepted` and `follow.accepted` (`outbound`); remote Reject → `rejected` and `follow.rejected`; Reject after Accept → `rejected`; following again returns the current status; unfollow → `Undo{Follow}` delivered and `removed`; unfollowing someone not followed → 404 (FR-034)
-- [ ] T067 [P] [US4] Integration tests in `tests/Megafono.Tests/Integration/FollowListTests.fs`: followers and following with status filter, `limit`, cursor paging, and `mutual` true only when both directions are accepted (FR-035)
-- [ ] T068 [US4] Interop test in `tests/Megafono.Interop.Tests/OutboundFollowTests.fs`: Alex follows a locked GTS account by handle → GTS shows the request → GTS accepts → `follow.accepted`; GTS follows Alex back and the test approves → both lists show `mutual: true`; Alex unfollows → GTS no longer lists the follower (US4 scenarios 1–5)
+- [X] T065 [P] [US4] Integration tests in `tests/Megafono.Tests/Integration/RemoteActorLookupTests.fs`: handle and URL resolve to sanitized `{id, handle, name, iconUrl, profileUrl, type}`; unknown → 404; a handle whose WebFinger or actor points to a private address → 400 (FR-033, FR-021)
+- [X] T066 [P] [US4] Integration tests in `tests/Megafono.Tests/Integration/OutboundFollowTests.fs` with `StubRemote`: follow by handle and by URL → signed Follow delivered, `pending`; remote Accept → `accepted` and `follow.accepted` (`outbound`); remote Reject → `rejected` and `follow.rejected`; Reject after Accept → `rejected`; following again returns the current status; unfollow → `Undo{Follow}` delivered and `removed`; unfollowing someone not followed → 404 (FR-034)
+- [X] T067 [P] [US4] Integration tests in `tests/Megafono.Tests/Integration/FollowListTests.fs`: followers and following with status filter, `limit`, cursor paging, and `mutual` true only when both directions are accepted (FR-035)
+- [X] T068 [US4] Interop test in `tests/Megafono.Interop.Tests/OutboundFollowTests.fs`: Alex follows a locked GTS account by handle → GTS shows the request → GTS accepts → `follow.accepted`; GTS follows Alex back and the test approves → both lists show `mutual: true`; Alex unfollows → GTS no longer lists the follower (US4 scenarios 1–5)
 
 ### Implementation for User Story 4
 
-- [ ] T069 [US4] Implement `src/Megafono/Internal/RemoteActors.fs`: `GET /internal/remote-actors?handle=|url=` through `RemoteActors` (contracts/internal-api.md)
-- [ ] T070 [US4] Add follow, unfollow and the two lists to `src/Megafono/Internal/Follows.fs` (`POST /internal/actors/{id}/following`, `DELETE /internal/actors/{id}/following?actor=`, `GET …/followers`, `GET …/following`), enqueuing Follow and Undo activities through `Outbox`
-- [ ] T071 [US4] Handle Accept{Follow} and Reject{Follow} for outbound follows in `src/Megafono/Federation/InboxFollows.fs` (match by follow id or by actor and target, research R-05), with events
-- [ ] T072 [US4] Register the US4 endpoints in `src/Megafono/Program.fs` and make T065–T068 pass
+- [X] T069 [US4] Implement `src/Megafono/Internal/RemoteActors.fs`: `GET /internal/remote-actors?handle=|url=` through `RemoteActors` (contracts/internal-api.md)
+- [X] T070 [US4] Add follow, unfollow and the two lists to `src/Megafono/Internal/Follows.fs` (`POST /internal/actors/{id}/following`, `DELETE /internal/actors/{id}/following?actor=`, `GET …/followers`, `GET …/following`), enqueuing Follow and Undo activities through `Outbox`
+- [X] T071 [US4] Handle Accept{Follow} and Reject{Follow} for outbound follows in `src/Megafono/Federation/InboxFollows.fs` (match by follow id or by actor and target, research R-05), with events
+- [X] T072 [US4] Register the US4 endpoints in `src/Megafono/Program.fs` and make T065–T068 pass
 
 **Checkpoint**: follows are two-way; the app can build a friends list.
 
@@ -236,10 +236,10 @@ account follows the sample app's test user (quickstart section 5).
 
 - [ ] T083 Mastodon suite in `tests/Megafono.Interop.Tests/Mastodon/` (Trait `Suite=mastodon`, `AUTHORIZED_FETCH=true`): the scenarios of T035, T045, T058 and T068 against Mastodon, plus the lock icon (visibility `private`) on the followers-only post and finding Alex by pasting the sample profile URL (SC-001)
 - [X] T084 [P] Load test in `tests/Megafono.Tests/Load/FanOutTests.fs` (Trait `Suite=load`): a stub fleet of 200 inbox hosts and 1,000 followers; with the process limited to 2 CPUs, every host receives the Create within 2 minutes (SC-003)
-- [ ] T085 [P] Capture the real inbound payloads and headers seen in the interop runs into `tests/Megafono.Interop.Tests/Payloads/` and `tests/Megafono.Tests/Fixtures/payloads/` behind a test-mode logging switch, and add verification tests for them (Principle VI)
+- [X] T085 [P] Capture the real inbound payloads and headers seen in the interop runs into `tests/Megafono.Interop.Tests/Payloads/` and `tests/Megafono.Tests/Fixtures/payloads/` behind a test-mode logging switch, and add verification tests for them (Principle VI)
 - [X] T086 [P] CI workflows in `.github/workflows/ci.yml` (build, `Megafono.Tests`, GoToSocial interop on every push) and `.github/workflows/nightly.yml` (nightly schedule and manual dispatch for `Suite=mastodon` and `Suite=load`)
 - [X] T087 [P] Write `README.md`: what Megáfono is, the three-call integration, link to `docs/operating.md`, contracts and the privacy limit
-- [ ] T088 Update `CLAUDE.md` (build and test commands, layout) and mark the decided open questions in `docs/vision.md` (per-actor keys, draft-cavage only, events only, no activity table) as decided by this feature
+- [X] T088 Update `CLAUDE.md` (build and test commands, layout) and mark the decided open questions in `docs/vision.md` (per-actor keys, draft-cavage only, events only, no activity table) as decided by this feature
 - [ ] T089 Run the whole of `specs/001-federation-core/quickstart.md` and record results; confirm every FR and SC of spec.md has a test that names it
 
 ---

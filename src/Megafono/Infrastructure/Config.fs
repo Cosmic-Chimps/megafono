@@ -28,6 +28,12 @@ type FederationOptions =
         AllowPrivateAddresses: bool
     }
 
+type TestingOptions =
+    {
+        /// Tests only: a directory that receives one JSON file per verified inbound request (T085)
+        CaptureInbound: string option
+    }
+
 type MegafonoOptions =
     { Domain: string
       /// `ConnectionStrings:Database`
@@ -42,7 +48,8 @@ type MegafonoOptions =
       Delivery: DeliveryOptions
       RateLimit: RateLimitOptions
       TrustedProxies: string list
-      Federation: FederationOptions }
+      Federation: FederationOptions
+      Testing: TestingOptions }
 
 let private softwareNamePattern = Regex(@"^[a-z0-9-]+\z", RegexOptions.Compiled)
 
@@ -126,7 +133,12 @@ let read (config: IConfiguration) : MegafonoOptions * string list =
             { PerAddress = number "RateLimit:PerAddress" 600
               PerHost = number "RateLimit:PerHost" 600 }
           TrustedProxies = proxies
-          Federation = { AllowPrivateAddresses = flag "Federation:AllowPrivateAddresses" } }
+          Federation = { AllowPrivateAddresses = flag "Federation:AllowPrivateAddresses" }
+          Testing =
+            { CaptureInbound =
+                match text "Testing:CaptureInbound" "" with
+                | "" -> None
+                | dir -> Some dir } }
 
     options, List.ofSeq errors
 
@@ -170,6 +182,9 @@ let validate (environmentName: string) (options: MegafonoOptions) : string list 
 
       if options.Federation.AllowPrivateAddresses && String.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase) then
           "Megafono:Federation:AllowPrivateAddresses is a test switch and is refused when ASPNETCORE_ENVIRONMENT is Production"
+
+      if options.Testing.CaptureInbound.IsSome && String.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase) then
+          "Megafono:Testing:CaptureInbound is a test switch and is refused when ASPNETCORE_ENVIRONMENT is Production"
 
       for name, port in [ "Ports:Federation", options.Ports.Federation; "Ports:Internal", options.Ports.Internal ] do
           if port < 0 || port > 65535 then

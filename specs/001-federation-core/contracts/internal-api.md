@@ -8,7 +8,8 @@ Any path outside `/internal/*` and `/health` on this port gets 404, and `/intern
 federation port gets 404 (research R-10).
 
 `{id}` is the app's immutable user id. Errors are `{ "error": "<code>", "message": "<text>" }` with
-codes `not_found`, `invalid_request`, `conflict`, `unauthorized`.
+codes `not_found`, `invalid_request`, `conflict`, `unauthorized`, `gone`, `app_unavailable` (503,
+the app's actor lookup did not answer) and `remote_unreachable` (502).
 
 ## Publishing
 
@@ -141,7 +142,7 @@ GET /internal/actors/{id}/followers?status=accepted&limit=50&after={cursor}
 GET /internal/actors/{id}/following?status=accepted&limit=50&after={cursor}
 ```
 
-`status` defaults to all; `limit` at most 200.
+`status` takes one value or a comma-separated list; the default is every status except `removed` (ended relationships are kept as tombstones, listed with `status=removed`). `limit` defaults to 50, at most 200; `after` is the opaque cursor from `next`, newest first. A bad `limit` or `after` is 400.
 
 ```json
 {
@@ -163,7 +164,8 @@ GET /internal/remote-actors?url=https://mastodon.social/users/bob
 ```
 
 **200** `{ "id", "handle", "name", "iconUrl", "profileUrl", "type" }` (sanitized); **404** when
-not found; **400** for a blocked address (FR-033, FR-021).
+not found or the document is invalid; **400** for a blocked address (FR-033, FR-021); **502**
+`remote_unreachable` when the remote server did not answer.
 
 ## Health
 

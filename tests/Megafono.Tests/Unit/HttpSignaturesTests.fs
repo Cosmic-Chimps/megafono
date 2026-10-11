@@ -8,8 +8,8 @@ open Megafono.Infrastructure
 open Megafono.Infrastructure.HttpSignatures
 open Megafono.Tests.TestSupport
 
-// TODO(T085): add verification of real Mastodon and GoToSocial request samples once the interop runs capture them
-// into tests/Megafono.Tests/Fixtures/payloads/.
+// Real GoToSocial and Mastodon requests, captured by the interop runs (T085, tests/Megafono.Tests/Fixtures/payloads/),
+// are verified at the end of this file.
 
 let private key = lazy (RSA.Create 2048)
 let private otherKey = lazy (RSA.Create 2048)
@@ -284,3 +284,118 @@ let ``R-01 a corrupted signature is refused, not thrown`` () =
     let request = get ()
     let broken = withHeader "Signature" "keyId=\"k\",algorithm=\"rsa-sha256\",headers=\"(request-target) host date\",signature=\"AAAA\"" request
     isError BadSignature (verify broken)
+
+// ---- real requests from GoToSocial and Mastodon (T085, Principle VI) --------------------------------------
+//
+// Each file in Fixtures/payloads is one verified inbound request exactly as Megáfono received it (method, raw target,
+// every header, the raw body) next to the public key it verified with. They were captured with
+// `Megafono:Testing:CaptureInbound` while the interop suite ran against GoToSocial 0.22.2 and Mastodon 4.7.3.
+
+type private Captured =
+    { Request: SignedRequest
+      KeyId: string
+      PublicKeyPem: string
+      /// The `Date` header, which is when the request was signed
+      SignedAt: DateTimeOffset
+      Algorithm: string
+      ActivityType: string }
+
+let private loadCaptured (name: string) : Captured =
+    let path = IO.Path.Combine(AppContext.BaseDirectory, "Fixtures", "payloads", name + ".json")
+    use document = System.Text.Json.JsonDocument.Parse(IO.File.ReadAllText path)
+    let root = document.RootElement
+
+    let headers =
+        [ for h in root.GetProperty("headers").EnumerateArray() -> h.GetProperty("name").GetString(), h.GetProperty("value").GetString() ]
+
+    let request =
+        { Method = root.GetProperty("method").GetString()
+          PathAndQuery = root.GetProperty("pathAndQuery").GetString()
+          Headers = headers
+          Body = Convert.FromBase64String(root.GetProperty("bodyBase64").GetString()) }
+
+    let signer = root.GetProperty "signer"
+    let parsed = ok (parseSignatureHeader (header "signature" request).Value)
+
+    { Request = request
+      KeyId = signer.GetProperty("keyId").GetString()
+      PublicKeyPem = signer.GetProperty("publicKeyPem").GetString()
+      SignedAt = DateTimeOffset.Parse((header "date" request).Value, Globalization.CultureInfo.InvariantCulture)
+      Algorithm = defaultArg parsed.Algorithm ""
+      ActivityType = root.GetProperty("activityType").GetString() }
+
+let private capturedNames =
+    [ "gts-follow"; "gts-undo"; "gts-accept"; "gts-update"; "mastodon-follow"; "mastodon-undo"; "mastodon-accept"; "mastodon-update" ]
+
+type CapturedPayloads() =
+    static member Names: TheoryData<string> =
+        let data = TheoryData<string>()
+        capturedNames |> List.iter data.Add
+        data
+
+let private verifyCaptured (captured: Captured) (time: DateTimeOffset) (request: SignedRequest) =
+    use key = KeyVault.importPublicPem captured.PublicKeyPem
+    draftCavage.Verify (FakeTime time) key request
+
+[<Theory>]
+[<MemberData(nameof CapturedPayloads.Names, MemberType = typeof<CapturedPayloads>)>]
+let ``T085 a real request verifies with its real public key at the time it was signed`` (name: string) =
+    let c = loadCaptured name
+    Assert.Equal(Ok(), verifyCaptured c c.SignedAt c.Request)
+    Assert.Equal(Ok c.KeyId, draftCavage.ExtractKeyId c.Request)
+
+[<Theory>]
+[<MemberData(nameof CapturedPayloads.Names, MemberType = typeof<CapturedPayloads>)>]
+let ``T085 a real request fails when one byte of the body changes`` (name: string) =
+    let c = loadCaptured name
+    let tampered = Array.copy c.Request.Body
+    tampered[tampered.Length / 2] <- tampered[tampered.Length / 2] ^^^ 1uy
+    isError DigestMismatch (verifyCaptured c c.SignedAt { c.Request with Body = tampered })
+
+[<Theory>]
+[<MemberData(nameof CapturedPayloads.Names, MemberType = typeof<CapturedPayloads>)>]
+let ``T085 a real request fails when a signed header or the target changes, or the key is another one`` (name: string) =
+    let c = loadCaptured name
+    isError BadSignature (verifyCaptured c c.SignedAt { c.Request with PathAndQuery = c.Request.PathAndQuery + "x" })
+
+    let otherHost = c.Request.Headers |> List.map (fun (n, v) -> if n.ToLowerInvariant() = "host" then n, "evil.example" else n, v)
+    isError BadSignature (verifyCaptured c c.SignedAt { c.Request with Headers = otherHost })
+
+    // The key of the other server's request does not verify this one
+    let other = loadCaptured (if name.StartsWith "gts" then "mastodon-follow" else "gts-follow")
+    use otherKey = KeyVault.importPublicPem other.PublicKeyPem
+    isError BadSignature (draftCavage.Verify (FakeTime c.SignedAt) otherKey c.Request)
+
+[<Theory>]
+[<MemberData(nameof CapturedPayloads.Names, MemberType = typeof<CapturedPayloads>)>]
+let ``T085 a real request is refused a day later and accepted within the 12 hour window`` (name: string) =
+    let c = loadCaptured name
+    isError DateOutOfWindow (verifyCaptured c (c.SignedAt.AddHours 13.0) c.Request)
+    isError DateOutOfWindow (verifyCaptured c (c.SignedAt.AddHours -13.0) c.Request)
+    Assert.Equal(Ok(), verifyCaptured c (c.SignedAt.AddHours 11.0) c.Request)
+
+[<Fact>]
+let ``T085 what the two servers sign: algorithm, key id form, headers and content type`` () =
+    let gts = loadCaptured "gts-follow"
+    let mastodon = loadCaptured "mastodon-follow"
+    let signedHeaders (c: Captured) = (ok (parseSignatureHeader (header "signature" c.Request).Value)).Headers
+
+    // GoToSocial: hs2019 over (request-target) host date digest, key id .../main-key, JSON-LD content type
+    Assert.Equal("hs2019", gts.Algorithm)
+    Assert.Equal<string list>([ "(request-target)"; "host"; "date"; "digest" ], signedHeaders gts)
+    Assert.EndsWith("/main-key", gts.KeyId)
+    Assert.StartsWith("application/ld+json", (header "content-type" gts.Request).Value)
+
+    // Mastodon 4.7: rsa-sha256, content-type covered, (request-target) last, per-key id #rsa-<hex>
+    Assert.Equal("rsa-sha256", mastodon.Algorithm)
+    Assert.Equal<string list>([ "host"; "date"; "content-type"; "digest"; "(request-target)" ], signedHeaders mastodon)
+    Assert.Matches("#rsa-[0-9a-f]+$", mastodon.KeyId)
+    Assert.Equal("application/activity+json", (header "content-type" mastodon.Request).Value)
+
+[<Fact>]
+let ``T085 the captured activities are the ones named`` () =
+    for name in capturedNames do
+        let c = loadCaptured name
+        let expected = (name.Split('-')[1])
+        Assert.Equal(expected, c.ActivityType.ToLowerInvariant())
+        Assert.Equal("POST", c.Request.Method)

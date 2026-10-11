@@ -213,3 +213,11 @@ let ``R-13 buildApp refuses the private switch under the Production environment`
     Assert.Contains("AllowPrivateAddresses", error.Message)
     // Not Production: starts
     (Megafono.Program.buildApp [| "--environment"; "Development" |] overrides :> IDisposable).Dispose()
+
+[<Fact>]
+let ``T085 the inbound capture switch is refused in Production and accepted elsewhere`` () =
+    let pairs = validOverrides @ [ "Megafono:Testing:CaptureInbound", "/tmp/captures" ]
+    Assert.True(mentions "CaptureInbound" (load "Production" pairs |> errorsOf))
+    let o = load "Development" pairs |> optionsOf
+    Assert.Equal(Some "/tmp/captures", o.Testing.CaptureInbound)
+    Assert.Equal(None, (load "Production" validOverrides |> optionsOf).Testing.CaptureInbound)

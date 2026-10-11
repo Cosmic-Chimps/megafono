@@ -140,7 +140,9 @@ let private dispatch (env: Env) (signer: RemoteActor) (activity: JsonNode) : Tas
     | Some "Follow" -> InboxFollows.handleFollow env signer activity
     | Some "Undo" -> InboxFollows.handleUndo env signer activity
     | Some "Update" -> InboxActors.handleUpdate env signer activity
-    // Accept and Reject of our own follows arrive with outbound follows (User Story 4); everything else is not ours
+    | Some "Accept" -> InboxFollows.handleAccept env signer activity
+    | Some "Reject" -> InboxFollows.handleReject env signer activity
+    // Everything else is not ours
     | _ -> Task.FromResult(Ignored "activity type not handled")
 
 let private inbox (localUser: string option) : EndpointHandler =
@@ -192,6 +194,12 @@ let private inbox (localUser: string option) : EndpointHandler =
                                 match activity with
                                 | None -> return! status ctx 400
                                 | Some activity ->
+                                    // Test mode only: keep the verified request as a fixture (T085)
+                                    match ctx.GetService<Config.MegafonoOptions>().Testing.CaptureInbound with
+                                    | Some directory ->
+                                        InboundCapture.write directory (env.Time.GetUtcNow()) request signer (defaultArg (str activity "type") "unknown")
+                                    | None -> ()
+
                                     match! dispatch env signer activity with
                                     | Handled -> return! status ctx 202
                                     | Ignored reason ->

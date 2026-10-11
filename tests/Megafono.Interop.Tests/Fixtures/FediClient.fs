@@ -122,6 +122,15 @@ type FediClient(http: HttpClient, baseUri: string, token: string, username: stri
             return List.tryHead accounts
         }
 
+    /// Searches accounts with the query exactly as given (a pasted URL, not a handle)
+    member _.SearchQuery(query: string, resolve: bool) : Task<Account option> =
+        task {
+            let! body = get $"/api/v2/search?q={Uri.EscapeDataString query}&resolve={resolve.ToString().ToLowerInvariant()}&type=accounts&limit=5"
+            use doc = JsonDocument.Parse body
+            let accounts = doc.RootElement.GetProperty("accounts").GetRawText() |> parse<Account list>
+            return List.tryHead accounts
+        }
+
     member _.Follow(accountId: string) : Task<Relationship> =
         task {
             let! body = post $"/api/v1/accounts/{accountId}/follow" []
@@ -172,6 +181,13 @@ type FediClient(http: HttpClient, baseUri: string, token: string, username: stri
     member _.LockAccount() : Task<Account> =
         task {
             let! body = send HttpMethod.Patch "/api/v1/accounts/update_credentials" (Some [ "locked", "true" ])
+            return parse<Account> body
+        }
+
+    /// Changes the display name (the server then sends an `Update` of the actor to its followers)
+    member _.UpdateDisplayName(name: string) : Task<Account> =
+        task {
+            let! body = send HttpMethod.Patch "/api/v1/accounts/update_credentials" (Some [ "display_name", name ])
             return parse<Account> body
         }
 

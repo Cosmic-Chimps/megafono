@@ -249,6 +249,9 @@ let private save (env: Env) (actor: RemoteActor) : Task<Result<RemoteActor, Remo
             return Error(Invalid "the key id already belongs to another actor")
     }
 
+/// Stores a validated actor (see `parseActor`), e.g. the one embedded in the actor's own signed Update
+let storeActor (env: Env) (actor: RemoteActor) : Task<Result<RemoteActor, RemoteError>> = save env actor
+
 // ---- fetching --------------------------------------------------------------------------------------------
 
 let private mapFetchError (error: SafeHttp.FetchError) : RemoteError =

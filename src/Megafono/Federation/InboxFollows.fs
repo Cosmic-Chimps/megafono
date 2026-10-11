@@ -184,3 +184,92 @@ let handleUndo (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outc
                     return Handled
         | _ -> return Ignored "the Undo is not a Follow undone by its signer"
     }
+
+// ---- answers to our own follows (User Story 4, FR-034, research R-05) ------------------------------------
+
+type private Answer =
+    | Accepted
+    | Rejected
+
+/// Accept{Follow} or Reject{Follow} from the actor we asked to follow. Only the target can answer: the signer must
+/// be the actor of the answer. The follow is found among our outbound rows for that signer, by the id of the Follow
+/// (embedded or bare) or, failing that, by the local actor the embedded Follow names; a reject also ends a follow
+/// that was already accepted (the remote side revoked it).
+let private handleAnswer (answer: Answer) (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
+    task {
+        let activityId = str activity "id"
+        let actor = idOf activity["actor"]
+        let inner = activity["object"]
+
+        let isFollowOrId =
+            match inner with
+            | :? JsonObject as o -> str o "type" = Some "Follow"
+            | :? JsonValue -> true
+            | _ -> false
+
+        match activityId, actor with
+        | Some answerId, Some actorId when actorId = signer.Id && isOnSignerHost signer answerId && isFollowOrId ->
+            let followId = idOf inner
+            // The embedded Follow says who followed: one of our actors
+            let localUser = (match inner with :? JsonObject as o -> idOf o["actor"] | _ -> None) |> Option.bind (localActorId env.Domain)
+            use! connection = env.DataSource.OpenConnectionAsync()
+            use! tx = connection.BeginTransactionAsync()
+            let! fresh = markProcessed tx env.Time answerId
+
+            if not fresh then
+                do! tx.RollbackAsync()
+                return Ignored "already processed"
+            else
+                use find =
+                    new NpgsqlCommand(
+                        """SELECT id, local_actor, status FROM follows
+                           WHERE direction = 'outbound' AND remote_actor = @remote
+                             AND (follow_activity_id = @follow OR local_actor = @local)
+                           ORDER BY (follow_activity_id = @follow) DESC, created_at DESC LIMIT 1 FOR UPDATE""",
+                        connection,
+                        tx
+                    )
+
+                find.Parameters.AddWithValue("remote", signer.Id) |> ignore
+                find.Parameters.AddWithValue("follow", (match followId with Some f -> box f | None -> box DBNull.Value)) |> ignore
+                find.Parameters.AddWithValue("local", (match localUser with Some u -> box u | None -> box DBNull.Value)) |> ignore
+                use! reader = find.ExecuteReaderAsync()
+                let row = if reader.Read() then Some(reader.GetGuid 0, reader.GetString 1, reader.GetString 2) else None
+                do! reader.CloseAsync()
+
+                // What the row becomes, if anything: pending -> accepted or rejected, accepted -> rejected (revoked)
+                let transition =
+                    match answer, row with
+                    | Accepted, Some(_, _, "pending") -> Some "accepted"
+                    | Rejected, Some(_, _, ("pending" | "accepted")) -> Some "rejected"
+                    | _ -> None
+
+                match row, transition with
+                | Some(rowId, user, _), Some target ->
+                    do!
+                        execute
+                            tx
+                            "UPDATE follows SET status = @status, updated_at = @now WHERE id = @id"
+                            [ "id", box rowId; "status", box target; "now", box (env.Time.GetUtcNow().UtcDateTime) ]
+
+                    let eventType = if target = "accepted" then Events.FollowAccepted else Events.FollowRejected
+
+                    let body: Events.EventBody =
+                        { Type = eventType
+                          Actor = Some(actorSummary signer)
+                          Follow = Some { Id = rowId; Direction = "outbound"; Status = target }
+                          Extra = [] }
+
+                    let! _ = Outbox.enqueueEvent tx env.Time user body
+                    do! tx.CommitAsync()
+                    return Handled
+                | _ ->
+                    // A repeat, a stale answer for a follow we withdrew, or one that is not ours: nothing changes
+                    do! tx.RollbackAsync()
+                    return Ignored "no outbound follow to apply this answer to"
+        | _ -> return Ignored "the answer is not a Follow answered by its target"
+    }
+
+let handleAccept (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> = handleAnswer Accepted env signer activity
+
+let handleReject (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> = handleAnswer Rejected env signer activity

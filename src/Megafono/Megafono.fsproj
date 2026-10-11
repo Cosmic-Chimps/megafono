@@ -18,6 +18,7 @@
     <Compile Include="Infrastructure/InstanceKey.fs" />
     <Compile Include="Infrastructure/AppClient.fs" />
     <Compile Include="Infrastructure/RemoteActors.fs" />
+    <Compile Include="Infrastructure/InboundCapture.fs" />
     <Compile Include="Infrastructure/RateLimits.fs" />
     <Compile Include="Infrastructure/Outbox.fs" />
     <Compile Include="Federation/Http.fs" />
@@ -31,6 +32,7 @@
     <Compile Include="Federation/Inbox.fs" />
     <Compile Include="Internal/Actors.fs" />
     <Compile Include="Internal/Objects.fs" />
+    <Compile Include="Internal/RemoteActors.fs" />
     <Compile Include="Internal/Follows.fs" />
     <Compile Include="Workers/Dispatcher.fs" />
     <Compile Include="Workers/Deliveries.fs" />

@@ -51,6 +51,35 @@ let private discover (server: IFediServer) (net: FederationNetwork) (pg: Postgre
         Assert.True nobody.IsNone
     }
 
+/// SC-001: pasting the app's profile URL. The profile page links to the actor (`<link rel=alternate>` and a `Link` header,
+/// R-03); a server that follows that hop resolves the account. Mastodon does; GoToSocial is expected not to (inferred from
+/// its source), and the test says so, so a change in either server is noticed.
+let private discoverByProfileUrl (server: IFediServer) (expectFound: bool) (net: FederationNetwork) (pg: PostgresFixture) : Task =
+    task {
+        use! megafono = MegafonoInterop.start net pg []
+        let handle = uniqueName "pasted"
+        let profileUrl = $"https://megafono.test/u/{handle}"
+        megafono.FakeApp.AddUser { FakeApp.user $"u-{handle}" handle with Name = "Pasted Alex"; ProfileUrl = profileUrl }
+        use! viewer = server.CreateUser "viewer"
+
+        if expectFound then
+            let! account =
+                pollFor "the profile URL to resolve" (fun () ->
+                    task {
+                        let! found = viewer.SearchQuery(profileUrl, true)
+                        return found
+                    })
+
+            Assert.Equal($"{handle}@megafono.test", account.Acct)
+            Assert.Equal("Pasted Alex", account.DisplayName)
+        else
+            // Give the server every chance: ask twice, a few seconds apart
+            let! first = viewer.SearchQuery(profileUrl, true)
+            do! Task.Delay 3000
+            let! second = viewer.SearchQuery(profileUrl, true)
+            Assert.True(first.IsNone && second.IsNone, "the server resolved a pasted profile URL; research R-03 expected it not to follow alternates")
+    }
+
 type DiscoveryTests(net: FederationNetwork, pg: PostgresFixture) =
 
     [<Fact>]
@@ -58,6 +87,13 @@ type DiscoveryTests(net: FederationNetwork, pg: PostgresFixture) =
         task {
             let! gts = net.GoToSocial()
             do! discover gts net pg
+        }
+
+    [<Fact>]
+    member _.``SC-001 GoToSocial does not resolve a pasted profile URL, it needs the handle`` () =
+        task {
+            let! gts = net.GoToSocial()
+            do! discoverByProfileUrl gts false net pg
         }
 
 [<Trait("Suite", "mastodon")>]
@@ -68,4 +104,11 @@ type MastodonDiscoveryTests(net: FederationNetwork, pg: PostgresFixture) =
         task {
             let! mastodon = net.Mastodon()
             do! discover mastodon net pg
+        }
+
+    [<Fact>]
+    member _.``SC-001 Mastodon finds Alex by the pasted profile URL`` () =
+        task {
+            let! mastodon = net.Mastodon()
+            do! discoverByProfileUrl mastodon true net pg
         }

@@ -113,3 +113,37 @@ let remoteFollower
         let! _ = command.ExecuteNonQueryAsync()
         ()
     }
+
+/// A follow row in either direction with a stated creation time (list ordering and paging tests)
+let followRow
+    (dataSource: NpgsqlDataSource)
+    (direction: string)
+    (localUser: string)
+    (actorId: string)
+    (status: string)
+    (createdAt: DateTimeOffset)
+    : Task =
+    task {
+        use command =
+            dataSource.CreateCommand
+                """INSERT INTO remote_actors (id, host, handle, actor_type, inbox, key_id, public_key_pem, name)
+                   VALUES (@id, @host, @handle, 'Person', @inbox, @keyid, 'pem', @name)
+                   ON CONFLICT (id) DO NOTHING;
+                   INSERT INTO follows (id, direction, local_actor, remote_actor, follow_activity_id, status, created_at, updated_at)
+                   VALUES (gen_random_uuid(), @direction, @local, @id, @follow, @status, @at, @at)"""
+
+        let name = actorId.Substring(actorId.LastIndexOf '/' + 1)
+        command.Parameters.AddWithValue("id", actorId) |> ignore
+        command.Parameters.AddWithValue("host", Uri(actorId).Authority) |> ignore
+        command.Parameters.AddWithValue("handle", $"{name}@{Uri(actorId).Authority}") |> ignore
+        command.Parameters.AddWithValue("inbox", actorId + "/inbox") |> ignore
+        command.Parameters.AddWithValue("keyid", actorId + "#main-key") |> ignore
+        command.Parameters.AddWithValue("name", name) |> ignore
+        command.Parameters.AddWithValue("direction", direction) |> ignore
+        command.Parameters.AddWithValue("local", localUser) |> ignore
+        command.Parameters.AddWithValue("follow", $"{actorId}/follows/{Guid.NewGuid():N}") |> ignore
+        command.Parameters.AddWithValue("status", status) |> ignore
+        command.Parameters.AddWithValue("at", createdAt.UtcDateTime) |> ignore
+        let! _ = command.ExecuteNonQueryAsync()
+        ()
+    }

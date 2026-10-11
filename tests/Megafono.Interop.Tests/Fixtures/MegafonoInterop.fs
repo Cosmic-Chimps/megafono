@@ -19,8 +19,34 @@ open Megafono.Tests.Fixtures
 open Megafono.Tests.Fixtures.PostgresFixture
 open Megafono.Interop.Tests.FederationContext
 
+open Npgsql
+open Megafono.Domain
+
 let token = "interop-token"
 let webhookSecret = "interop-secret"
+
+// The fake servers (GoToSocial, Mastodon) live for the whole run and cache the keys they have seen for
+// `megafono.test`. Every test starts Megáfono on a fresh database, so without this each one would invent a new
+// instance actor key and the server's cached copy would reject its signed fetches. A real deployment keeps its key;
+// the tests keep one per run: one master key, and the instance actor's key stored encrypted under it.
+let private masterKey = RandomNumberGenerator.GetBytes 32
+let private vault = KeyVault.masterKeys masterKey None
+let private instanceActorKey = lazy (KeyVault.createActorKey vault (Ids.instanceActorId MegafonoDomain))
+
+let private seedInstanceKey (connectionString: string) : Task =
+    task {
+        use dataSource = NpgsqlDataSource.Create connectionString
+        do! Database.initializeSchema dataSource
+        let key = instanceActorKey.Value
+
+        use command =
+            dataSource.CreateCommand "INSERT INTO instance_actor (id, public_key_pem, enc_private_key) VALUES (1, @pem, @enc)"
+
+        command.Parameters.AddWithValue("pem", key.PublicKeyPem) |> ignore
+        command.Parameters.AddWithValue("enc", key.EncryptedPrivateKey) |> ignore
+        let! _ = command.ExecuteNonQueryAsync()
+        ()
+    }
 
 /// A 1x1 PNG, served by the host as the avatar the fake app points to
 let private avatarPng =
@@ -43,6 +69,38 @@ type private AvatarFilter() =
 
                 next.Invoke app)
 
+/// Test-only: stands in for the app's profile pages. In a real deployment the gateway sends `/u/*` to the app, which
+/// links its profile to the actor (R-03): `<link rel="alternate" type="application/activity+json">` in the page and
+/// the same as a `Link` header. This serves `GET /u/{handle}` for the fake app's users.
+type private ProfilePageFilter(fakeApp: FakeApp.FakeApp) =
+    interface IStartupFilter with
+        member _.Configure(next: Action<IApplicationBuilder>) : Action<IApplicationBuilder> =
+            Action<IApplicationBuilder>(fun app ->
+                app.Use(
+                    Func<HttpContext, Func<Task>, Task>(fun ctx continuation ->
+                        let path = ctx.Request.Path.Value
+
+                        if ctx.Request.Method = "GET" && path.StartsWith "/u/" then
+                            let handle = path.Substring 3
+
+                            match fakeApp.Users.Values |> Seq.tryFind (fun u -> u.Handle = handle) with
+                            | Some user ->
+                                let actor = $"https://megafono.test/ap/actors/{user.Id}"
+                                ctx.Response.ContentType <- "text/html; charset=utf-8"
+                                ctx.Response.Headers["Link"] <- $"<{actor}>; rel=\"alternate\"; type=\"application/activity+json\""
+
+                                ctx.Response.WriteAsync
+                                    $"""<!doctype html><html><head><title>{user.Name}</title><link rel="alternate" type="application/activity+json" href="{actor}"></head><body><h1>{user.Name}</h1></body></html>"""
+                            | None ->
+                                ctx.Response.StatusCode <- 404
+                                Task.CompletedTask
+                        else
+                            continuation.Invoke())
+                )
+                |> ignore
+
+                next.Invoke app)
+
 /// What one POST to an inbox looked like on the wire, and how Megáfono answered
 type InboxRequest =
     { Path: string
@@ -50,6 +108,8 @@ type InboxRequest =
       Algorithm: string
       KeyId: string
       SignedHeaders: string
+      /// The request body as sent (activities are small)
+      Body: string
       Status: int }
 
 let private signatureParam (header: string) (name: string) =
@@ -64,9 +124,19 @@ type private InboxLogFilter(log: Collections.Concurrent.ConcurrentQueue<InboxReq
                 app.Use(
                     Func<HttpContext, Func<Task>, Task>(fun ctx continuation ->
                         task {
+                            let isInbox = ctx.Request.Method = "POST" && ctx.Request.Path.Value.EndsWith "inbox"
+                            let mutable body = ""
+
+                            if isInbox then
+                                // Read the body here and hand the pipeline a copy of it
+                                use buffer = new IO.MemoryStream()
+                                do! ctx.Request.Body.CopyToAsync buffer
+                                body <- Text.Encoding.UTF8.GetString(buffer.ToArray())
+                                ctx.Request.Body <- new IO.MemoryStream(buffer.ToArray())
+
                             do! continuation.Invoke()
 
-                            if ctx.Request.Method = "POST" && ctx.Request.Path.Value.EndsWith "inbox" then
+                            if isInbox then
                                 let signature = string ctx.Request.Headers["Signature"]
 
                                 log.Enqueue
@@ -74,6 +144,7 @@ type private InboxLogFilter(log: Collections.Concurrent.ConcurrentQueue<InboxReq
                                       Algorithm = signatureParam signature "algorithm"
                                       KeyId = signatureParam signature "keyId"
                                       SignedHeaders = signatureParam signature "headers"
+                                      Body = body
                                       Status = ctx.Response.StatusCode }
                         }
                         :> Task)
@@ -122,6 +193,7 @@ let start (net: FederationNetwork) (pg: PostgresFixture) (fronts: (string * ICon
 
         try
             let! connectionString = pg.CreateDatabase()
+            do! seedInstanceKey connectionString
             let! fakeApp = FakeApp.start token webhookSecret
 
             let testNetwork: SafeHttp.TestNetwork =
@@ -138,11 +210,12 @@ let start (net: FederationNetwork) (pg: PostgresFixture) (fronts: (string * ICon
                 services.AddLogging(fun l -> l.ClearProviders() |> ignore) |> ignore
                 services.AddSingleton<SafeHttp.TestNetwork>(testNetwork) |> ignore
                 services.AddSingleton<IStartupFilter, AvatarFilter>() |> ignore
+                services.AddSingleton<IStartupFilter>(ProfilePageFilter fakeApp) |> ignore
                 services.AddSingleton<IStartupFilter>(InboxLogFilter inboxLog) |> ignore
 
             let overrides =
                 [ "Megafono:Domain", MegafonoDomain
-                  "Megafono:MasterKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes 32)
+                  "Megafono:MasterKey", Convert.ToBase64String masterKey
                   "Megafono:App:BaseUrl", fakeApp.Url
                   "Megafono:App:Token", token
                   "Megafono:App:WebhookSecret", webhookSecret
@@ -152,6 +225,11 @@ let start (net: FederationNetwork) (pg: PostgresFixture) (fronts: (string * ICon
                   "Megafono:Ports:BindAddress", "0.0.0.0"
                   "Megafono:Federation:AllowPrivateAddresses", "true"
                   "ConnectionStrings:Database", connectionString ]
+                // `MEGAFONO_CAPTURE_DIR=<dir> dotnet test ...` keeps every verified inbound request as a fixture (T085)
+                @ (match Environment.GetEnvironmentVariable "MEGAFONO_CAPTURE_DIR" with
+                   | null
+                   | "" -> []
+                   | dir -> [ "Megafono:Testing:CaptureInbound", dir ])
 
             let app = Megafono.Program.buildAppWith configure [| "--environment"; "Development" |] overrides
             do! app.StartAsync()
