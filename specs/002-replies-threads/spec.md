@@ -250,3 +250,5 @@ the home timeline.
   remote reply that mentions neither the thread owner nor a local user) are not seen.
 - The thread owner is the author of the root object; for Frunchy that is the series Group.
 - Threads are created by the app with the existing publish call, using an idempotency key per thread.
+- Agreed with Frunchy (2026-10-10): the shapes in contracts/, with `comment:{id}` keys, edits and deletes through
+  the existing update and delete calls, and series announced widely only after the blocks task lands.

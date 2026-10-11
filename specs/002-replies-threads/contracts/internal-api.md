@@ -9,7 +9,7 @@ Same call as a post: `POST /internal/actors/{id}/objects`, with `object.inReplyT
 
 ```http
 POST /internal/actors/3f6c2a9e-…/objects
-Idempotency-Key: comment-8812
+Idempotency-Key: comment:8812
 ```
 
 ```json
@@ -45,7 +45,41 @@ episode page's `<link rel="alternate">` and `Link` header.
 
 Unchanged fields (`summary`, `sensitive`) on every publish and update; for a spoiler set both.
 
-## Edits and deletes of the app's replies
+## Editing and deleting the app's replies (and any published object)
 
-Unchanged: `PUT /internal/objects/{objectId}` and `DELETE /internal/objects/{objectId}` work on replies too; the
-Update and Delete go to the same recipients as the reply.
+Already in 001; they work on replies unchanged. Use them for a user editing or deleting a comment and for an
+operator removing one.
+
+```http
+PUT /internal/objects/{objectId}
+```
+
+Body: the `object` part of the publish request (`content`, `summary`, `sensitive`, …; `inReplyTo`, `type` and the
+audience can't change → 400). Sends `Update{Note}` with `updated` set to the same recipients as the reply (the
+replier's followers, the parent's remote author, mentioned actors). **200** with the publish response; **404**
+unknown; **410** deleted.
+
+```http
+DELETE /internal/objects/{objectId}
+```
+
+Sends `Delete{Tombstone}` to the same recipients; the object then answers 410 to those who could see it, leaves the
+thread's `replies` collection, and repeat calls answer **202**. Copies already on other servers may stay (a
+protocol limit; the docs say so).
+
+## Idempotency keys
+
+Opaque to Megáfono and scoped per actor; any string up to 200 characters. Frunchy's convention: `thread:{seriesId}:{episodeKey}`
+for threads and `comment:{id}` for comments.
+
+## Actor ids and handles for non-user actors
+
+The actor lookup may answer any mix of people and other accounts (for Frunchy: `users.id` uuids and
+`series-{crunchyrollSeriesId}`). Megáfono requires only:
+
+- **ids**: `^[A-Za-z0-9_-]{1,64}$`, never changed and never reassigned (constitution Principle IV);
+- **handles**: one live handle maps to one id at a time (a collision is refused), lowercase, within the handle
+  rule of the app contract (letters, digits, underscore today; inner dashes once the pending handle fix lands;
+  at most 30 characters). Keeping user and series handles apart is the app's job.
+- **Group**: `type: "Group"` is the only Group-specific field. Use `locked: false` so follows are accepted at once;
+  `name`, `summary`, `iconUrl` and `profileUrl` as for users (the series page as `profileUrl`).
