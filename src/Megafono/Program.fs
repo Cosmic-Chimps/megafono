@@ -80,6 +80,8 @@ let private register (options: Config.MegafonoOptions) (services: IServiceCollec
         env)
     |> ignore
 
+    services.AddSingleton<RateLimits.RateLimits>(RateLimits.create options) |> ignore
+
     services.AddSingleton<Workers>(fun sp ->
         let dataSource = sp.GetRequiredService<NpgsqlDataSource>()
         let time = sp.GetRequiredService<TimeProvider>()
@@ -161,13 +163,16 @@ let buildAppWith (configure: IServiceCollection -> unit) (args: string[]) (overr
 
     let ports = lazy (PortGuard.boundPorts (app.Services.GetRequiredService<IServer>()) options.Ports)
     app.Use(PortGuard.middleware options.App.Token ports) |> ignore
+    app.Use(RateLimits.middleware (app.Services.GetRequiredService<RateLimits.RateLimits>())) |> ignore
 
     let endpoints =
         [ GET [ route "/health" (Health.handler (app.Services.GetRequiredService<NpgsqlDataSource>())) ] ]
         @ Federation.WebFinger.endpoints
         @ Federation.NodeInfo.endpoints
         @ Federation.Actors.endpoints
+        @ Federation.Inbox.endpoints
         @ Internal.Actors.endpoints
+        @ Internal.Follows.endpoints
 
     app.UseRouting().UseOxpecker endpoints |> ignore
 

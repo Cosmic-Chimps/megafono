@@ -120,3 +120,22 @@ type WebFingerTests(pg: PostgresFixture) =
             let! response = w.Host.FederationClient().GetAsync(resource "acct:alex@megafono.test")
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode)
         }
+
+    [<Fact>]
+    member _.``R-02 the instance actor can be webfingered, because servers check every actor they dereference``() : Task =
+        task {
+            let! w = start pg
+            use _ = MegafonoHost.disposer w.Host
+            let! response = w.Host.FederationClient().GetAsync(resource "acct:megafono.test@megafono.test")
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode)
+            let! text = response.Content.ReadAsStringAsync()
+            use json = JsonDocument.Parse text
+            Assert.Equal("acct:megafono.test@megafono.test", json.RootElement.GetProperty("subject").GetString())
+            let self = json.RootElement.GetProperty("links")[0]
+            Assert.Equal("self", self.GetProperty("rel").GetString())
+            Assert.Equal("https://megafono.test/ap/actor", self.GetProperty("href").GetString())
+
+            // Another domain's instance actor is not ours
+            let! other = w.Host.FederationClient().GetAsync(resource "acct:other.example@other.example")
+            Assert.Equal(HttpStatusCode.NotFound, other.StatusCode)
+        }

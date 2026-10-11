@@ -18,6 +18,7 @@
     <Compile Include="HarnessTests.fs" />
     <Compile Include="MastodonHarnessTests.fs" />
     <Compile Include="DiscoveryTests.fs" />
+    <Compile Include="InboundFollowTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

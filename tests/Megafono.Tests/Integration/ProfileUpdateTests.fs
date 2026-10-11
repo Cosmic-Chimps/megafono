@@ -181,3 +181,31 @@ type ProfileUpdateTests(pg: PostgresFixture) =
             let! onFederation = w.Host.FederationClient().PutAsync("/internal/actors/u-1", null)
             Assert.Equal(HttpStatusCode.NotFound, onFederation.StatusCode)
         }
+
+    [<Fact>]
+    member _.``Principle V the stored profile and its Update are saved in one transaction``() : Task =
+        task {
+            let! w = start pg
+            use _ = MegafonoHost.disposer w.Host
+            do! follower w w.One "bob" false "accepted"
+
+            // Make the queueing step fail after the profile write: the whole transaction must roll back
+            do! Db.execute w.Db "ALTER TABLE deliveries RENAME TO deliveries_away"
+            rename w "Lost If Not Atomic"
+            let! failed, _ = put w "u-1"
+            Assert.Equal(HttpStatusCode.InternalServerError, failed)
+
+            let! name = Db.scalar w.Db "SELECT name FROM local_actors WHERE app_user_id = 'u-1'"
+            Assert.NotEqual<string>("Lost If Not Atomic", string name)
+            let! activities = Db.count w.Db "SELECT count(*) FROM activities WHERE activity_type = 'Update'"
+            Assert.Equal(0L, activities)
+
+            // The queue works again: the same call now stores the change and announces it, since nothing was half-done
+            do! Db.execute w.Db "ALTER TABLE deliveries_away RENAME TO deliveries"
+            let! status, body = put w "u-1"
+            Assert.Equal(HttpStatusCode.Accepted, status)
+            use result = JsonDocument.Parse body
+            Assert.True(result.RootElement.GetProperty("changed").GetBoolean())
+            Assert.Equal(1, result.RootElement.GetProperty("deliveries").GetInt32())
+            do! waitUntil "the Update" (TimeSpan.FromSeconds 20.0) (fun () -> w.One.Posts.Length = 1)
+        }

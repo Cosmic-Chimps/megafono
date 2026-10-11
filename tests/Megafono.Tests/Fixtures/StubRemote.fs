@@ -219,6 +219,13 @@ type StubRemote() =
     member _.Sign(name: string, httpMethod: string, url: string, body: byte[] option) : (string * string) list =
         HttpSignatures.sign (keyIdOf name) rsa DateTimeOffset.UtcNow httpMethod (Uri url) body
 
+    /// Same, with the clock the signature carries (for stale-date tests)
+    member _.SignAt(name: string, httpMethod: string, url: string, body: byte[] option, at: DateTimeOffset) : (string * string) list =
+        HttpSignatures.sign (keyIdOf name) rsa at httpMethod (Uri url) body
+
+    /// The key this server signs with: tests use it to build signatures by hand
+    member _.PrivateKey = rsa
+
     member _.Start() : Task =
         task {
             let builder = WebApplication.CreateBuilder()

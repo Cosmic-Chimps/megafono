@@ -33,20 +33,32 @@ type LookupResult =
     | UnavailableWithFallback of LocalActor
     | UnavailableNoFallback
 
-/// What an explicit profile refresh found
-type RefreshResult =
-    /// The profile was read again from the app. `Changed` is true for a new actor or when anything a remote
-    /// server shows differs from what was stored before.
-    | Refreshed of actor: LocalActor * changed: bool
-    | RefreshNotFound
-    /// The app did not answer usefully; nothing was changed
-    | RefreshUnavailable
+/// What the app's answer says, validated (data-model.md "Validation rules")
+type AppProfile =
+    { Id: string
+      Handle: string
+      Name: string
+      Summary: string option
+      IconUrl: string option
+      ProfileUrl: string
+      Type: string
+      Locked: bool }
+
+/// What the app answered to an explicit profile fetch
+type FetchResult =
+    | Fetched of AppProfile
+    | FetchNotFound
+    | FetchUnavailable
 
 type AppClient =
     { ByHandle: string -> Task<LookupResult>
       ById: string -> Task<LookupResult>
-      /// Always asks the app (no 5 minute cache) and reports whether the profile changed (FR-007)
-      Refresh: string -> Task<RefreshResult> }
+      /// Always asks the app (no 5 minute cache) and stores nothing
+      Fetch: string -> Task<FetchResult>
+      /// Stores a fetched profile on the caller's transaction (so the write commits with what depends on it) and
+      /// returns the stored actor and whether anything shown in the actor document changed (FR-007). A handle
+      /// held by another live user raises the unique violation.
+      StoreIn: NpgsqlTransaction -> AppProfile -> Task<LocalActor * bool> }
 
 type Env =
     { DataSource: NpgsqlDataSource
@@ -63,17 +75,6 @@ type Env =
 let private freshFor = TimeSpan.FromMinutes 5.0
 let private fallbackFor = TimeSpan.FromHours 24.0
 let private requestTimeout = TimeSpan.FromSeconds 5.0
-
-/// What the app's answer says, validated (data-model.md "Validation rules")
-type AppProfile =
-    { Id: string
-      Handle: string
-      Name: string
-      Summary: string option
-      IconUrl: string option
-      ProfileUrl: string
-      Type: string
-      Locked: bool }
 
 let private actorTypes = set [ "Person"; "Service"; "Group" ]
 
@@ -200,12 +201,18 @@ let private bindProfile (command: NpgsqlCommand) (profile: AppProfile) (now: Dat
     add "profile" profile.ProfileUrl
     add "now" now.UtcDateTime
 
+/// A command on the data source, or on the caller's transaction when there is one
+let private commandFor (env: Env) (tx: NpgsqlTransaction option) (sql: string) : NpgsqlCommand =
+    match tx with
+    | Some t -> new NpgsqlCommand(sql, t.Connection, t)
+    | None -> env.DataSource.CreateCommand sql
+
 /// Updates the profile of a known id; a different handle is a handle change and is stored (nothing else about
 /// the identity moves). None when the id has no row yet.
-let private updateKnown (env: Env) (profile: AppProfile) (now: DateTimeOffset) =
+let private updateKnown (env: Env) (tx: NpgsqlTransaction option) (profile: AppProfile) (now: DateTimeOffset) =
     task {
         use command =
-            env.DataSource.CreateCommand
+            commandFor env tx
                 $"""UPDATE local_actors SET handle = @handle, actor_type = @type, locked = @locked, name = @name, summary = @summary,
                     icon_url = @icon, profile_url = @profile, profile_checked_at = @now
                     WHERE app_user_id = @id AND deleted_at IS NULL RETURNING {columns}"""
@@ -216,12 +223,12 @@ let private updateKnown (env: Env) (profile: AppProfile) (now: DateTimeOffset) =
 
 /// First sight of an id: the key pair is created and stored in the same insert (FR-006). If another lookup
 /// inserted the row first, the conflict clause only refreshes the profile, so the first key stays.
-let private insertNew (env: Env) (profile: AppProfile) (now: DateTimeOffset) =
+let private insertNew (env: Env) (tx: NpgsqlTransaction option) (profile: AppProfile) (now: DateTimeOffset) =
     task {
         let key = KeyVault.createActorKey env.Keys (Ids.actorId env.Domain profile.Id)
 
         use command =
-            env.DataSource.CreateCommand
+            commandFor env tx
                 $"""INSERT INTO local_actors (app_user_id, handle, actor_type, locked, name, summary, icon_url, profile_url,
                         profile_checked_at, public_key_pem, enc_private_key, created_at)
                     VALUES (@id, @handle, @type, @locked, @name, @summary, @icon, @profile, @now, @pem, @enc, @now)
@@ -238,13 +245,13 @@ let private insertNew (env: Env) (profile: AppProfile) (now: DateTimeOffset) =
         return stored.Value
     }
 
-let private store (env: Env) (profile: AppProfile) =
+let private store (env: Env) (tx: NpgsqlTransaction option) (profile: AppProfile) =
     task {
         let now = env.Time.GetUtcNow()
 
-        match! updateKnown env profile now with
+        match! updateKnown env tx profile now with
         | Some actor -> return actor
-        | None -> return! insertNew env profile now
+        | None -> return! insertNew env tx profile now
     }
 
 // ---- the call --------------------------------------------------------------------------------------------
@@ -303,7 +310,7 @@ let private lookup
             | Answered profile when not (accept profile) -> return unavailable "the answer is for a different user than asked"
             | Answered profile ->
                 try
-                    let! actor = store env profile
+                    let! actor = store env None profile
                     return Found actor
                 with :? PostgresException as e when e.SqlState = PostgresErrorCodes.UniqueViolation ->
                     // The new handle is still held by another live user: keep serving what we had
@@ -320,35 +327,36 @@ let private profileDiffers (before: LocalActor) (after: LocalActor) =
     || before.IconUrl <> after.IconUrl
     || before.ProfileUrl <> after.ProfileUrl
 
-let private refresh (env: Env) (id: string) : Task<RefreshResult> =
+let private fetch (env: Env) (id: string) : Task<FetchResult> =
     task {
         if not (Ids.isValidAppUserId id) then
-            return RefreshNotFound
+            return FetchNotFound
         else
-            let! previous = storedById env id
-
             match! call env $"/megafono/actors/{Uri.EscapeDataString id}" with
-            | Unknown -> return RefreshNotFound
+            | Unknown -> return FetchNotFound
             | Failed reason ->
-                env.Log.LogWarning("Profile refresh of {Id} failed: {Reason}", id, reason)
-                return RefreshUnavailable
-            | Answered profile when profile.Id <> id -> return RefreshUnavailable
-            | Answered profile ->
-                try
-                    let! actor = store env profile
+                env.Log.LogWarning("Profile fetch of {Id} failed: {Reason}", id, reason)
+                return FetchUnavailable
+            | Answered profile when profile.Id <> id -> return FetchUnavailable
+            | Answered profile -> return Fetched profile
+    }
 
-                    let changed =
-                        match previous with
-                        | Some before -> profileDiffers before actor
-                        | None -> true
+let private storeIn (env: Env) (tx: NpgsqlTransaction) (profile: AppProfile) : Task<LocalActor * bool> =
+    task {
+        let! previous = storedById env profile.Id
+        let! actor = store env (Some tx) profile
 
-                    return Refreshed(actor, changed)
-                with :? PostgresException as e when e.SqlState = PostgresErrorCodes.UniqueViolation ->
-                    return RefreshUnavailable
+        let changed =
+            match previous with
+            | Some before -> profileDiffers before actor
+            | None -> true
+
+        return actor, changed
     }
 
 let create (env: Env) : AppClient =
-    { Refresh = refresh env
+    { Fetch = fetch env
+      StoreIn = storeIn env
       ByHandle =
         fun handle ->
             match Ids.normalizeHandle handle with
