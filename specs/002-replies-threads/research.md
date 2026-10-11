@@ -21,6 +21,16 @@ Numbering continues 001's research (R-01 to R-15). **Unverified** items are conf
   local replies (third-server readers would never see remote comments); relying on `context` (not consumed by
   Mastodon or GoToSocial for loading).
 
+- **Verified (T017, Mastodon 4.7.3, GoToSocial 0.22.2)**: a Mastodon account that follows nobody in the thread
+  resolves the thread post by URL and, with the app's own reply stored and listed first in `replies`, sees that
+  reply in `/api/v1/statuses/:id/context` within the 60 s poll (the fetch of our `replies` collection when the status
+  is first resolved; the reply is on our host, so the host filter passes). A reply by a GoToSocial user (recorded by
+  Megáfono from its mention-addressed `Create`, listed after the local ones) did **not** show up at once: it appeared
+  in the Mastodon context about **318 s** after the reader resolved the root (the slow test polls the context every
+  10 s, up to 7.5 min), consistent with the "statuses at least 5 minutes old" rule of the full crawl. Until then the
+  thread shows only the replies from our own host. Run it with
+  `dotnet test --project tests/Megafono.Interop.Tests -- --explicit only --filter-trait "Suite=mastodon-slow"`.
+
 ### R-21 Pasting an app page URL
 
 - **Decision**: the app's page carries `<link rel="alternate" type="application/activity+json" href="<object id>">`
