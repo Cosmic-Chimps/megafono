@@ -69,6 +69,38 @@ type private AvatarFilter() =
 
                 next.Invoke app)
 
+/// Test-only: stands in for the app's profile pages. In a real deployment the gateway sends `/u/*` to the app, which
+/// links its profile to the actor (R-03): `<link rel="alternate" type="application/activity+json">` in the page and
+/// the same as a `Link` header. This serves `GET /u/{handle}` for the fake app's users.
+type private ProfilePageFilter(fakeApp: FakeApp.FakeApp) =
+    interface IStartupFilter with
+        member _.Configure(next: Action<IApplicationBuilder>) : Action<IApplicationBuilder> =
+            Action<IApplicationBuilder>(fun app ->
+                app.Use(
+                    Func<HttpContext, Func<Task>, Task>(fun ctx continuation ->
+                        let path = ctx.Request.Path.Value
+
+                        if ctx.Request.Method = "GET" && path.StartsWith "/u/" then
+                            let handle = path.Substring 3
+
+                            match fakeApp.Users.Values |> Seq.tryFind (fun u -> u.Handle = handle) with
+                            | Some user ->
+                                let actor = $"https://megafono.test/ap/actors/{user.Id}"
+                                ctx.Response.ContentType <- "text/html; charset=utf-8"
+                                ctx.Response.Headers["Link"] <- $"<{actor}>; rel=\"alternate\"; type=\"application/activity+json\""
+
+                                ctx.Response.WriteAsync
+                                    $"""<!doctype html><html><head><title>{user.Name}</title><link rel="alternate" type="application/activity+json" href="{actor}"></head><body><h1>{user.Name}</h1></body></html>"""
+                            | None ->
+                                ctx.Response.StatusCode <- 404
+                                Task.CompletedTask
+                        else
+                            continuation.Invoke())
+                )
+                |> ignore
+
+                next.Invoke app)
+
 /// What one POST to an inbox looked like on the wire, and how Megáfono answered
 type InboxRequest =
     { Path: string
@@ -178,6 +210,7 @@ let start (net: FederationNetwork) (pg: PostgresFixture) (fronts: (string * ICon
                 services.AddLogging(fun l -> l.ClearProviders() |> ignore) |> ignore
                 services.AddSingleton<SafeHttp.TestNetwork>(testNetwork) |> ignore
                 services.AddSingleton<IStartupFilter, AvatarFilter>() |> ignore
+                services.AddSingleton<IStartupFilter>(ProfilePageFilter fakeApp) |> ignore
                 services.AddSingleton<IStartupFilter>(InboxLogFilter inboxLog) |> ignore
 
             let overrides =
@@ -192,6 +225,11 @@ let start (net: FederationNetwork) (pg: PostgresFixture) (fronts: (string * ICon
                   "Megafono:Ports:BindAddress", "0.0.0.0"
                   "Megafono:Federation:AllowPrivateAddresses", "true"
                   "ConnectionStrings:Database", connectionString ]
+                // `MEGAFONO_CAPTURE_DIR=<dir> dotnet test ...` keeps every verified inbound request as a fixture (T085)
+                @ (match Environment.GetEnvironmentVariable "MEGAFONO_CAPTURE_DIR" with
+                   | null
+                   | "" -> []
+                   | dir -> [ "Megafono:Testing:CaptureInbound", dir ])
 
             let app = Megafono.Program.buildAppWith configure [| "--environment"; "Development" |] overrides
             do! app.StartAsync()

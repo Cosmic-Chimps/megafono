@@ -18,6 +18,7 @@
     <Compile Include="Infrastructure/InstanceKey.fs" />
     <Compile Include="Infrastructure/AppClient.fs" />
     <Compile Include="Infrastructure/RemoteActors.fs" />
+    <Compile Include="Infrastructure/InboundCapture.fs" />
     <Compile Include="Infrastructure/RateLimits.fs" />
     <Compile Include="Infrastructure/Outbox.fs" />
     <Compile Include="Federation/Http.fs" />

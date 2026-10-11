@@ -1,0 +1,63 @@
+{
+  "capturedAt": "2026-10-11T00:50:38.0650740Z",
+  "activityType": "Follow",
+  "method": "POST",
+  "pathAndQuery": "/ap/actors/u-alexoayhd7/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "Mastodon/4.7.3 (http.rb/5.3.1; \u002Bhttps://mastodon.test/)"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/activity\u002Bjson"
+    },
+    {
+      "name": "Date",
+      "value": "Sun, 11 Oct 2026 00:50:38 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "250"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=qpvdUGtvNjoWLM2wq2n\u002BaVahHJQb3/8FUSyzAJkh9XA="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://mastodon.test/ap/users/117419529657200055#rsa-5026fb53bc47ff79\u0022,algorithm=\u0022rsa-sha256\u0022,headers=\u0022host date content-type digest (request-target)\u0022,signature=\u0022gfgdPab7BhQV5Lc4Z9rBmuPJuwGT4J1j5xFSkdlTJURffQd/dAAr4RZjI9iEziuAPe5ibQe5Mp9Olqdb0pYmiPE90q2mA9m0skCK1HrKmhTSH7Y8/chNpT0Cu5c0dOvnBthtSVH8oUYgANzWfPt2vILP4M/BoKQZNEEXaBLsJ/JlUMU64WMfp5zKGNRUdnLzPlYiZH31ya8vnDVIcy8RqPAmvHpHXcQ9XoLIrAv\u002B/HPzQjlUEkqr6ekoWAjUue0FATinQgMcLDzu5eCtAvredcy\u002BE5Tvfd0mRZyePrwFs8puZpu0X\u002BqNsbIwsY1dUmu6EBDyDh7lYUzVbzA57buGxw==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.24.0.9"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6Imh0dHBzOi8vd3d3LnczLm9yZy9ucy9hY3Rpdml0eXN0cmVhbXMiLCJpZCI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC85YmJmNDgxMi1mNGExLTQ3NzktYWE5Yi1mNWQ3ZTRhZmYwNzEiLCJ0eXBlIjoiRm9sbG93IiwiYWN0b3IiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDE5NTI5NjU3MjAwMDU1Iiwib2JqZWN0IjoiaHR0cHM6Ly9tZWdhZm9uby50ZXN0L2FwL2FjdG9ycy91LWFsZXhvYXloZDcifQ==",
+  "body": "{\u0022@context\u0022:\u0022https://www.w3.org/ns/activitystreams\u0022,\u0022id\u0022:\u0022https://mastodon.test/9bbf4812-f4a1-4779-aa9b-f5d7e4aff071\u0022,\u0022type\u0022:\u0022Follow\u0022,\u0022actor\u0022:\u0022https://mastodon.test/ap/users/117419529657200055\u0022,\u0022object\u0022:\u0022https://megafono.test/ap/actors/u-alexoayhd7\u0022}",
+  "signer": {
+    "actorId": "https://mastodon.test/ap/users/117419529657200055",
+    "keyId": "https://mastodon.test/ap/users/117419529657200055#rsa-5026fb53bc47ff79",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArWr3QG6HnlNAx8//oK0a\nECWcasz4nWm5pZ9iydsxEwpv9BmVl8o3UglzVMNzfutH0nRQMuRJW7NCIau2ehLa\nWdpW4k3wgXs6sSbmizWLBtCw92elrwa6HbNVRbVIG0Jnx7mtK\u002BzmKTE9mwbo4DWU\nhprTJ0MKkOFg8mPuUP8EEYYUZXPgRyzjxUx32W9GPKQ8XrqvrlWT5Sqc2R2pmUSx\nPNkxGqpzAdw/d1Mr7ycJl5OnVmvZZGEROEDAYHuoFeBm0ygxM\u002BNN1TmEpazF0xG\u002B\n14LAbUkv1x4896gOOwYILtFQBLo7kBK31VtuYGcMxS1hO5231su7RFt5wrqG5fER\nhQIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}

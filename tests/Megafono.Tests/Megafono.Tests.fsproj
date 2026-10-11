@@ -49,6 +49,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="Fixtures/payloads/*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="Testcontainers.PostgreSql" />
   </ItemGroup>

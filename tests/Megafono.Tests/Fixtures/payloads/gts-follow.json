@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-10-11T00:50:07.0922010Z",
+  "activityType": "Follow",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "gotosocial/0.22.2\u002Bgit-fb2bf13 (\u002Bhttps://gts.test)"
+    },
+    {
+      "name": "Accept-Charset",
+      "value": "utf-8"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "zstd,gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/ld\u002Bjson; profile=\u0022https://www.w3.org/ns/activitystreams\u0022"
+    },
+    {
+      "name": "Date",
+      "value": "Sun, 11 Oct 2026 00:50:07 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "291"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=MIS7uFTIcBo2WRDFGv\u002B626qd/cK4tK8BARq8un9Cfbc="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://gts.test/users/bobxjjn6/main-key\u0022,algorithm=\u0022hs2019\u0022,headers=\u0022(request-target) host date digest\u0022,signature=\u0022j1fa295JqB5lt2dm0SYt7dNm5wp1mu8Ci0OyDCIXAq1KMSXBySLd4hZab1MEwTbjv7f9kFvAsMFyNxe6wTVLMiGnUB/I2PqRROWpfHQWtjiCJGxGU3wirmf6IvkePo41mIMemrUE/lTMM6mBriKcy8UETRxK6\u002B4bqg3OyQZOeNQljnmsVGLk9o8GbBWFC/tcD4cgugk38knMzS8yxiiCzbslJvhsiVXgAISdqX0z\u002BSg\u002B/ouKE5hcb5JCe3vP7Muzj2ohezVrZFASOchAdijtl9wSMEncP7aHnTDzGhJEVVhSy9th/4DfeSuV9is9IJ8KivN0b8sswBCtLuDAoRs8xQ==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.24.0.3"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6Imh0dHBzOi8vd3d3LnczLm9yZy9ucy9hY3Rpdml0eXN0cmVhbXMiLCJhY3RvciI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9ieGpqbjYiLCJpZCI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9ieGpqbjYvZm9sbG93LzAxQlhRTjZCRTZLRlpIVkFUMlI1VzFZMlFEIiwib2JqZWN0IjoiaHR0cHM6Ly9tZWdhZm9uby50ZXN0L2FwL2FjdG9ycy91LWFsZXhveHFrN2UiLCJ0byI6Imh0dHBzOi8vbWVnYWZvbm8udGVzdC9hcC9hY3RvcnMvdS1hbGV4b3hxazdlIiwidHlwZSI6IkZvbGxvdyJ9",
+  "body": "{\u0022@context\u0022:\u0022https://www.w3.org/ns/activitystreams\u0022,\u0022actor\u0022:\u0022https://gts.test/users/bobxjjn6\u0022,\u0022id\u0022:\u0022https://gts.test/users/bobxjjn6/follow/01BXQN6BE6KFZHVAT2R5W1Y2QD\u0022,\u0022object\u0022:\u0022https://megafono.test/ap/actors/u-alexoxqk7e\u0022,\u0022to\u0022:\u0022https://megafono.test/ap/actors/u-alexoxqk7e\u0022,\u0022type\u0022:\u0022Follow\u0022}",
+  "signer": {
+    "actorId": "https://gts.test/users/bobxjjn6",
+    "keyId": "https://gts.test/users/bobxjjn6/main-key",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArESF8QpKI/ZNgU1fywFj\nusLlGd8stqpIq/Ggpxd3\u002BrxzHS5lsYc98TvYH7x7iWPx\u002B6A5o3WFrsWkzr/dsOoL\n\u002BKp380EkvmYSQVIwEcs7JyyPZ1Yq/L/bc4ZOjKrIeyMkIHDrS7QGWuhKZ66Wg3XP\nalNS01fKztBM0FyuSKZmNFTrF1xK3q9YPyfH8O5q0qhnMuevzEOB46VAbSE720Hb\nP5aiRkRWnWGjv3dmfj/yjODAIwrxQUx/UQyF/Fz8SUN1eAz2hLfDtdifhInnx\u002BwL\nhNyOLjLn2kDGI/aBNpUQjyU/EoAODBIc1Kw7iRJWd9w6F6YZHpOCk9s5ZrttCh0a\nlQIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}
