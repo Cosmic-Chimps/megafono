@@ -50,7 +50,10 @@ jobs:
       - run: dotnet build
 
       # Exit code 8 means no test matched: the load suite may not exist yet, which is not a failure
+      # DOTNET_PROCESSOR_COUNT=2 makes the runtime size its thread pool and GC for the 2 vCPU target of SC-003
       - name: Load suite
+        env:
+          DOTNET_PROCESSOR_COUNT: "2"
         run: |
           mkdir -p test-output
           dotnet test --project tests/Megafono.Tests --no-build -- --filter-trait "Suite=load" --ignore-exit-code 8 2>&1 | tee test-output/load.txt
