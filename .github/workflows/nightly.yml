@@ -1,6 +1,6 @@
 name: Nightly
 
-# The slow suites: interop against a real Mastodon, and load
+# The slow suites: interop against a real Mastodon, the deployment shape (built images), and load
 on:
   schedule:
     - cron: "17 3 * * *"
@@ -32,6 +32,35 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mastodon-test-output
+          path: |
+            test-output/
+            **/TestResults/
+          if-no-files-found: ignore
+
+  deployment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - run: dotnet build
+
+      # Builds the three images from deploy/Dockerfile.* and runs them behind the gateway with GoToSocial (T075).
+      # The test is Explicit, so it only runs when asked for.
+      - name: Deployment shape
+        run: |
+          mkdir -p test-output
+          dotnet test --project tests/Megafono.Interop.Tests --no-build -- --explicit on --filter-trait "Suite=deployment" 2>&1 | tee test-output/deployment.txt
+
+      - name: Upload test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-test-output
           path: |
             test-output/
             **/TestResults/
