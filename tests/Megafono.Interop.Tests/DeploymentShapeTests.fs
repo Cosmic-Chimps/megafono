@@ -14,6 +14,7 @@ open System.Net.Http
 open System.Text
 open System.Text.RegularExpressions
 open System.Threading.Tasks
+open Docker.DotNet.Models
 open DotNet.Testcontainers.Builders
 open DotNet.Testcontainers.Containers
 open DotNet.Testcontainers.Images
@@ -56,6 +57,12 @@ let private adminPassword = Convert.ToHexString(Security.Cryptography.RandomNumb
 // Megáfono is on both networks, so the test uses a name nothing else has
 let private dbAlias = "megafono-deployment-db"
 
+// compose.yaml gives `internal` a fixed subnet and Megáfono a fixed address on it, so the internal API listener can bind to
+// that address alone. The test does the same: only a container on `internal` can reach 8081.
+let private internalSubnet = "172.31.77.0/24"
+let private megafonoInternalAddress = "172.31.77.10"
+let private megafonoInternalAlias = "megafono-internal"
+
 let private logsOf (c: IContainer) =
     task {
         try
@@ -87,7 +94,13 @@ type DeploymentShapeTests(net: FederationNetwork) =
                 }
 
             // 2. The deployment's own networks: `edge` is the federation network (GoToSocial is on it), `internal` has no route out
-            let internalNet = NetworkBuilder().WithCreateParameterModifier(fun p -> p.Internal <- true).Build()
+            let internalNet =
+                NetworkBuilder()
+                    .WithCreateParameterModifier(fun p ->
+                        p.Internal <- true
+                        p.IPAM <- IPAM(Config = ResizeArray [ IPAMConfig(Subnet = internalSubnet) ]))
+                    .Build()
+
             do! internalNet.CreateAsync()
 
             let started = Collections.Generic.List<IContainer>()
@@ -131,7 +144,20 @@ type DeploymentShapeTests(net: FederationNetwork) =
                         ContainerBuilder(megafonoImage)
                             .WithNetwork(net.Network)
                             .WithNetwork(internalNet)
-                            .WithNetworkAliases("megafono")
+                            // The name `megafono` exists on the federation network, `megafono-internal` and the fixed address
+                            // only on the internal one (like the compose file: the sample uses the latter for the internal API)
+                            .WithCreateParameterModifier(fun p ->
+                                if isNull p.NetworkingConfig then p.NetworkingConfig <- NetworkingConfig()
+                                if isNull p.NetworkingConfig.EndpointsConfig then p.NetworkingConfig.EndpointsConfig <- Collections.Generic.Dictionary<string, EndpointSettings>()
+                                let endpoints = p.NetworkingConfig.EndpointsConfig
+                                // One settings object per network: the builder may hand the same instance to both
+                                endpoints[net.Network.Name] <- EndpointSettings(Aliases = ResizeArray [ "megafono" ])
+
+                                endpoints[internalNet.Name] <-
+                                    EndpointSettings(
+                                        Aliases = ResizeArray [ megafonoInternalAlias ],
+                                        IPAMConfig = EndpointIPAMConfig(IPv4Address = megafonoInternalAddress)
+                                    ))
                             .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
                             .WithEnvironment("Megafono__Domain", MegafonoDomain)
                             .WithEnvironment("Megafono__MasterKey", masterKey)
@@ -139,6 +165,7 @@ type DeploymentShapeTests(net: FederationNetwork) =
                             .WithEnvironment("Megafono__App__Token", apiToken)
                             .WithEnvironment("Megafono__App__WebhookSecret", webhookSecret)
                             .WithEnvironment("ConnectionStrings__Database", $"Host={dbAlias};Database=megafono;Username=megafono;Password={dbPassword}")
+                            .WithEnvironment("Megafono__Ports__InternalBindAddress", megafonoInternalAddress)
                             .WithEnvironment("Megafono__TrustedProxies", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16")
                             .WithEnvironment("Megafono__Federation__AllowPrivateAddresses", "true")
                             .WithEnvironment("SSL_CERT_FILE", "/certs/ca.pem")
@@ -154,7 +181,7 @@ type DeploymentShapeTests(net: FederationNetwork) =
                             .WithNetwork(internalNet)
                             .WithNetworkAliases("sample")
                             .WithEnvironment("APP__DOMAIN", MegafonoDomain)
-                            .WithEnvironment("MEGAFONO__URL", "http://megafono:8081")
+                            .WithEnvironment("MEGAFONO__URL", $"http://{megafonoInternalAlias}:8081")
                             .WithEnvironment("MEGAFONO__TOKEN", apiToken)
                             .WithEnvironment("MEGAFONO__WEBHOOKSECRET", webhookSecret)
                             .WithEnvironment("SAMPLE__ADMINPASSWORD", adminPassword)
@@ -281,12 +308,29 @@ type DeploymentShapeTests(net: FederationNetwork) =
                     // From the federation network (where GoToSocial lives): the gateway's address has no 8081
                     let! refused = curl.ExecAsync [| "curl"; "-sS"; "-m"; "5"; $"http://{MegafonoDomain}:8081/health" |]
                     Assert.NotEqual(Nullable 0L, refused.ExitCode)
-                    // ...and the one door that does exist on 8081 asks for the bearer token, so nothing is served without it
+                    // ...and the name `megafono` on 8081: the internal listener is not bound to Megáfono's address on the
+                    // federation network, so the connection is refused, whatever the bearer token (curl exit code 7)
+                    let! edgeRefused =
+                        curl.ExecAsync [| "curl"; "-sS"; "-m"; "5"; "-H"; $"Authorization: Bearer {apiToken}"; "http://megafono:8081/internal/actors/x/followers" |]
+                    Assert.Equal(Nullable 7L, edgeRefused.ExitCode)
+                    // Federation port, same host: reachable (the gateway's route), and the federation port has no /internal
+                    let! federationInternal =
+                        curl.ExecAsync [| "curl"; "-sS"; "-m"; "5"; "-o"; "/dev/null"; "-w"; "%{http_code}"; "-H"; $"Authorization: Bearer {apiToken}"; "http://megafono:8080/internal/actors/x/followers" |]
+                    Assert.Equal("404", federationInternal.Stdout.Trim())
+
+                    // From the internal network the door exists and asks for the bearer token
+                    let internalCurl =
+                        ContainerBuilder(CurlImage)
+                            .WithNetwork(internalNet)
+                            .WithEntrypoint("sleep", "infinity")
+                            .Build()
+
+                    let! _ = start internalCurl
                     let! unauthenticated =
-                        curl.ExecAsync [| "curl"; "-sS"; "-m"; "5"; "-o"; "/dev/null"; "-w"; "%{http_code}"; "http://megafono:8081/internal/actors/x/followers" |]
+                        internalCurl.ExecAsync [| "curl"; "-sS"; "-m"; "5"; "-o"; "/dev/null"; "-w"; "%{http_code}"; $"http://{megafonoInternalAlias}:8081/internal/actors/x/followers" |]
                     Assert.Equal("401", unauthenticated.Stdout.Trim())
                     let! wrongPort =
-                        curl.ExecAsync [| "curl"; "-sS"; "-m"; "5"; "-o"; "/dev/null"; "-w"; "%{http_code}"; "http://megafono:8081/ap/actor" |]
+                        internalCurl.ExecAsync [| "curl"; "-sS"; "-m"; "5"; "-o"; "/dev/null"; "-w"; "%{http_code}"; $"http://{megafonoInternalAlias}:8081/ap/actor" |]
                     Assert.Equal("404", wrongPort.Stdout.Trim()) // nothing federated is served on the internal port either
                 with e ->
                     // A failed run is only useful with the containers' logs

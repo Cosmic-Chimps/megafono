@@ -38,15 +38,18 @@ The deployment has four services and two networks:
 | Service | Network | Notes |
 |---|---|---|
 | `gateway` | `edge` | The only published port (443). TLS from the mounted certificate. |
-| `megafono` | `edge`, `internal` | Federation port 8080 is routed by the gateway; the internal API (8081) is used by your app over `internal`. |
+| `megafono` | `edge`, `internal` | Federation port 8080 is routed by the gateway; the internal API (8081) listens only on Megáfono's address on `internal` (`172.31.0.10`) and your app reaches it there as `megafono-internal`. |
 | `sample` | `edge`, `internal` | Your app's stand-in. Reaches the internal API over `internal`. |
 | `db` | `internal` | Postgres 17, data in the `db-data` volume. |
 
 `internal` is a Docker network with no route to the outside. Nothing publishes 8081, and the gateway has no route to it.
-Be aware that Megáfono listens on every interface of the networks it joins, so a container on `edge` can open a
-connection to `megafono:8081`; what stops it is the bearer token (`/internal/*` answers 401 without it, and nothing
-else is served on that port). Keep other containers off `edge` and keep the token secret. The deployment test
-(`DeploymentShapeTests`) checks exactly this.
+The internal API listener binds to `Megafono__Ports__InternalBindAddress`, which compose sets to Megáfono's fixed
+address on `internal` (`172.31.0.10`), so a container on `edge` gets a refused connection on port 8081 and the bearer
+token is a second lock, not the only one. The federation listener keeps `Megafono__Ports__BindAddress` (`0.0.0.0`). If you
+run Megáfono outside this compose file, give the internal listener an address that only your app's network reaches
+(or put the token's secrecy in charge of the boundary, knowing that every network the process joins can open the port).
+The deployment test (`DeploymentShapeTests`) checks both: 8081 refuses connections from `edge`, and answers 401 without
+the token from `internal`.
 
 Megáfono creates its own schema at startup and answers `GET /health` (on the internal port) with `200` when the
 database is reachable and `503` when it is not.
@@ -67,7 +70,8 @@ a JSON file) plus the connection string. A bad value stops startup with every pr
 | `Megafono__App__WebhookSecret` | yes | | Signs webhooks (`Megafono-Signature`, HMAC-SHA256 of `"{t}.{body}"`). |
 | `Megafono__Ports__Federation` | no | `8080` | Federation port, the one the gateway routes to. |
 | `Megafono__Ports__Internal` | no | `8081` | Internal API port. Must differ from the federation port; never route it. |
-| `Megafono__Ports__BindAddress` | no | `0.0.0.0` | Interface both ports bind to (an IP address). |
+| `Megafono__Ports__BindAddress` | no | `0.0.0.0` | Interface the federation port binds to (an IP address); also the internal port's, unless the next setting is given. |
+| `Megafono__Ports__InternalBindAddress` | no | same as `BindAddress` | Interface the internal API port binds to (an IP address). Set it to the address Megáfono has on the network your app shares with it, so no other network can open the port. |
 | `Megafono__Delivery__PerHost` | no | `2` | Concurrent deliveries to one remote host (at least 1). |
 | `Megafono__Delivery__Global` | no | `32` | Concurrent deliveries overall (at least 1). |
 | `Megafono__RateLimit__PerAddress` | no | `600` | Inbound requests per source address per window (at least 1). |

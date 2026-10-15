@@ -158,11 +158,12 @@ let buildAppWith (configure: IServiceCollection -> unit) (args: string[]) (overr
 
     // Federation port first, internal second: PortGuard.boundPorts relies on this order
     let address = IPAddress.Parse options.Ports.BindAddress
+    let internalAddress = IPAddress.Parse options.Ports.InternalBindAddress
 
     builder.WebHost.ConfigureKestrel(fun (kestrel: KestrelServerOptions) ->
         kestrel.AddServerHeader <- false
         kestrel.Listen(address, options.Ports.Federation)
-        kestrel.Listen(address, options.Ports.Internal))
+        kestrel.Listen(internalAddress, options.Ports.Internal))
     |> ignore
 
     configure builder.Services

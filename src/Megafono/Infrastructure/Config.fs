@@ -15,8 +15,11 @@ type SoftwareOptions = { Name: string; Version: string }
 type PortOptions =
     { Federation: int
       Internal: int
-      /// Interface both listeners bind to; tests use 127.0.0.1
-      BindAddress: string }
+      /// Interface the federation listener binds to (the internal one too, unless InternalBindAddress says otherwise); tests use 127.0.0.1
+      BindAddress: string
+      /// Interface the internal API listener binds to. Giving it an address only the internal network reaches keeps the
+      /// port unreachable from the federation network (defaults to BindAddress)
+      InternalBindAddress: string }
 
 type DeliveryOptions = { PerHost: int; Global: int }
 
@@ -125,7 +128,8 @@ let read (config: IConfiguration) : MegafonoOptions * string list =
           Ports =
             { Federation = number "Ports:Federation" 8080
               Internal = number "Ports:Internal" 8081
-              BindAddress = text "Ports:BindAddress" "0.0.0.0" }
+              BindAddress = text "Ports:BindAddress" "0.0.0.0"
+              InternalBindAddress = text "Ports:InternalBindAddress" (text "Ports:BindAddress" "0.0.0.0") }
           Delivery =
             { PerHost = number "Delivery:PerHost" 2
               Global = number "Delivery:Global" 32 }
@@ -168,6 +172,9 @@ let validate (environmentName: string) (options: MegafonoOptions) : string list 
 
       if not (fst (Net.IPAddress.TryParse options.Ports.BindAddress)) then
           "Megafono:Ports:BindAddress must be an IP address"
+
+      if not (fst (Net.IPAddress.TryParse options.Ports.InternalBindAddress)) then
+          "Megafono:Ports:InternalBindAddress must be an IP address"
 
       if (decodeMasterKey options.MasterKey).IsNone then
           "Megafono:MasterKey must be base64 of exactly 32 bytes (for example `openssl rand -base64 32`)"

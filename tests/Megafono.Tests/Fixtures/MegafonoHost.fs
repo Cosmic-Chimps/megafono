@@ -101,7 +101,7 @@ let start (s: HostSettings) : Task<MegafonoHost> =
     task {
         let app = build s
         do! app.StartAsync()
-        let ports = PortGuard.boundPorts (app.Services.GetRequiredService<IServer>()) { Federation = 0; Internal = 0; BindAddress = "127.0.0.1" }
+        let ports = PortGuard.boundPorts (app.Services.GetRequiredService<IServer>()) { Federation = 0; Internal = 0; BindAddress = "127.0.0.1"; InternalBindAddress = "127.0.0.1" }
         return new MegafonoHost(app, $"http://127.0.0.1:{ports.Federation}", $"http://127.0.0.1:{ports.Internal}", s.Time, s.ConnectionString)
     }
 

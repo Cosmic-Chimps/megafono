@@ -190,7 +190,7 @@ type InteropMegafono(app: WebApplication, lease: PortLease, fakeApp: FakeApp.Fak
 
     /// The internal API (never behind Caddy); needs `MegafonoInterop.token`
     member _.InternalUrl =
-        let ports = PortGuard.boundPorts (app.Services.GetRequiredService<Microsoft.AspNetCore.Hosting.Server.IServer>()) { Federation = lease.Port; Internal = 0; BindAddress = "0.0.0.0" }
+        let ports = PortGuard.boundPorts (app.Services.GetRequiredService<Microsoft.AspNetCore.Hosting.Server.IServer>()) { Federation = lease.Port; Internal = 0; BindAddress = "0.0.0.0"; InternalBindAddress = "0.0.0.0" }
         $"http://127.0.0.1:{ports.Internal}"
 
     /// The fake host app: add users here

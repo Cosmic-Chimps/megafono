@@ -34,7 +34,7 @@ services:
     restart: unless-stopped
     environment:
       APP__DOMAIN: ${DOMAIN:?set DOMAIN}
-      MEGAFONO__URL: http://megafono:8081 # the internal API, reachable only on the internal network
+      MEGAFONO__URL: http://megafono-internal:8081 # the internal API: this name exists only on the internal network
       MEGAFONO__TOKEN: ${MEGAFONO_TOKEN:?set MEGAFONO_TOKEN}
       MEGAFONO__WEBHOOKSECRET: ${MEGAFONO_WEBHOOK_SECRET:?set MEGAFONO_WEBHOOK_SECRET}
       SAMPLE__ADMINPASSWORD: ${SAMPLE_ADMIN_PASSWORD:?set SAMPLE_ADMIN_PASSWORD}
@@ -54,9 +54,14 @@ services:
       Megafono__App__WebhookSecret: ${MEGAFONO_WEBHOOK_SECRET:?set MEGAFONO_WEBHOOK_SECRET}
       ConnectionStrings__Database: Host=db;Database=megafono;Username=megafono;Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       Megafono__TrustedProxies: 172.30.0.10 # the gateway; without it every request would count as the gateway's address
-    # 8080 (federation) is routed by the gateway over edge; 8081 (internal API) is only on internal and never published.
-    # Both ports are listed here only so the intent is visible: no `ports:` entry exists for either.
-    networks: [edge, internal]
+      Megafono__Ports__InternalBindAddress: 172.31.0.10 # the internal API listens on this address only: edge cannot reach 8081
+    # 8080 (federation) is routed by the gateway over edge; 8081 (internal API) listens only on Megáfono's address on
+    # internal (fixed below, so the setting above can name it) and is never published. No `ports:` entry exists for either.
+    networks:
+      edge: {}
+      internal:
+        ipv4_address: 172.31.0.10
+        aliases: [megafono-internal] # the sample reaches the internal API by this name, which edge does not resolve
     depends_on:
       db:
         condition: service_healthy
@@ -84,6 +89,9 @@ networks:
         - subnet: 172.30.0.0/24
   internal:
     internal: true # no route to the outside: sample, megafono (internal API), db
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
 
 volumes:
   db-data: {}

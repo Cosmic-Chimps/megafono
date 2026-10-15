@@ -33,6 +33,7 @@ let ``T009 defaults: ports, concurrency and rate limits`` () =
     Assert.Equal(8080, o.Ports.Federation)
     Assert.Equal(8081, o.Ports.Internal)
     Assert.Equal("0.0.0.0", o.Ports.BindAddress)
+    Assert.Equal("0.0.0.0", o.Ports.InternalBindAddress)
     Assert.Equal(2, o.Delivery.PerHost)
     Assert.Equal(32, o.Delivery.Global)
     Assert.Equal(600, o.RateLimit.PerAddress)
@@ -142,6 +143,15 @@ let ``T017 the database, the app address, the token and the webhook secret are r
 let ``T017 the app base URL must be an absolute http(s) URL and the bind address an IP`` () =
     Assert.True(mentions "BaseUrl" (load "Production" (validOverrides @ [ "Megafono:App:BaseUrl", "app:3000" ]) |> errorsOf))
     Assert.True(mentions "BindAddress" (load "Production" (validOverrides @ [ "Megafono:Ports:BindAddress", "everywhere" ]) |> errorsOf))
+    Assert.True(mentions "InternalBindAddress" (load "Production" (validOverrides @ [ "Megafono:Ports:InternalBindAddress", "internal" ]) |> errorsOf))
+
+[<Fact>]
+let ``the internal listener follows the bind address unless it has its own`` () =
+    let ports extra = (load "Production" (validOverrides @ extra) |> optionsOf).Ports
+    Assert.Equal("127.0.0.1", (ports [ "Megafono:Ports:BindAddress", "127.0.0.1" ]).InternalBindAddress)
+    let split = ports [ "Megafono:Ports:BindAddress", "0.0.0.0"; "Megafono:Ports:InternalBindAddress", "172.31.0.10" ]
+    Assert.Equal("0.0.0.0", split.BindAddress)
+    Assert.Equal("172.31.0.10", split.InternalBindAddress)
 
 [<Fact>]
 let ``T009 a bad previous master key is reported`` () =
