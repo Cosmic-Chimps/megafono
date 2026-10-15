@@ -32,6 +32,9 @@ type LookupResult =
     /// The app did not answer usefully; the stored profile is under 24 h old and stands in
     | UnavailableWithFallback of LocalActor
     | UnavailableNoFallback
+    /// The actor was deleted (specs/003-actor-deletion): answered from the stored tombstone, the app is not asked.
+    /// Only `ById` returns it; a handle may belong to another id by now, so `ByHandle` answers `NotFound`.
+    | Deleted
 
 /// What the app's answer says, validated (data-model.md "Validation rules")
 type AppProfile =
@@ -56,9 +59,10 @@ type AppClient =
       /// Always asks the app (no 5 minute cache) and stores nothing
       Fetch: string -> Task<FetchResult>
       /// Stores a fetched profile on the caller's transaction (so the write commits with what depends on it) and
-      /// returns the stored actor and whether anything shown in the actor document changed (FR-007). A handle
-      /// held by another live user raises the unique violation.
-      StoreIn: NpgsqlTransaction -> AppProfile -> Task<LocalActor * bool> }
+      /// returns the stored actor and whether anything shown in the actor document changed (FR-007), or None when
+      /// the id belongs to a deleted actor (never revived or updated, FR-006 of 003). A handle held by another
+      /// live user raises the unique violation.
+      StoreIn: NpgsqlTransaction -> AppProfile -> Task<(LocalActor * bool) option> }
 
 type Env =
     { DataSource: NpgsqlDataSource
@@ -181,6 +185,14 @@ let private storedById (env: Env) (id: string) =
         return! querySingle command
     }
 
+let private isDeleted (env: Env) (id: string) : Task<bool> =
+    task {
+        use command = env.DataSource.CreateCommand "SELECT 1 FROM local_actors WHERE app_user_id = @id AND deleted_at IS NOT NULL"
+        command.Parameters.AddWithValue("id", id) |> ignore
+        let! value = command.ExecuteScalarAsync()
+        return not (isNull value)
+    }
+
 let private storedByHandle (env: Env) (handle: string) =
     task {
         use command = env.DataSource.CreateCommand $"SELECT {columns} FROM local_actors WHERE handle = @handle AND deleted_at IS NULL"
@@ -222,7 +234,8 @@ let private updateKnown (env: Env) (tx: NpgsqlTransaction option) (profile: AppP
     }
 
 /// First sight of an id: the key pair is created and stored in the same insert (FR-006). If another lookup
-/// inserted the row first, the conflict clause only refreshes the profile, so the first key stays.
+/// inserted the row first, the conflict clause only refreshes the profile, so the first key stays. A deleted
+/// row is never touched: nothing is returned (R-33).
 let private insertNew (env: Env) (tx: NpgsqlTransaction option) (profile: AppProfile) (now: DateTimeOffset) =
     task {
         let key = KeyVault.createActorKey env.Keys (Ids.actorId env.Domain profile.Id)
@@ -236,21 +249,22 @@ let private insertNew (env: Env) (tx: NpgsqlTransaction option) (profile: AppPro
                         locked = EXCLUDED.locked, name = EXCLUDED.name, summary = EXCLUDED.summary,
                         icon_url = EXCLUDED.icon_url, profile_url = EXCLUDED.profile_url,
                         profile_checked_at = EXCLUDED.profile_checked_at
+                    WHERE local_actors.deleted_at IS NULL
                     RETURNING {columns}"""
 
         bindProfile command profile now
         command.Parameters.AddWithValue("pem", key.PublicKeyPem) |> ignore
         command.Parameters.AddWithValue("enc", key.EncryptedPrivateKey) |> ignore
-        let! stored = querySingle command
-        return stored.Value
+        return! querySingle command
     }
 
-let private store (env: Env) (tx: NpgsqlTransaction option) (profile: AppProfile) =
+/// The stored actor, or None when the id belongs to a deleted actor
+let private store (env: Env) (tx: NpgsqlTransaction option) (profile: AppProfile) : Task<LocalActor option> =
     task {
         let now = env.Time.GetUtcNow()
 
         match! updateKnown env tx profile now with
-        | Some actor -> return actor
+        | Some actor -> return Some actor
         | None -> return! insertNew env tx profile now
     }
 
@@ -283,10 +297,12 @@ let private call (env: Env) (path: string) : Task<Answer> =
         | :? TaskCanceledException -> return Failed $"no answer within {requestTimeout.TotalSeconds} s"
     }
 
-/// Fresh stored row, else the app; on failure the stored row if it is under 24 h old
+/// Fresh stored row, else the app; on failure the stored row if it is under 24 h old. `whenDeleted` is the answer
+/// when the app's profile turns out to belong to a deleted actor.
 let private lookup
     (env: Env)
     (stored: Task<LocalActor option>)
+    (whenDeleted: LookupResult)
     (path: string)
     (accept: AppProfile -> bool)
     : Task<LookupResult> =
@@ -310,8 +326,9 @@ let private lookup
             | Answered profile when not (accept profile) -> return unavailable "the answer is for a different user than asked"
             | Answered profile ->
                 try
-                    let! actor = store env None profile
-                    return Found actor
+                    match! store env None profile with
+                    | Some actor -> return Found actor
+                    | None -> return whenDeleted
                 with :? PostgresException as e when e.SqlState = PostgresErrorCodes.UniqueViolation ->
                     // The new handle is still held by another live user: keep serving what we had
                     return unavailable $"handle '{profile.Handle}' belongs to another user"
@@ -341,17 +358,19 @@ let private fetch (env: Env) (id: string) : Task<FetchResult> =
             | Answered profile -> return Fetched profile
     }
 
-let private storeIn (env: Env) (tx: NpgsqlTransaction) (profile: AppProfile) : Task<LocalActor * bool> =
+let private storeIn (env: Env) (tx: NpgsqlTransaction) (profile: AppProfile) : Task<(LocalActor * bool) option> =
     task {
         let! previous = storedById env profile.Id
-        let! actor = store env (Some tx) profile
 
-        let changed =
-            match previous with
-            | Some before -> profileDiffers before actor
-            | None -> true
+        match! store env (Some tx) profile with
+        | None -> return None
+        | Some actor ->
+            let changed =
+                match previous with
+                | Some before -> profileDiffers before actor
+                | None -> true
 
-        return actor, changed
+            return Some(actor, changed)
     }
 
 let create (env: Env) : AppClient =
@@ -361,13 +380,21 @@ let create (env: Env) : AppClient =
         fun handle ->
             match Ids.normalizeHandle handle with
             | None -> Task.FromResult NotFound
-            | Some h -> lookup env (storedByHandle env h) $"/megafono/actors?handle={Uri.EscapeDataString h}" (fun p -> p.Handle = h)
+            | Some h -> lookup env (storedByHandle env h) NotFound $"/megafono/actors?handle={Uri.EscapeDataString h}" (fun p -> p.Handle = h)
       ById =
         fun id ->
             if not (Ids.isValidAppUserId id) then
                 Task.FromResult NotFound
             else
-                lookup env (storedById env id) $"/megafono/actors/{Uri.EscapeDataString id}" (fun p -> p.Id = id) }
+                task {
+                    // A deleted id is answered from the stored tombstone, before anything else and without the app
+                    let! deleted = isDeleted env id
+
+                    if deleted then
+                        return Deleted
+                    else
+                        return! lookup env (storedById env id) Deleted $"/megafono/actors/{Uri.EscapeDataString id}" (fun p -> p.Id = id)
+                } }
 
 /// The plain HttpClient for the app's private address (SafeHttp is for remote servers and would refuse it)
 let createHttpClient () : HttpClient =

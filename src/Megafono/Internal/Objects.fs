@@ -322,6 +322,7 @@ let private publish (appUserId: string) : EndpointHandler =
 
                 match lookup with
                 | NotFound -> return! error ctx 404 "not_found" "The app does not know this user"
+                | Deleted -> return! error ctx 410 "gone" "The actor was deleted"
                 | UnavailableNoFallback -> return! error ctx 503 "app_unavailable" "The app did not answer the actor lookup"
                 | Found actor
                 | UnavailableWithFallback actor ->
@@ -339,6 +340,8 @@ let private publish (appUserId: string) : EndpointHandler =
                         let activityGuid = Guid.NewGuid()
                         use! connection = dataSource.OpenConnectionAsync()
                         use! tx = connection.BeginTransactionAsync()
+                        // Serialized with the actor's deletion: nothing is created after its Delete (R-34)
+                        let! live = Outbox.lockLiveActor tx actor.AppUserId
 
                         // A reply is to one of our objects or to a reply recorded in one of our threads (FR-010)
                         let! resolution =
@@ -351,6 +354,9 @@ let private publish (appUserId: string) : EndpointHandler =
                             }
 
                         match resolution with
+                        | _ when not live ->
+                            do! tx.RollbackAsync()
+                            return! error ctx 410 "gone" "The actor was deleted"
                         | Some Threads.Unknown -> return! error ctx 400 "invalid_request" "unknown inReplyTo"
                         | Some Threads.Gone -> return! error ctx 410 "gone" "The object replied to was deleted"
                         | _ ->
@@ -481,6 +487,18 @@ let private planFor (tx: NpgsqlTransaction) (objectGuid: Guid) (stored: StoredOb
 
 let private gone (ctx: HttpContext) = error ctx 410 "gone" "The object was deleted"
 
+/// Takes the share lock on the live actor row that owns the object BEFORE the object row is locked, the order the
+/// deletion of the actor uses, so the two cannot deadlock. False when the actor was deleted.
+let private lockAuthor (tx: NpgsqlTransaction) (objectGuid: Guid) : Task<bool> =
+    task {
+        use command = new NpgsqlCommand("SELECT local_actor FROM objects WHERE id = @id", tx.Connection, tx)
+        command.Parameters.AddWithValue("id", objectGuid) |> ignore
+
+        match! command.ExecuteScalarAsync() with
+        | :? string as author -> return! Outbox.lockLiveActor tx author
+        | _ -> return true
+    }
+
 let private update (objectId: string) : EndpointHandler =
     fun ctx ->
         task {
@@ -502,9 +520,11 @@ let private update (objectId: string) : EndpointHandler =
 
                     use! connection = dataSource.OpenConnectionAsync()
                     use! tx = connection.BeginTransactionAsync()
+                    let! live = lockAuthor tx objectGuid
 
                     match! loadObject tx objectGuid with
                     | None -> return! error ctx 404 "not_found" "No such object"
+                    | Some _ when not live -> return! error ctx 410 "gone" "The actor was deleted"
                     | Some stored when stored.Deleted -> return! gone ctx
                     | Some stored ->
                         match parseBody options.Federation.AllowPrivateAddresses root with
@@ -567,6 +587,8 @@ let private delete (objectId: string) : EndpointHandler =
             | Some objectGuid ->
                 use! connection = dataSource.OpenConnectionAsync()
                 use! tx = connection.BeginTransactionAsync()
+                // Not live means the actor was deleted, and every object of it is deleted: the repeat answer below
+                let! _ = lockAuthor tx objectGuid
 
                 match! loadObject tx objectGuid with
                 | None -> return! error ctx 404 "not_found" "No such object"

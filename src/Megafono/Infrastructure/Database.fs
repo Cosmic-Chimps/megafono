@@ -194,6 +194,10 @@ let private schema =
     );
 
     CREATE INDEX IF NOT EXISTS ix_processed_activities_received ON processed_activities (received_at);
+
+    -- A deleted actor's keys are cleared once its Delete deliveries end (specs/003-actor-deletion R-32)
+    ALTER TABLE local_actors ALTER COLUMN public_key_pem DROP NOT NULL;
+    ALTER TABLE local_actors ALTER COLUMN enc_private_key DROP NOT NULL;
     """
 
 // Arbitrary constant; serializes concurrent starts (two replicas, or tests) so CREATE ... IF NOT EXISTS cannot race

@@ -22,18 +22,42 @@ let profileOf (actor: LocalActor) : ActivityStreams.ActorProfile =
       PublicKeyPem = actor.PublicKeyPem
       Published = actor.CreatedAt }
 
-/// The local actor behind an id: fresh from the app, or the stored profile while the app is down (under 24 h)
-let find (ctx: HttpContext) (appUserId: string) : Task<LocalActor option> =
+/// What an actor id stands for
+type ActorState =
+    | Live of LocalActor
+    /// Deleted: the former type and the deletion time, for the 410 Tombstone
+    | Gone of actorType: string * deletedAt: System.DateTimeOffset
+    | Missing
+
+/// The local actor behind an id: fresh from the app, or the stored profile while the app is down (under 24 h);
+/// a deleted actor is answered from its stored tombstone, never by asking the app (FR-006 of 003)
+let find (ctx: HttpContext) (appUserId: string) : Task<ActorState> =
     task {
         if not (Ids.isValidAppUserId appUserId) then
-            return None
+            return Missing
         else
             match! ctx.GetService<AppClient>().ById appUserId with
             | Found actor
-            | UnavailableWithFallback actor -> return Some actor
+            | UnavailableWithFallback actor -> return Live actor
+            | AppClient.Deleted ->
+                use command =
+                    ctx.GetService<NpgsqlDataSource>().CreateCommand "SELECT actor_type, deleted_at FROM local_actors WHERE app_user_id = @id AND deleted_at IS NOT NULL"
+
+                command.Parameters.AddWithValue("id", appUserId) |> ignore
+                use! reader = command.ExecuteReaderAsync()
+
+                if reader.Read() then
+                    return Gone(reader.GetString 0, reader.GetFieldValue<System.DateTimeOffset> 1)
+                else
+                    return Missing
             | NotFound
-            | UnavailableNoFallback -> return None
+            | UnavailableNoFallback -> return Missing
     }
+
+/// 410 with the actor Tombstone
+let private gone (ctx: HttpContext) (appUserId: string) (actorType: string) (deletedAt: System.DateTimeOffset) : Task =
+    let options = ctx.GetService<Config.MegafonoOptions>()
+    respond ctx 410 activityJson (ActivityStreams.actorTombstone options.Domain appUserId actorType deletedAt)
 
 let private actor (appUserId: string) : EndpointHandler =
     fun ctx ->
@@ -42,8 +66,9 @@ let private actor (appUserId: string) : EndpointHandler =
                 return! notFound ctx
             else
                 match! find ctx appUserId with
-                | None -> return! notFound ctx
-                | Some local ->
+                | Missing -> return! notFound ctx
+                | Gone(kind, deletedAt) -> return! gone ctx appUserId kind deletedAt
+                | Live local ->
                     let options = ctx.GetService<Config.MegafonoOptions>()
                     return! respond ctx 200 activityJson (ActivityStreams.actor options.Domain (profileOf local))
         }
@@ -75,8 +100,9 @@ let private collection (name: string) (sql: string) (appUserId: string) : Endpoi
                 return! notFound ctx
             else
                 match! find ctx appUserId with
-                | None -> return! notFound ctx
-                | Some local ->
+                | Missing -> return! notFound ctx
+                | Gone(kind, deletedAt) -> return! gone ctx appUserId kind deletedAt
+                | Live local ->
                     let options = ctx.GetService<Config.MegafonoOptions>()
                     let! total = count (ctx.GetService<NpgsqlDataSource>()) sql local.AppUserId
                     let id = $"{Ids.actorId options.Domain local.AppUserId}/{name}"

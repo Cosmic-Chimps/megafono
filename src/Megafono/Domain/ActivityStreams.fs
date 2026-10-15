@@ -421,6 +421,31 @@ let tombstone (domain: string) (objectGuid: Guid) (formerType: string) (deleted:
     doc["deleted"] <- str (iso deleted)
     doc
 
+// ---- actor deletion (feature 003; research R-30) ------------------------------------------------------
+
+/// `Delete{actor}`: actor and object are both the actor id, addressed to Public like Mastodon's own account deletion
+let deleteActor (domain: string) (appUserId: string) (activityId: string) (now: DateTimeOffset) : JsonNode =
+    let actorId = Ids.actorId domain appUserId
+    let doc = JsonObject()
+    doc["@context"] <- str "https://www.w3.org/ns/activitystreams"
+    doc["id"] <- str activityId
+    doc["type"] <- str "Delete"
+    doc["actor"] <- str actorId
+    doc["object"] <- str actorId
+    doc["published"] <- str (iso now)
+    doc["to"] <- JsonArray(str publicAudience)
+    doc
+
+/// What a deleted actor's URL answers (410): its id, former type and deletion time, nothing else
+let actorTombstone (domain: string) (appUserId: string) (formerType: string) (deleted: DateTimeOffset) : JsonNode =
+    let doc = JsonObject()
+    doc["@context"] <- str "https://www.w3.org/ns/activitystreams"
+    doc["id"] <- str (Ids.actorId domain appUserId)
+    doc["type"] <- str "Tombstone"
+    doc["formerType"] <- str formerType
+    doc["deleted"] <- str (iso deleted)
+    doc
+
 // ---- replies and threads (feature 002; research R-20, R-24) ------------------------------------------
 
 /// Replies and context pages hold at most this many ids

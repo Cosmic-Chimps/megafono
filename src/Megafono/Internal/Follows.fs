@@ -26,6 +26,28 @@ let private error (ctx: HttpContext) (status: int) (code: string) (message: stri
     ctx.SetStatusCode status
     ctx.WriteJson {| error = code; message = message |}
 
+let private gone (ctx: HttpContext) = error ctx 410 "gone" "The actor was deleted"
+
+/// Locks the live actor row at the start of a write transaction (R-34). False: nothing is written and the answer
+/// is out already: 410 for a deleted actor; for one Megáfono does not know, `true` is returned and the caller's own
+/// checks answer 404 as before.
+let private guardLive (ctx: HttpContext) (tx: NpgsqlTransaction) (appUserId: string) : Task<bool> =
+    task {
+        let! live = Outbox.lockLiveActor tx appUserId
+
+        if live then
+            return true
+        else
+            let! deleted = Outbox.isDeletedActor tx appUserId
+
+            if deleted then
+                do! tx.RollbackAsync()
+                do! gone ctx
+                return false
+            else
+                return true
+    }
+
 let private answer (kind: Answer) (appUserId: string) (followIdText: string) : EndpointHandler =
     fun ctx ->
         task {
@@ -37,72 +59,78 @@ let private answer (kind: Answer) (appUserId: string) (followIdText: string) : E
                 let domain = ctx.GetService<Config.MegafonoOptions>().Domain
                 use! connection = dataSource.OpenConnectionAsync()
                 use! tx = connection.BeginTransactionAsync()
+                let! proceed = guardLive ctx tx appUserId
 
-                use find =
-                    new NpgsqlCommand(
-                        "SELECT status, remote_actor, follow_activity_id FROM follows WHERE id = @id AND local_actor = @user AND direction = 'inbound' FOR UPDATE",
-                        connection,
-                        tx
-                    )
+                match proceed with
+                | false -> ()
+                | true ->
+                    use find =
+                        new NpgsqlCommand(
+                            "SELECT status, remote_actor, follow_activity_id FROM follows WHERE id = @id AND local_actor = @user AND direction = 'inbound' FOR UPDATE",
+                            connection,
+                            tx
+                        )
 
-                find.Parameters.AddWithValue("id", followId) |> ignore
-                find.Parameters.AddWithValue("user", appUserId) |> ignore
-                use! reader = find.ExecuteReaderAsync()
-                let row = if reader.Read() then Some(reader.GetString 0, reader.GetString 1, reader.GetString 2) else None
-                do! reader.CloseAsync()
+                    find.Parameters.AddWithValue("id", followId) |> ignore
+                    find.Parameters.AddWithValue("user", appUserId) |> ignore
+                    use! reader = find.ExecuteReaderAsync()
+                    let row = if reader.Read() then Some(reader.GetString 0, reader.GetString 1, reader.GetString 2) else None
+                    do! reader.CloseAsync()
 
-                match row with
-                | None ->
-                    do! tx.RollbackAsync()
-                    return! error ctx 404 "not_found" "No such follow request"
-                | Some(current, remoteId, followActivityId) ->
-                    let target, wanted = (match kind with Approve -> "accepted", "pending" | Reject -> "rejected", "pending")
-
-                    if current = target then
-                        // Repeating the same answer changes nothing and sends nothing
+                    match row with
+                    | None ->
                         do! tx.RollbackAsync()
-                        return! ctx.WriteJson {| followId = followId; status = target |}
-                    elif current <> wanted then
-                        do! tx.RollbackAsync()
-                        return! error ctx 409 "conflict" $"The follow request is {current}, it cannot be answered with the other answer"
-                    else
-                        match! loadRemote tx remoteId with
-                        | None ->
+                        return! error ctx 404 "not_found" "No such follow request"
+                    | Some(current, remoteId, followActivityId) ->
+                        let target, wanted = (match kind with Approve -> "accepted", "pending" | Reject -> "rejected", "pending")
+
+                        if current = target then
+                            // Repeating the same answer changes nothing and sends nothing
                             do! tx.RollbackAsync()
-                            return! error ctx 404 "not_found" "The remote actor is unknown"
-                        | Some remote ->
-                            use update = new NpgsqlCommand("UPDATE follows SET status = @status, updated_at = @now WHERE id = @id", connection, tx)
-                            update.Parameters.AddWithValue("status", target) |> ignore
-                            update.Parameters.AddWithValue("now", time.GetUtcNow().UtcDateTime) |> ignore
-                            update.Parameters.AddWithValue("id", followId) |> ignore
-                            let! _ = update.ExecuteNonQueryAsync()
-
-                            let reply, eventType =
-                                match kind with
-                                | Approve -> AcceptReply, Events.FollowAccepted
-                                | Reject -> RejectReply, Events.FollowRejected
-
-                            do! queueReply tx time domain reply appUserId remote followActivityId
-
-                            let body: Events.EventBody =
-                                { Type = eventType
-                                  Actor = Some(actorSummary remote)
-                                  Follow = Some { Id = followId; Direction = "inbound"; Status = target }
-                                  Extra = [] }
-
-                            let! _ = Outbox.enqueueEvent tx time appUserId body
-                            do! tx.CommitAsync()
                             return! ctx.WriteJson {| followId = followId; status = target |}
+                        elif current <> wanted then
+                            do! tx.RollbackAsync()
+                            return! error ctx 409 "conflict" $"The follow request is {current}, it cannot be answered with the other answer"
+                        else
+                            match! loadRemote tx remoteId with
+                            | None ->
+                                do! tx.RollbackAsync()
+                                return! error ctx 404 "not_found" "The remote actor is unknown"
+                            | Some remote ->
+                                use update = new NpgsqlCommand("UPDATE follows SET status = @status, updated_at = @now WHERE id = @id", connection, tx)
+                                update.Parameters.AddWithValue("status", target) |> ignore
+                                update.Parameters.AddWithValue("now", time.GetUtcNow().UtcDateTime) |> ignore
+                                update.Parameters.AddWithValue("id", followId) |> ignore
+                                let! _ = update.ExecuteNonQueryAsync()
+
+                                let reply, eventType =
+                                    match kind with
+                                    | Approve -> AcceptReply, Events.FollowAccepted
+                                    | Reject -> RejectReply, Events.FollowRejected
+
+                                do! queueReply tx time domain reply appUserId remote followActivityId
+
+                                let body: Events.EventBody =
+                                    { Type = eventType
+                                      Actor = Some(actorSummary remote)
+                                      Follow = Some { Id = followId; Direction = "inbound"; Status = target }
+                                      Extra = [] }
+
+                                let! _ = Outbox.enqueueEvent tx time appUserId body
+                                do! tx.CommitAsync()
+                                return! ctx.WriteJson {| followId = followId; status = target |}
         }
 
 // ---- follow and unfollow a remote actor ------------------------------------------------------------------
 
-let private localExists (ctx: HttpContext) (appUserId: string) : Task<bool> =
+/// `Some true` for a known user, `Some false` for a deleted one, None for one the app does not know
+let private localState (ctx: HttpContext) (appUserId: string) : Task<bool option> =
     task {
         match! ctx.GetService<AppClient.AppClient>().ById appUserId with
         | AppClient.Found _
-        | AppClient.UnavailableWithFallback _ -> return true
-        | _ -> return false
+        | AppClient.UnavailableWithFallback _ -> return Some true
+        | AppClient.Deleted -> return Some false
+        | _ -> return None
     }
 
 let private followResponse (rowId: Guid) (status: string) (remote: RemoteActor) =
@@ -141,11 +169,10 @@ let private readTarget (ctx: HttpContext) : Task<string option> =
 let private follow (appUserId: string) : EndpointHandler =
     fun ctx ->
         task {
-            let! known = localExists ctx appUserId
-
-            if not known then
-                return! error ctx 404 "not_found" "The app does not know this user"
-            else
+            match! localState ctx appUserId with
+            | None -> return! error ctx 404 "not_found" "The app does not know this user"
+            | Some false -> return! gone ctx
+            | Some true ->
                 match! readTarget ctx with
                 | None -> return! error ctx 400 "invalid_request" "The body must be {\"target\": \"@user@host\" or an actor URL}"
                 | Some target ->
@@ -156,55 +183,59 @@ let private follow (appUserId: string) : EndpointHandler =
                         let domain = ctx.GetService<Config.MegafonoOptions>().Domain
                         use! connection = ctx.GetService<NpgsqlDataSource>().OpenConnectionAsync()
                         use! tx = connection.BeginTransactionAsync()
-                        let activityGuid = Guid.NewGuid()
-                        let followIri = Ids.activityId domain activityGuid
-                        let now = time.GetUtcNow().UtcDateTime
+                        let! proceed = guardLive ctx tx appUserId
+                        match proceed with
+                        | false -> ()
+                        | true ->
+                            let activityGuid = Guid.NewGuid()
+                            let followIri = Ids.activityId domain activityGuid
+                            let now = time.GetUtcNow().UtcDateTime
 
-                        // A new request, or a new one after a rejection or an unfollow. If the row is already pending or
-                        // accepted (also against a concurrent identical call) the conflict clause leaves it alone.
-                        use upsert =
-                            new NpgsqlCommand(
-                                """INSERT INTO follows (id, direction, local_actor, remote_actor, follow_activity_id, status, created_at, updated_at)
-                                   VALUES (gen_random_uuid(), 'outbound', @local, @remote, @follow, 'pending', @now, @now)
-                                   ON CONFLICT (direction, local_actor, remote_actor) DO UPDATE
-                                     SET follow_activity_id = EXCLUDED.follow_activity_id, status = 'pending', updated_at = EXCLUDED.updated_at
-                                     WHERE follows.status IN ('rejected', 'removed')
-                                   RETURNING id""",
-                                connection,
-                                tx
-                            )
-
-                        upsert.Parameters.AddWithValue("local", appUserId) |> ignore
-                        upsert.Parameters.AddWithValue("remote", remote.Id) |> ignore
-                        upsert.Parameters.AddWithValue("follow", followIri) |> ignore
-                        upsert.Parameters.AddWithValue("now", now) |> ignore
-                        let! created = upsert.ExecuteScalarAsync()
-
-                        match created with
-                        | :? Guid as rowId ->
-                            let document = ActivityStreams.follow followIri (Ids.actorId domain appUserId) remote.Id
-                            do! queueActivity tx time "Follow" appUserId activityGuid document remote
-                            do! tx.CommitAsync()
-                            ctx.SetStatusCode 202
-                            return! ctx.WriteJson(followResponse rowId "pending" remote)
-                        | _ ->
-                            // Already following (or asked): the current status, nothing sent
-                            use current =
+                            // A new request, or a new one after a rejection or an unfollow. If the row is already pending or
+                            // accepted (also against a concurrent identical call) the conflict clause leaves it alone.
+                            use upsert =
                                 new NpgsqlCommand(
-                                    "SELECT id, status FROM follows WHERE direction = 'outbound' AND local_actor = @local AND remote_actor = @remote",
+                                    """INSERT INTO follows (id, direction, local_actor, remote_actor, follow_activity_id, status, created_at, updated_at)
+                                       VALUES (gen_random_uuid(), 'outbound', @local, @remote, @follow, 'pending', @now, @now)
+                                       ON CONFLICT (direction, local_actor, remote_actor) DO UPDATE
+                                         SET follow_activity_id = EXCLUDED.follow_activity_id, status = 'pending', updated_at = EXCLUDED.updated_at
+                                         WHERE follows.status IN ('rejected', 'removed')
+                                       RETURNING id""",
                                     connection,
                                     tx
                                 )
 
-                            current.Parameters.AddWithValue("local", appUserId) |> ignore
-                            current.Parameters.AddWithValue("remote", remote.Id) |> ignore
-                            use! reader = current.ExecuteReaderAsync()
-                            reader.Read() |> ignore
-                            let rowId, status = reader.GetGuid 0, reader.GetString 1
-                            do! reader.CloseAsync()
-                            do! tx.RollbackAsync()
-                            ctx.SetStatusCode 202
-                            return! ctx.WriteJson(followResponse rowId status remote)
+                            upsert.Parameters.AddWithValue("local", appUserId) |> ignore
+                            upsert.Parameters.AddWithValue("remote", remote.Id) |> ignore
+                            upsert.Parameters.AddWithValue("follow", followIri) |> ignore
+                            upsert.Parameters.AddWithValue("now", now) |> ignore
+                            let! created = upsert.ExecuteScalarAsync()
+
+                            match created with
+                            | :? Guid as rowId ->
+                                let document = ActivityStreams.follow followIri (Ids.actorId domain appUserId) remote.Id
+                                do! queueActivity tx time "Follow" appUserId activityGuid document remote
+                                do! tx.CommitAsync()
+                                ctx.SetStatusCode 202
+                                return! ctx.WriteJson(followResponse rowId "pending" remote)
+                            | _ ->
+                                // Already following (or asked): the current status, nothing sent
+                                use current =
+                                    new NpgsqlCommand(
+                                        "SELECT id, status FROM follows WHERE direction = 'outbound' AND local_actor = @local AND remote_actor = @remote",
+                                        connection,
+                                        tx
+                                    )
+
+                                current.Parameters.AddWithValue("local", appUserId) |> ignore
+                                current.Parameters.AddWithValue("remote", remote.Id) |> ignore
+                                use! reader = current.ExecuteReaderAsync()
+                                reader.Read() |> ignore
+                                let rowId, status = reader.GetGuid 0, reader.GetString 1
+                                do! reader.CloseAsync()
+                                do! tx.RollbackAsync()
+                                ctx.SetStatusCode 202
+                                return! ctx.WriteJson(followResponse rowId status remote)
         }
 
 let private unfollow (appUserId: string) : EndpointHandler =
@@ -217,51 +248,54 @@ let private unfollow (appUserId: string) : EndpointHandler =
                 let domain = ctx.GetService<Config.MegafonoOptions>().Domain
                 use! connection = ctx.GetService<NpgsqlDataSource>().OpenConnectionAsync()
                 use! tx = connection.BeginTransactionAsync()
+                let! proceed = guardLive ctx tx appUserId
+                match proceed with
+                | false -> ()
+                | true ->
+                    use find =
+                        new NpgsqlCommand(
+                            """SELECT id, follow_activity_id FROM follows
+                               WHERE direction = 'outbound' AND local_actor = @local AND remote_actor = @remote AND status IN ('pending', 'accepted')
+                               FOR UPDATE""",
+                            connection,
+                            tx
+                        )
 
-                use find =
-                    new NpgsqlCommand(
-                        """SELECT id, follow_activity_id FROM follows
-                           WHERE direction = 'outbound' AND local_actor = @local AND remote_actor = @remote AND status IN ('pending', 'accepted')
-                           FOR UPDATE""",
-                        connection,
-                        tx
-                    )
+                    find.Parameters.AddWithValue("local", appUserId) |> ignore
+                    find.Parameters.AddWithValue("remote", remoteId) |> ignore
+                    use! reader = find.ExecuteReaderAsync()
+                    let row = if reader.Read() then Some(reader.GetGuid 0, reader.GetString 1) else None
+                    do! reader.CloseAsync()
 
-                find.Parameters.AddWithValue("local", appUserId) |> ignore
-                find.Parameters.AddWithValue("remote", remoteId) |> ignore
-                use! reader = find.ExecuteReaderAsync()
-                let row = if reader.Read() then Some(reader.GetGuid 0, reader.GetString 1) else None
-                do! reader.CloseAsync()
-
-                match row with
-                | None ->
-                    do! tx.RollbackAsync()
-                    return! error ctx 404 "not_found" "That actor is not followed"
-                | Some(rowId, followIri) ->
-                    match! loadRemote tx remoteId with
+                    match row with
                     | None ->
                         do! tx.RollbackAsync()
                         return! error ctx 404 "not_found" "That actor is not followed"
-                    | Some remote ->
-                        use update = new NpgsqlCommand("UPDATE follows SET status = 'removed', updated_at = @now WHERE id = @id", connection, tx)
-                        update.Parameters.AddWithValue("now", time.GetUtcNow().UtcDateTime) |> ignore
-                        update.Parameters.AddWithValue("id", rowId) |> ignore
-                        let! _ = update.ExecuteNonQueryAsync()
+                    | Some(rowId, followIri) ->
+                        match! loadRemote tx remoteId with
+                        | None ->
+                            do! tx.RollbackAsync()
+                            return! error ctx 404 "not_found" "That actor is not followed"
+                        | Some remote ->
+                            use update = new NpgsqlCommand("UPDATE follows SET status = 'removed', updated_at = @now WHERE id = @id", connection, tx)
+                            update.Parameters.AddWithValue("now", time.GetUtcNow().UtcDateTime) |> ignore
+                            update.Parameters.AddWithValue("id", rowId) |> ignore
+                            let! _ = update.ExecuteNonQueryAsync()
 
-                        // Undo embeds the original Follow, with the id it was sent under
-                        let activityGuid = Guid.NewGuid()
-                        let local = Ids.actorId domain appUserId
+                            // Undo embeds the original Follow, with the id it was sent under
+                            let activityGuid = Guid.NewGuid()
+                            let local = Ids.actorId domain appUserId
 
-                        let original: ActivityStreams.FollowRef =
-                            { Id = followIri
-                              Actor = local
-                              Object = remote.Id }
+                            let original: ActivityStreams.FollowRef =
+                                { Id = followIri
+                                  Actor = local
+                                  Object = remote.Id }
 
-                        let document = ActivityStreams.undoFollow (Ids.activityId domain activityGuid) local original
-                        do! queueActivity tx time "Undo" appUserId activityGuid document remote
-                        do! tx.CommitAsync()
-                        ctx.SetStatusCode 202
-                        return! ctx.WriteJson {| followId = rowId; status = "removed" |}
+                            let document = ActivityStreams.undoFollow (Ids.activityId domain activityGuid) local original
+                            do! queueActivity tx time "Undo" appUserId activityGuid document remote
+                            do! tx.CommitAsync()
+                            ctx.SetStatusCode 202
+                            return! ctx.WriteJson {| followId = rowId; status = "removed" |}
         }
 
 // ---- lists --------------------------------------------------------------------------------------------------
@@ -314,11 +348,12 @@ let private list (direction: string) (appUserId: string) : EndpointHandler =
             | _, _, None -> return! error ctx 400 "invalid_request" "after is not a cursor this API gave out"
             | Some statuses, Some limit, Some cursor ->
                 let dataSource = ctx.GetService<NpgsqlDataSource>()
-                use exists = dataSource.CreateCommand "SELECT 1 FROM local_actors WHERE app_user_id = @id"
+                use exists = dataSource.CreateCommand "SELECT deleted_at IS NOT NULL FROM local_actors WHERE app_user_id = @id"
                 exists.Parameters.AddWithValue("id", appUserId) |> ignore
 
                 match! exists.ExecuteScalarAsync() with
                 | null -> return! error ctx 404 "not_found" "The app does not know this user"
+                | :? bool as deleted when deleted -> return! gone ctx
                 | _ ->
                     let opposite = if direction = "inbound" then "outbound" else "inbound"
 

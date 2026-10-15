@@ -54,13 +54,41 @@ let enqueueDeliveries (tx: NpgsqlTransaction) (time: TimeProvider) (activityId: 
             return inserted
     }
 
+/// Takes a share lock on the live row of a local actor, for the rest of the transaction. False when the actor is
+/// deleted (or unknown): the caller answers 410 and writes nothing. The delete transaction locks the same row
+/// `FOR UPDATE`, so an activity of the actor is never created after its `Delete` (specs/003-actor-deletion R-34).
+let lockLiveActor (tx: NpgsqlTransaction) (userId: string) : Task<bool> =
+    task {
+        use command = new NpgsqlCommand("SELECT 1 FROM local_actors WHERE app_user_id = @user AND deleted_at IS NULL FOR SHARE", tx.Connection, tx)
+        command.Parameters.AddWithValue("user", userId) |> ignore
+        let! found = command.ExecuteScalarAsync()
+        return not (isNull found)
+    }
+
+/// True when Megáfono knows the actor and it was deleted (to tell a 410 from a 404 after `lockLiveActor` said no)
+let isDeletedActor (tx: NpgsqlTransaction) (userId: string) : Task<bool> =
+    task {
+        use command = new NpgsqlCommand("SELECT 1 FROM local_actors WHERE app_user_id = @user AND deleted_at IS NOT NULL", tx.Connection, tx)
+        command.Parameters.AddWithValue("user", userId) |> ignore
+        let! found = command.ExecuteScalarAsync()
+        return not (isNull found)
+    }
+
 /// Queues an app event for `userId`: takes the user's next `seq` (FR-057), stores the full envelope and
-/// NOTIFYs. Returns the event id.
-let enqueueEvent (tx: NpgsqlTransaction) (time: TimeProvider) (userId: string) (body: Events.EventBody) : Task<string> =
+/// NOTIFYs. Returns the event id, or None (nothing queued, no `seq` taken) when the actor is deleted: the app
+/// hears nothing more about a user it deleted (FR-009 of 003).
+let enqueueEvent (tx: NpgsqlTransaction) (time: TimeProvider) (userId: string) (body: Events.EventBody) : Task<string option> =
     task {
         let now = time.GetUtcNow()
 
-        use bump = new NpgsqlCommand("UPDATE local_actors SET event_seq = event_seq + 1 WHERE app_user_id = @user RETURNING event_seq, handle", tx.Connection, tx)
+        use bump =
+            new NpgsqlCommand(
+                """UPDATE local_actors SET event_seq = event_seq + CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END
+                   WHERE app_user_id = @user RETURNING event_seq, handle, deleted_at IS NOT NULL""",
+                tx.Connection,
+                tx
+            )
+
         bump.Parameters.AddWithValue("user", userId) |> ignore
         use! reader = bump.ExecuteReaderAsync()
 
@@ -69,26 +97,30 @@ let enqueueEvent (tx: NpgsqlTransaction) (time: TimeProvider) (userId: string) (
 
         let seq = reader.GetInt64 0
         let handle = reader.GetString 1
+        let deleted = reader.GetBoolean 2
         do! reader.CloseAsync()
 
-        let eventId = Events.newEventId now
-        let payload = Events.envelope eventId now seq userId handle body
+        if deleted then
+            return None
+        else
+            let eventId = Events.newEventId now
+            let payload = Events.envelope eventId now seq userId handle body
 
-        use insert =
-            new NpgsqlCommand(
-                """INSERT INTO app_events (id, local_actor, seq, event_type, payload, status, attempts, next_attempt_at, created_at)
-                   VALUES (@id, @user, @seq, @type, @payload, 'pending', 0, @now, @now)""",
-                tx.Connection,
-                tx
-            )
+            use insert =
+                new NpgsqlCommand(
+                    """INSERT INTO app_events (id, local_actor, seq, event_type, payload, status, attempts, next_attempt_at, created_at)
+                       VALUES (@id, @user, @seq, @type, @payload, 'pending', 0, @now, @now)""",
+                    tx.Connection,
+                    tx
+                )
 
-        insert.Parameters.AddWithValue("id", eventId) |> ignore
-        insert.Parameters.AddWithValue("user", userId) |> ignore
-        insert.Parameters.AddWithValue("seq", seq) |> ignore
-        insert.Parameters.AddWithValue("type", Events.typeName body.Type) |> ignore
-        insert.Parameters.Add(NpgsqlParameter("payload", NpgsqlDbType.Jsonb, Value = payload)) |> ignore
-        insert.Parameters.AddWithValue("now", now.UtcDateTime) |> ignore
-        let! _ = insert.ExecuteNonQueryAsync()
-        do! notify tx eventsChannel
-        return eventId
+            insert.Parameters.AddWithValue("id", eventId) |> ignore
+            insert.Parameters.AddWithValue("user", userId) |> ignore
+            insert.Parameters.AddWithValue("seq", seq) |> ignore
+            insert.Parameters.AddWithValue("type", Events.typeName body.Type) |> ignore
+            insert.Parameters.Add(NpgsqlParameter("payload", NpgsqlDbType.Jsonb, Value = payload)) |> ignore
+            insert.Parameters.AddWithValue("now", now.UtcDateTime) |> ignore
+            let! _ = insert.ExecuteNonQueryAsync()
+            do! notify tx eventsChannel
+            return Some eventId
     }

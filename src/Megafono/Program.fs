@@ -96,6 +96,8 @@ let private register (options: Config.MegafonoOptions) (services: IServiceCollec
                 | Some h -> System.Threading.Tasks.Task.FromResult((RateLimits.tryHost limits h).IsNone) })
     |> ignore
 
+    services.AddSingleton<Deliveries.KeyCache>(fun _ -> Deliveries.KeyCache()) |> ignore
+
     services.AddSingleton<Workers>(fun sp ->
         let dataSource = sp.GetRequiredService<NpgsqlDataSource>()
         let time = sp.GetRequiredService<TimeProvider>()
@@ -112,7 +114,7 @@ let private register (options: Config.MegafonoOptions) (services: IServiceCollec
               Keys = masterKeys
               Domain = options.Domain
               Time = time
-              KeyCache = ConcurrentDictionary() }
+              KeyCache = sp.GetRequiredService<Deliveries.KeyCache>() }
 
         let events: AppEvents.Env =
             { DataSource = dataSource
@@ -136,7 +138,11 @@ let private register (options: Config.MegafonoOptions) (services: IServiceCollec
     services.AddSingleton<IHostedService>(fun sp -> sp.GetRequiredService<Workers>().AppEvents.Service) |> ignore
 
     services.AddSingleton<IHostedService>(fun sp ->
-        Housekeeping.hostedService (sp.GetRequiredService<NpgsqlDataSource>()) (sp.GetRequiredService<TimeProvider>()) (logger sp))
+        Housekeeping.hostedService
+            (sp.GetRequiredService<NpgsqlDataSource>())
+            (sp.GetRequiredService<TimeProvider>())
+            (sp.GetRequiredService<Deliveries.KeyCache>())
+            (logger sp))
     |> ignore
 
 /// Builds the app without running it, so tests can reuse it. Overrides win over every other configuration source;

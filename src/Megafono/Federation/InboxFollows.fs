@@ -58,14 +58,20 @@ let handleFollow (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Ou
         | Some followId, Some actorId, Some targetUser when actorId = signer.Id && isOnSignerHost signer followId ->
             match! env.App.ById targetUser with
             | AppClient.LookupResult.NotFound
+            | AppClient.LookupResult.Deleted
             | AppClient.LookupResult.UnavailableNoFallback -> return Refused 404
             | Found local
             | UnavailableWithFallback local ->
                 use! connection = env.DataSource.OpenConnectionAsync()
                 use! tx = connection.BeginTransactionAsync()
-                let! fresh = markProcessed tx env.Time followId
+                // Serialized with the actor's deletion: no row, Accept or event after its Delete (R-34)
+                let! live = Outbox.lockLiveActor tx local.AppUserId
+                let! fresh = if live then markProcessed tx env.Time followId else Task.FromResult true
 
-                if not fresh then
+                if not live then
+                    do! tx.RollbackAsync()
+                    return Refused 404
+                elif not fresh then
                     do! tx.RollbackAsync()
                     return Ignored "already processed"
                 else

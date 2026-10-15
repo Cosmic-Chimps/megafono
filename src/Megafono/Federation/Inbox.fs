@@ -172,21 +172,22 @@ let private inbox (localUser: string option) : EndpointHandler =
                         match RateLimits.tryHost limits signer.Host with
                         | Some retryAfter -> return! RateLimits.tooManyRequests ctx retryAfter
                         | None ->
-                            // A personal inbox of a user the app does not know
-                            let! known =
+                            // A personal inbox of a user the app does not know (404) or of a deleted actor (410)
+                            let! refusal =
                                 match localUser with
-                                | None -> Task.FromResult true
+                                | None -> Task.FromResult None
                                 | Some id ->
                                     task {
                                         match! env.App.ById id with
                                         | AppClient.Found _
-                                        | AppClient.UnavailableWithFallback _ -> return true
-                                        | _ -> return false
+                                        | AppClient.UnavailableWithFallback _ -> return None
+                                        | AppClient.Deleted -> return Some 410
+                                        | _ -> return Some 404
                                     }
 
-                            if not known then
-                                return! status ctx 404
-                            else
+                            match refusal with
+                            | Some code -> return! status ctx code
+                            | None ->
                                 let activity =
                                     try
                                         match JsonNode.Parse(ReadOnlySpan<byte> body) with

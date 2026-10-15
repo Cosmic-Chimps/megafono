@@ -16,6 +16,25 @@ open Megafono.Workers.Dispatcher
 type DeliveryFaults =
     { BeforeCompletionWrite: (string -> Task) option }
 
+/// Decrypted actor keys by app user id. One instance is shared by the delivery worker and housekeeping, which
+/// evicts the keys it clears (specs/003-actor-deletion R-32).
+type KeyCache() =
+    let keys = ConcurrentDictionary<string, RSA>()
+
+    member _.TryGet(appUserId: string) : RSA option =
+        match keys.TryGetValue appUserId with
+        | true, key -> Some key
+        | _ -> None
+
+    member _.GetOrAdd(appUserId: string, key: RSA) : RSA = keys.GetOrAdd(appUserId, key)
+
+    /// Drops the keys of these actors and disposes them
+    member _.Evict(appUserIds: string seq) : unit =
+        for id in appUserIds do
+            match keys.TryRemove id with
+            | true, key -> key.Dispose()
+            | _ -> ()
+
 type Env =
     { DataSource: NpgsqlDataSource
       Http: SafeHttp.SafeHttpClient
@@ -23,13 +42,13 @@ type Env =
       Domain: string
       Time: TimeProvider
       /// Decrypted author keys, by app user id
-      KeyCache: ConcurrentDictionary<string, RSA> }
+      KeyCache: KeyCache }
 
 let private loadKey (env: Env) (appUserId: string) : Task<RSA> =
     task {
-        match env.KeyCache.TryGetValue appUserId with
-        | true, key -> return key
-        | _ ->
+        match env.KeyCache.TryGet appUserId with
+        | Some key -> return key
+        | None ->
             use command = env.DataSource.CreateCommand "SELECT enc_private_key FROM local_actors WHERE app_user_id = @id"
             command.Parameters.AddWithValue("id", appUserId) |> ignore
             let! blob = command.ExecuteScalarAsync()

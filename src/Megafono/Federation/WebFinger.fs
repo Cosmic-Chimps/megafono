@@ -60,6 +60,7 @@ let private handler: EndpointHandler =
                         let profile = Actors.profileOf actor
                         return! respond ctx 200 jrdJson (ActivityStreams.webFinger options.Domain profile)
                     | NotFound
+                    | Deleted
                     | UnavailableNoFallback -> return! notFound ctx
         }
 
