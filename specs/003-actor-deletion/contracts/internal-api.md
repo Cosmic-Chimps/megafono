@@ -19,8 +19,8 @@ call this before or after deleting the user on its side.
   { "id": "3f6c2a9e-…", "deletedAt": "2026-10-15T09:30:00Z", "deliveries": 3 }
   ```
 
-  `deliveries` is the number of servers the `Delete` was queued for (0 when the actor never had followers,
-  follows or deliveries). They are sent and retried like every delivery (48 h with backoff); once they have all
+  `deliveries` is the number of servers the `Delete` was queued for (0 when the actor has no followers, follow
+  requests or follows). They are sent and retried like every delivery (48 h with backoff); once they have all
   ended, the actor's keys are erased.
 
 - **202** with the same body on every repeat (the call is idempotent; nothing is queued again).

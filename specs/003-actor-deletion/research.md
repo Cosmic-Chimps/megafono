@@ -19,15 +19,16 @@ Numbering continues after 002 (R-20 to R-27).
 
 ## R-31 Which servers get the Delete
 
-- **Decision**: the union of (a) remote actors with a follow row of the actor in either direction, pending or
-  accepted, and (b) every inbox an earlier delivery of the actor's activities went to (reply recipients, follow
-  answers, profile updates). Grouped by host: one inbox per host, the shared inbox when any known remote actor
-  on that host has it as `shared_inbox`, otherwise the smallest inbox URL. A `Delete{actor}` is not addressed to a
-  recipient, so any inbox of the server processes it.
-- **Why**: "every follower and following server" (US6) misses servers that only received replies; (b) covers them
-  at no cost. Mastodon goes further (every server it knows of); a sidecar knows fewer servers and (a)+(b) are the
-  ones that can hold the account.
-- **Rejected**: every known host in `remote_actors`: sends the actor's name to servers that never heard of it.
+- **Decision**: the remote actors with a follow row of the actor in either direction, `pending` or `accepted`
+  (`COALESCE(shared_inbox, inbox)`). Grouped by host: one inbox per host, the shared inbox when one of that host's
+  actors has one, otherwise the smallest inbox URL. A `Delete{actor}` is not addressed to a recipient, so any inbox
+  of the server processes it.
+- **Why**: the feature input asks for "every server that follows or is followed by the actor". Pending requests are
+  included: those servers know the actor and show the request. Servers that only received replies or mentions learn
+  of the deletion from the 410 on their next fetch.
+- **Rejected**: adding every inbox an earlier delivery went to (covers reply-only servers, but goes beyond the
+  requested scope); every known host in `remote_actors` (sends the actor's id to servers that never heard of it).
+  Mastodon itself sends to every server it knows.
 
 ## R-32 Keys live until the Delete deliveries end
 

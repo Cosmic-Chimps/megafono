@@ -1,0 +1,16 @@
+{
+  "workflow": "speckit",
+  "specName": "Actor Deletion",
+  "branch": "alta/russet-ocelot-q4dw",
+  "currentStep": "specify",
+  "status": "specified",
+  "history": [
+    {
+      "step": "specify",
+      "substep": null,
+      "kind": "start",
+      "by": "extension",
+      "at": "2026-10-15T23:41:32.748Z"
+    }
+  ]
+}

@@ -6,7 +6,7 @@
 ## Summary
 
 `DELETE /internal/actors/{id}` marks the actor deleted and, in the same transaction, queues one `Delete{actor}` per
-server that knows it (R-31), cancels its queued deliveries and webhooks, deletes its follow rows and erases its
+server that follows or is followed by it (R-31), cancels its queued deliveries and webhooks, deletes its follow rows and erases its
 profile and post copies (R-35). Lookups of a deleted id answer a new `Deleted` result without asking the app, so the
 actor document, collections and personal inbox answer 410 and the id is never revived (R-33). Every internal write
 for an actor takes a share lock on a live row, so nothing is created after the `Delete` (R-34). Housekeeping clears
