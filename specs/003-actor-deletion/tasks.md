@@ -19,46 +19,46 @@ tests/Megafono.Tests`.
 
 ## Phase 1: Foundational
 
-- [ ] T001 Schema: `public_key_pem` and `enc_private_key` nullable in `src/Megafono/Infrastructure/Database.fs`
+- [X] T001 Schema: `public_key_pem` and `enc_private_key` nullable in `src/Megafono/Infrastructure/Database.fs`
   (idempotent `ALTER … DROP NOT NULL`); extend `tests/Megafono.Tests/Integration/SchemaTests.fs`
-- [ ] T002 [P] `ActivityStreams.deleteActor` and `ActivityStreams.actorTombstone` per contracts/federation.md, with
+- [X] T002 [P] `ActivityStreams.deleteActor` and `ActivityStreams.actorTombstone` per contracts/federation.md, with
   unit tests
-- [ ] T003 `AppClient`: `LookupResult.Deleted`; `ById` answers it from the stored row without calling the app;
+- [X] T003 `AppClient`: `LookupResult.Deleted`; `ById` answers it from the stored row without calling the app;
   `ByHandle` turns an answer with a deleted id into `NotFound`; storing never revives or updates a deleted row
   (`StoreIn` returns an option); tests in `tests/Megafono.Tests/Integration/AppClientTests.fs` (the app still
   answers 200 for a deleted id: no new key, row unchanged, `Deleted`/`NotFound`)
-- [ ] T004 `Outbox.lockLiveActor` (FOR SHARE, live only) and `Outbox.enqueueEvent` returning `None` for a deleted
+- [X] T004 `Outbox.lockLiveActor` (FOR SHARE, live only) and `Outbox.enqueueEvent` returning `None` for a deleted
   actor; update every caller and every `LookupResult` match so the build is clean (`Deleted` treated as `NotFound`
   where nothing else is specified)
 
 ## Phase 2: User Story 1 - delete call and the Delete deliveries (P1) 🎯 MVP
 
-- [ ] T005 [US1] Integration tests first, in `tests/Megafono.Tests/Integration/ActorDeletionTests.fs`: one signed
-  `Delete{actor}` per server for accepted and pending followers, accepted and pending follows, and earlier delivery
-  inboxes; shared inbox preferred, one per host (FR-002, FR-003); 202 body; repeat → same body and no new rows
+- [X] T005 [US1] Integration tests first, in `tests/Megafono.Tests/Integration/ActorDeletionTests.fs`: one signed
+  `Delete{actor}` per server for accepted and pending followers and accepted and pending follows, and none to a
+  server that only received a delivery; shared inbox preferred, one per host (FR-002, FR-003); 202 body; repeat → same body and no new rows
   (FR-004); unknown id → 404; the call works with the user unknown to the fake app (FR-001)
-- [ ] T006 [US1] `DELETE /internal/actors/{id}` in `src/Megafono/Internal/Actors.fs`: the transaction of
+- [X] T006 [US1] `DELETE /internal/actors/{id}` in `src/Megafono/Internal/Actors.fs`: the transaction of
   data-model.md (FOR UPDATE, inboxes, Delete activity and deliveries, skip other deliveries, drop events, objects
   and replies deleted and erased, activity bodies emptied, follows deleted, profile cleared, `deleted_at`)
 
 ## Phase 3: User Story 2 - a deleted actor stays gone (P1)
 
-- [ ] T007 [US2] Tests: actor, followers, following, outbox → 410 actor Tombstone with `formerType` (FR-005); signed
+- [X] T007 [US2] Tests: actor, followers, following, outbox → 410 actor Tombstone with `formerType` (FR-005); signed
   POST to the personal inbox → 410; public object → 410, followers-only object → 404 even to a former follower's
   signed fetch (FR-007); WebFinger of the handle → 404 while the fake app still answers, and resolves a new id that
   takes the handle (FR-006); internal calls → 410 `gone` (FR-008)
-- [ ] T008 [US2] `Federation/Actors.fs` tombstones; `Federation/Inbox.fs` personal inbox 410; internal handlers 410
+- [X] T008 [US2] `Federation/Actors.fs` tombstones; `Federation/Inbox.fs` personal inbox 410; internal handlers 410
   in `Internal/Actors.fs`, `Internal/Objects.fs`, `Internal/Follows.fs`, with `lockLiveActor` in their write
   transactions (FR-012)
 
 ## Phase 4: User Story 3 - stop speaking and erase (P2)
 
-- [ ] T009 [US3] Tests: earlier pending deliveries become `skipped` with "actor deleted" (FR-009); queued webhooks
+- [X] T009 [US3] Tests: earlier pending deliveries become `skipped` with "actor deleted" (FR-009); queued webhooks
   dropped and none queued after, including when a `Delete` delivery fails for good; an inbound Follow through the
   shared inbox → 404 and no event (FR-010); follow rows gone, profile fields cleared, documents `{}`, Create/Update
   bodies empty (FR-011); keys kept while a `Delete` delivery is pending and cleared by
   `Housekeeping.clearDeletedActorKeys` once all ended (SC-004)
-- [ ] T010 [US3] `Housekeeping.clearDeletedActorKeys`, the shared delivery key cache (evicted on clearing), wired in
+- [X] T010 [US3] `Housekeeping.clearDeletedActorKeys`, the shared delivery key cache (evicted on clearing), wired in
   `Program.fs`
 
 ## Phase 5: Interop and polish

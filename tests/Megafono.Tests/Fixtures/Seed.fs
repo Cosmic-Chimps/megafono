@@ -66,7 +66,7 @@ let enqueueEvent (dataSource: NpgsqlDataSource) (time: TimeProvider) (userId: st
         use! tx = connection.BeginTransactionAsync()
         let! id = Outbox.enqueueEvent tx time userId body
         do! tx.CommitAsync()
-        return id
+        return id.Value
     }
 
 let sampleActor (name: string) : Events.ActorSummary =

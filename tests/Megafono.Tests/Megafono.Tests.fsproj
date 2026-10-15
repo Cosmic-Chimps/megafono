@@ -17,6 +17,7 @@
     <Compile Include="Unit/IdsTests.fs" />
     <Compile Include="Unit/AudienceTests.fs" />
     <Compile Include="Unit/RepliesBuildersTests.fs" />
+    <Compile Include="Unit/ActorDeletionBuildersTests.fs" />
     <Compile Include="Unit/BackoffTests.fs" />
     <Compile Include="Unit/ConfigTests.fs" />
     <Compile Include="Unit/EventsTests.fs" />
@@ -36,6 +37,7 @@
     <Compile Include="Integration/PublishTests.fs" />
     <Compile Include="Integration/FetchPrivacyTests.fs" />
     <Compile Include="Integration/UpdateDeleteTests.fs" />
+    <Compile Include="Integration/ActorDeletionTests.fs" />
     <Compile Include="Integration/DeliveryTests.fs" />
     <Compile Include="Load/FanOutTests.fs" />
     <Compile Include="Integration/InboundFollowTests.fs" />

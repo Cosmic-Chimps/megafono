@@ -90,6 +90,40 @@ type SchemaTests(pg: PostgresFixture) =
             })
 
     [<Fact>]
+    member _.``003 R-32 the key columns of local_actors are nullable and the change is repeatable``() : Task =
+        withDatabase (fun dataSource _ ->
+            task {
+                do! Database.initializeSchema dataSource
+                do! Database.initializeSchema dataSource
+
+                let! nullable =
+                    scalar
+                        dataSource
+                        "SELECT count(*) FROM information_schema.columns WHERE table_name = 'local_actors' AND column_name IN ('public_key_pem', 'enc_private_key') AND is_nullable = 'YES'"
+
+                Assert.Equal(2L, nullable :?> int64)
+
+                // A tombstone row without keys is accepted
+                do!
+                    execute
+                        dataSource
+                        "INSERT INTO local_actors (app_user_id, handle, name, profile_url, public_key_pem, enc_private_key, deleted_at) VALUES ('gone', 'gone', '', '', NULL, NULL, now())"
+
+                // A database that still has the NOT NULL constraints gets them dropped on the next start
+                do! execute dataSource "DELETE FROM local_actors"
+                do! execute dataSource "ALTER TABLE local_actors ALTER COLUMN public_key_pem SET NOT NULL"
+                do! execute dataSource "ALTER TABLE local_actors ALTER COLUMN enc_private_key SET NOT NULL"
+                do! Database.initializeSchema dataSource
+
+                let! again =
+                    scalar
+                        dataSource
+                        "SELECT count(*) FROM information_schema.columns WHERE table_name = 'local_actors' AND column_name IN ('public_key_pem', 'enc_private_key') AND is_nullable = 'YES'"
+
+                Assert.Equal(2L, again :?> int64)
+            })
+
+    [<Fact>]
     member _.``T010 concurrent starts do not race``() : Task =
         withDatabase (fun dataSource connectionString ->
             task {

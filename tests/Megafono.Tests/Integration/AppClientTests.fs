@@ -256,6 +256,104 @@ type AppClientTests(pg: PostgresFixture) =
             Assert.Contains(string stored, pems)
         }
 
+    /// What the delete call leaves on the row, for the lookups to see
+    member private _.Delete(s: Setup, id: string) : Task =
+        Db.execute s.DataSource $"UPDATE local_actors SET deleted_at = now(), name = '', summary = NULL, icon_url = NULL, profile_url = '' WHERE app_user_id = '{id}'"
+
+    [<Fact>]
+    member this.``003 FR-006 ById answers Deleted from the stored row, without asking the app``() : Task =
+        task {
+            let! s = setup pg true
+            s.App.AddUser(FakeApp.user "u-20" "gone")
+            let! _ = s.Client.ById "u-20"
+            do! this.Delete(s, "u-20")
+            let before = s.App.LookupPaths.Length
+
+            let! result = s.Client.ById "u-20"
+            Assert.Equal(Deleted, result)
+            // Not even after the 5 minute freshness and the 24 hour fallback have passed
+            s.Time.Advance(TimeSpan.FromDays 2.0)
+            let! later = s.Client.ById "u-20"
+            Assert.Equal(Deleted, later)
+            Assert.Equal(before, s.App.LookupPaths.Length)
+        }
+
+    [<Fact>]
+    member this.``003 FR-006 an app that still answers a deleted id never revives or changes the actor``() : Task =
+        task {
+            let! s = setup pg true
+            s.App.AddUser(FakeApp.user "u-21" "ghost")
+            let! _ = s.Client.ById "u-21"
+            do! this.Delete(s, "u-21")
+            let! keyBefore = Db.scalar s.DataSource "SELECT public_key_pem FROM local_actors WHERE app_user_id = 'u-21'"
+
+            // The app still has the user, with other data
+            s.App.AddUser { FakeApp.user "u-21" "ghost" with Name = "Back again"; Locked = true }
+            s.Time.Advance(TimeSpan.FromMinutes 30.0)
+
+            let! byId = s.Client.ById "u-21"
+            Assert.Equal(Deleted, byId)
+            // By handle the app answers with the deleted id: nothing is found, the handle may belong to another id
+            let! byHandle = s.Client.ByHandle "ghost"
+            Assert.Equal(NotFound, byHandle)
+
+            let! rows = Db.count s.DataSource "SELECT count(*) FROM local_actors"
+            let! deleted = Db.count s.DataSource "SELECT count(*) FROM local_actors WHERE app_user_id = 'u-21' AND deleted_at IS NOT NULL AND name = '' AND locked = false"
+            let! keyAfter = Db.scalar s.DataSource "SELECT public_key_pem FROM local_actors WHERE app_user_id = 'u-21'"
+            Assert.Equal(1L, rows)
+            Assert.Equal(1L, deleted)
+            // No new key pair and no update of the row
+            Assert.Equal(string keyBefore, string keyAfter)
+        }
+
+    [<Fact>]
+    member this.``003 FR-006 storing a profile for a deleted id gives nothing back and touches nothing``() : Task =
+        task {
+            let! s = setup pg true
+            s.App.AddUser(FakeApp.user "u-22" "stored")
+            let! _ = s.Client.ById "u-22"
+            do! this.Delete(s, "u-22")
+            s.App.AddUser { FakeApp.user "u-22" "stored" with Name = "Revived?" }
+
+            let! fetched = s.Client.Fetch "u-22"
+            let profile = match fetched with Fetched p -> p | other -> failwith $"expected Fetched, got {other}"
+            use! connection = s.DataSource.OpenConnectionAsync()
+            use! tx = connection.BeginTransactionAsync()
+            let! stored = s.Client.StoreIn tx profile
+            Assert.True stored.IsNone
+            do! tx.CommitAsync()
+
+            let! name = Db.scalar s.DataSource "SELECT name FROM local_actors WHERE app_user_id = 'u-22'"
+            Assert.Equal("", string name)
+
+            // A user never seen before is still stored
+            s.App.AddUser(FakeApp.user "u-23" "fresh")
+            let! fetched = s.Client.Fetch "u-23"
+            let profile = match fetched with Fetched p -> p | other -> failwith $"expected Fetched, got {other}"
+            use! connection = s.DataSource.OpenConnectionAsync()
+            use! tx = connection.BeginTransactionAsync()
+            let! stored = s.Client.StoreIn tx profile
+            Assert.True(match stored with Some(actor, true) -> actor.AppUserId = "u-23" | _ -> false)
+            do! tx.CommitAsync()
+        }
+
+    [<Fact>]
+    member this.``003 FR-006 the handle of a deleted actor goes to another id``() : Task =
+        task {
+            let! s = setup pg true
+            s.App.AddUser(FakeApp.user "u-24" "taken")
+            let! _ = s.Client.ById "u-24"
+            do! this.Delete(s, "u-24")
+
+            // The app gave the handle to a new user with a new immutable id
+            s.App.Users.TryRemove "u-24" |> ignore
+            s.App.AddUser(FakeApp.user "u-25" "taken")
+            let! result = s.Client.ByHandle "taken"
+            Assert.Equal("u-25", (found result).AppUserId)
+            let! old = s.Client.ById "u-24"
+            Assert.Equal(Deleted, old)
+        }
+
     [<Fact>]
     member _.``parseProfile applies the rules of the app contract``() =
         let parse = AppClient.parseProfile false
