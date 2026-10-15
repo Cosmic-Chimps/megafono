@@ -124,3 +124,39 @@ let ``R-07 a note has the fields remote servers read`` () =
     Assert.Equal("https://app.example/u/alex/1", jstr ((at document "url")))
     Assert.False(boolOf ((at document "sensitive")))
     Assert.Null (at document "updated")
+
+// ---- inbound audience (feature 002, T002, research R-22) -------------------------------------------------
+
+let private theirFollowers = Some "https://r.example/users/bob/followers"
+
+[<Fact>]
+let ``002 R-22 Public in to is public, whatever cc holds`` () =
+    Assert.Equal(ReceivedPublic, fromAddressing theirFollowers [ pub ] [ "https://r.example/users/bob/followers" ])
+    Assert.Equal(ReceivedPublic, fromAddressing None [ "as:Public" ] [])
+    Assert.Equal(ReceivedPublic, fromAddressing None [ "Public" ] [])
+
+[<Fact>]
+let ``002 R-22 Public in cc is unlisted`` () =
+    Assert.Equal(ReceivedUnlisted, fromAddressing theirFollowers [ "https://r.example/users/bob/followers" ] [ pub; "https://megafono.test/ap/actors/u-1" ])
+
+[<Fact>]
+let ``002 R-22 the author's followers collection in to is followers-only; mentions in cc do not change that`` () =
+    Assert.Equal(ReceivedFollowers, fromAddressing theirFollowers [ "https://r.example/users/bob/followers" ] [ "https://megafono.test/ap/actors/u-1" ])
+
+[<Fact>]
+let ``002 R-22 only mentioned actors is direct, and so is someone else's followers collection`` () =
+    Assert.Equal(ReceivedDirect, fromAddressing theirFollowers [ "https://megafono.test/ap/actors/u-1" ] [])
+    Assert.Equal(ReceivedDirect, fromAddressing theirFollowers [ "https://other.example/users/x/followers" ] [])
+    // no known followers collection: nothing to match
+    Assert.Equal(ReceivedDirect, fromAddressing None [ "https://r.example/users/bob/followers" ] [])
+    Assert.Equal(ReceivedDirect, fromAddressing None [] [])
+
+[<Theory>]
+[<InlineData("public", true)>]
+[<InlineData("unlisted", true)>]
+[<InlineData("followers", false)>]
+[<InlineData("direct", false)>]
+let ``002 FR-020 only public and unlisted replies are listable, and the names round-trip`` (text: string, listable: bool) =
+    let audience = (receivedFromName text).Value
+    Assert.Equal(text, receivedName audience)
+    Assert.Equal(listable, isListable audience)

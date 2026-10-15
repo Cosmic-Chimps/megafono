@@ -312,6 +312,24 @@ let private fetchActor (env: Env) (actorId: string) (preferredKeyId: string opti
             | Ok response -> return! withJson response (parseAndSave env response preferredKeyId)
     }
 
+/// Fetches any ActivityStreams object (a reply the signer did not embed) signed with the instance actor, so
+/// authorized-fetch servers answer. Only the parsed JSON object is returned: what to trust in it is the caller's call.
+let fetchObject (env: Env) (iri: string) : Task<Result<System.Text.Json.Nodes.JsonObject, RemoteError>> =
+    task {
+        match parseUrl env iri with
+        | Error e -> return Error e
+        | Ok url ->
+            match! fetchDocument env None url with
+            | Error e -> return Error e
+            | Ok response ->
+                try
+                    match System.Text.Json.Nodes.JsonNode.Parse(ReadOnlySpan<byte> response.Body) with
+                    | :? System.Text.Json.Nodes.JsonObject as o -> return Ok o
+                    | _ -> return Error(Invalid "the response is not a JSON object")
+                with :? JsonException as e ->
+                    return Error(Invalid $"the response is not valid JSON: {e.Message}")
+    }
+
 /// The actor with this id: the stored copy while it is under 24 h old, else a fresh fetch
 let getActor (env: Env) (actorId: string) : Task<Result<RemoteActor, RemoteError>> =
     task {

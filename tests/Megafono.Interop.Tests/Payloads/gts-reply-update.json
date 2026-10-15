@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-10-11T02:54:07.3496100Z",
+  "activityType": "Update",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "gotosocial/0.22.2\u002Bgit-fb2bf13 (\u002Bhttps://gts.test)"
+    },
+    {
+      "name": "Accept-Charset",
+      "value": "utf-8"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "zstd,gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/ld\u002Bjson; profile=\u0022https://www.w3.org/ns/activitystreams\u0022"
+    },
+    {
+      "name": "Date",
+      "value": "Sun, 11 Oct 2026 02:54:07 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "2614"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=U3N33LbXEVP\u002Blwn68S0E52IlZJbs5iipDG0nvjX1T9A="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://gts.test/users/alicem0dah/main-key\u0022,algorithm=\u0022hs2019\u0022,headers=\u0022(request-target) host date digest\u0022,signature=\u0022COunu46ttPlQvG6U35k/IicBJQv1KHuRld8SpTDanYlIHT7TUgIqPjHtDV8rxucJ0uV88ivFKtwOR0NFUI\u002BGeCzNFPeL/aiZ2bGfmvVD\u002BequrW4\u002Bbbf7LEjJebc66MTuoP/9qb7V7MKJc8sqU0btpdae78Oj3nGymBoQKaW23NQnX\u002BZb/dkBCBgmuJpK2AapF0ktTyZCyXsAwM0tZUclZ614RkE8pCydk96vPvflJaIYrjWqA6p/dSkuN9bdN9vFn\u002BxbNZyz/JXDSp9HF2usBo0A7CoPkgZPqmZxPLUZh87LA7JxVKUi7Ikp9MnMpOKc3QFriACpTwvNKSsxb/Y6tw==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.22.0.3"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6WyJodHRwczovL2dvdG9zb2NpYWwub3JnL25zIiwiaHR0cHM6Ly93d3cudzMub3JnL25zL2FjdGl2aXR5c3RyZWFtcyIseyJzZW5zaXRpdmUiOiJhczpzZW5zaXRpdmUifV0sImFjdG9yIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9hbGljZW0wZGFoIiwiY2MiOlsiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9hbGljZW0wZGFoL2ZvbGxvd2VycyIsImh0dHBzOi8vbWVnYWZvbm8udGVzdC9hcC9hY3RvcnMvc2VyaWVzLXNlcmllc2QxYWVwIl0sImlkIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9hbGljZW0wZGFoL3N0YXR1c2VzLzAxTTRNRTNHRlBYOTFSUEJRSEZITlYyUjUxL2FjdGl2aXR5I1VwZGF0ZSIsIm9iamVjdCI6eyJhdHRyaWJ1dGVkVG8iOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2FsaWNlbTBkYWgiLCJjYyI6WyJodHRwczovL2d0cy50ZXN0L3VzZXJzL2FsaWNlbTBkYWgvZm9sbG93ZXJzIiwiaHR0cHM6Ly9tZWdhZm9uby50ZXN0L2FwL2FjdG9ycy9zZXJpZXMtc2VyaWVzZDFhZXAiXSwiY29udGVudCI6Ilx1MDAzY3BcdTAwM2VcdTAwM2NzcGFuIGNsYXNzPVwiaC1jYXJkXCJcdTAwM2VcdTAwM2NhIGhyZWY9XCJodHRwczovL21lZ2Fmb25vLnRlc3QvdS9zZXJpZXNkMWFlcFwiIGNsYXNzPVwidS11cmwgbWVudGlvblwiIHJlbD1cIm5vZm9sbG93IG5vcmVmZXJyZXIgbm9vcGVuZXJcIiB0YXJnZXQ9XCJfYmxhbmtcIlx1MDAzZUBcdTAwM2NzcGFuXHUwMDNlc2VyaWVzZDFhZXBcdTAwM2Mvc3Bhblx1MDAzZVx1MDAzYy9hXHUwMDNlXHUwMDNjL3NwYW5cdTAwM2UgZWRpdGVkajRpem4gc3RpbGwgdGhhdCBlbmRpbmdcdTAwM2MvcFx1MDAzZSIsImNvbnRlbnRNYXAiOnsiZW4iOiJcdTAwM2NwXHUwMDNlXHUwMDNjc3BhbiBjbGFzcz1cImgtY2FyZFwiXHUwMDNlXHUwMDNjYSBocmVmPVwiaHR0cHM6Ly9tZWdhZm9uby50ZXN0L3Uvc2VyaWVzZDFhZXBcIiBjbGFzcz1cInUtdXJsIG1lbnRpb25cIiByZWw9XCJub2ZvbGxvdyBub3JlZmVycmVyIG5vb3BlbmVyXCIgdGFyZ2V0PVwiX2JsYW5rXCJcdTAwM2VAXHUwMDNjc3Bhblx1MDAzZXNlcmllc2QxYWVwXHUwMDNjL3NwYW5cdTAwM2VcdTAwM2MvYVx1MDAzZVx1MDAzYy9zcGFuXHUwMDNlIGVkaXRlZGo0aXpuIHN0aWxsIHRoYXQgZW5kaW5nXHUwMDNjL3BcdTAwM2UifSwiaWQiOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2FsaWNlbTBkYWgvc3RhdHVzZXMvMDFNNE1FM0dGUFg5MVJQQlFIRkhOVjJSNTEiLCJpblJlcGx5VG8iOiJodHRwczovL21lZ2Fmb25vLnRlc3QvYXAvb2JqZWN0cy8wNmMxYjYzNi03YTM4LTQzNTktYjQxNy00YmY2YzZjMjNiMTkiLCJpbnRlcmFjdGlvblBvbGljeSI6eyJjYW5Bbm5vdW5jZSI6eyJhdXRvbWF0aWNBcHByb3ZhbCI6WyJodHRwczovL3d3dy53My5vcmcvbnMvYWN0aXZpdHlzdHJlYW1zI1B1YmxpYyJdfSwiY2FuTGlrZSI6eyJhdXRvbWF0aWNBcHByb3ZhbCI6WyJodHRwczovL3d3dy53My5vcmcvbnMvYWN0aXZpdHlzdHJlYW1zI1B1YmxpYyJdfSwiY2FuUXVvdGUiOnsiYXV0b21hdGljQXBwcm92YWwiOlsiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9hbGljZW0wZGFoIl19LCJjYW5SZXBseSI6eyJhdXRvbWF0aWNBcHByb3ZhbCI6WyJodHRwczovL3d3dy53My5vcmcvbnMvYWN0aXZpdHlzdHJlYW1zI1B1YmxpYyJdfX0sInB1Ymxpc2hlZCI6IjIwMjYtMTAtMTFUMDI6NTQ6MDZaIiwicmVwbGllcyI6eyJmaXJzdCI6eyJpZCI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYWxpY2VtMGRhaC9zdGF0dXNlcy8wMU00TUUzR0ZQWDkxUlBCUUhGSE5WMlI1MS9yZXBsaWVzP3BhZ2U9dHJ1ZSIsIm5leHQiOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2FsaWNlbTBkYWgvc3RhdHVzZXMvMDFNNE1FM0dGUFg5MVJQQlFIRkhOVjJSNTEvcmVwbGllcz9wYWdlPXRydWVcdTAwMjZvbmx5X290aGVyX2FjY291bnRzPWZhbHNlIiwicGFydE9mIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9hbGljZW0wZGFoL3N0YXR1c2VzLzAxTTRNRTNHRlBYOTFSUEJRSEZITlYyUjUxL3JlcGxpZXMiLCJ0eXBlIjoiQ29sbGVjdGlvblBhZ2UifSwiaWQiOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2FsaWNlbTBkYWgvc3RhdHVzZXMvMDFNNE1FM0dGUFg5MVJQQlFIRkhOVjJSNTEvcmVwbGllcyIsInR5cGUiOiJDb2xsZWN0aW9uIn0sInNlbnNpdGl2ZSI6dHJ1ZSwic3VtbWFyeSI6IlNwb2lsZXJzOiBTMiBFNSAoZWRpdGVkKSIsInRhZyI6eyJocmVmIjoiaHR0cHM6Ly9tZWdhZm9uby50ZXN0L2FwL2FjdG9ycy9zZXJpZXMtc2VyaWVzZDFhZXAiLCJuYW1lIjoiQHNlcmllc2QxYWVwQG1lZ2Fmb25vLnRlc3QiLCJ0eXBlIjoiTWVudGlvbiJ9LCJ0byI6Imh0dHBzOi8vd3d3LnczLm9yZy9ucy9hY3Rpdml0eXN0cmVhbXMjUHVibGljIiwidHlwZSI6Ik5vdGUiLCJ1cGRhdGVkIjoiMjAyNi0xMC0xMVQwMjo1NDowN1oiLCJ1cmwiOiJodHRwczovL2d0cy50ZXN0L0BhbGljZW0wZGFoL3N0YXR1c2VzLzAxTTRNRTNHRlBYOTFSUEJRSEZITlYyUjUxIn0sInB1Ymxpc2hlZCI6IjIwMjYtMTAtMTFUMDI6NTQ6MDZaIiwidG8iOiJodHRwczovL3d3dy53My5vcmcvbnMvYWN0aXZpdHlzdHJlYW1zI1B1YmxpYyIsInR5cGUiOiJVcGRhdGUifQ==",
+  "body": "{\u0022@context\u0022:[\u0022https://gotosocial.org/ns\u0022,\u0022https://www.w3.org/ns/activitystreams\u0022,{\u0022sensitive\u0022:\u0022as:sensitive\u0022}],\u0022actor\u0022:\u0022https://gts.test/users/alicem0dah\u0022,\u0022cc\u0022:[\u0022https://gts.test/users/alicem0dah/followers\u0022,\u0022https://megafono.test/ap/actors/series-seriesd1aep\u0022],\u0022id\u0022:\u0022https://gts.test/users/alicem0dah/statuses/01M4ME3GFPX91RPBQHFHNV2R51/activity#Update\u0022,\u0022object\u0022:{\u0022attributedTo\u0022:\u0022https://gts.test/users/alicem0dah\u0022,\u0022cc\u0022:[\u0022https://gts.test/users/alicem0dah/followers\u0022,\u0022https://megafono.test/ap/actors/series-seriesd1aep\u0022],\u0022content\u0022:\u0022\\u003cp\\u003e\\u003cspan class=\\\u0022h-card\\\u0022\\u003e\\u003ca href=\\\u0022https://megafono.test/u/seriesd1aep\\\u0022 class=\\\u0022u-url mention\\\u0022 rel=\\\u0022nofollow noreferrer noopener\\\u0022 target=\\\u0022_blank\\\u0022\\u003e@\\u003cspan\\u003eseriesd1aep\\u003c/span\\u003e\\u003c/a\\u003e\\u003c/span\\u003e editedj4izn still that ending\\u003c/p\\u003e\u0022,\u0022contentMap\u0022:{\u0022en\u0022:\u0022\\u003cp\\u003e\\u003cspan class=\\\u0022h-card\\\u0022\\u003e\\u003ca href=\\\u0022https://megafono.test/u/seriesd1aep\\\u0022 class=\\\u0022u-url mention\\\u0022 rel=\\\u0022nofollow noreferrer noopener\\\u0022 target=\\\u0022_blank\\\u0022\\u003e@\\u003cspan\\u003eseriesd1aep\\u003c/span\\u003e\\u003c/a\\u003e\\u003c/span\\u003e editedj4izn still that ending\\u003c/p\\u003e\u0022},\u0022id\u0022:\u0022https://gts.test/users/alicem0dah/statuses/01M4ME3GFPX91RPBQHFHNV2R51\u0022,\u0022inReplyTo\u0022:\u0022https://megafono.test/ap/objects/06c1b636-7a38-4359-b417-4bf6c6c23b19\u0022,\u0022interactionPolicy\u0022:{\u0022canAnnounce\u0022:{\u0022automaticApproval\u0022:[\u0022https://www.w3.org/ns/activitystreams#Public\u0022]},\u0022canLike\u0022:{\u0022automaticApproval\u0022:[\u0022https://www.w3.org/ns/activitystreams#Public\u0022]},\u0022canQuote\u0022:{\u0022automaticApproval\u0022:[\u0022https://gts.test/users/alicem0dah\u0022]},\u0022canReply\u0022:{\u0022automaticApproval\u0022:[\u0022https://www.w3.org/ns/activitystreams#Public\u0022]}},\u0022published\u0022:\u00222026-10-11T02:54:06Z\u0022,\u0022replies\u0022:{\u0022first\u0022:{\u0022id\u0022:\u0022https://gts.test/users/alicem0dah/statuses/01M4ME3GFPX91RPBQHFHNV2R51/replies?page=true\u0022,\u0022next\u0022:\u0022https://gts.test/users/alicem0dah/statuses/01M4ME3GFPX91RPBQHFHNV2R51/replies?page=true\\u0026only_other_accounts=false\u0022,\u0022partOf\u0022:\u0022https://gts.test/users/alicem0dah/statuses/01M4ME3GFPX91RPBQHFHNV2R51/replies\u0022,\u0022type\u0022:\u0022CollectionPage\u0022},\u0022id\u0022:\u0022https://gts.test/users/alicem0dah/statuses/01M4ME3GFPX91RPBQHFHNV2R51/replies\u0022,\u0022type\u0022:\u0022Collection\u0022},\u0022sensitive\u0022:true,\u0022summary\u0022:\u0022Spoilers: S2 E5 (edited)\u0022,\u0022tag\u0022:{\u0022href\u0022:\u0022https://megafono.test/ap/actors/series-seriesd1aep\u0022,\u0022name\u0022:\u0022@seriesd1aep@megafono.test\u0022,\u0022type\u0022:\u0022Mention\u0022},\u0022to\u0022:\u0022https://www.w3.org/ns/activitystreams#Public\u0022,\u0022type\u0022:\u0022Note\u0022,\u0022updated\u0022:\u00222026-10-11T02:54:07Z\u0022,\u0022url\u0022:\u0022https://gts.test/@alicem0dah/statuses/01M4ME3GFPX91RPBQHFHNV2R51\u0022},\u0022published\u0022:\u00222026-10-11T02:54:06Z\u0022,\u0022to\u0022:\u0022https://www.w3.org/ns/activitystreams#Public\u0022,\u0022type\u0022:\u0022Update\u0022}",
+  "signer": {
+    "actorId": "https://gts.test/users/alicem0dah",
+    "keyId": "https://gts.test/users/alicem0dah/main-key",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3kFrdNm8DBTgPICo4O9D\nalrwc0REAxJT4T72ouCH7cBCcevwoLqk9BbOVp04nmGsfABLZ2JMWvuq\u002BU0NetAI\n/B53p6O20aS9MoStbA\u002BhGzSJWdWdxhFDArZpxXmWAMoptJ9LbcCD\u002BGLea9KLpYSc\n\u002Bbt/qD7ObaWQ/PyYmgT7oAlPA\u002B/dxEdZFf/0l/FVksZan0CzpuheAKi3q5gMetHy\nOUq05Hg31iSYcw6iZjcF9nNojCkHL0qgac3aCsw2DsKmq4j46/VVHmUHr7EzWzYP\nyT6jK1HKjZexJImuLGSJ\u002BvmkDqznE5ImHJgIL6q81It6Rv1xPrR/0VgxSvE4qdZJ\nCQIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}

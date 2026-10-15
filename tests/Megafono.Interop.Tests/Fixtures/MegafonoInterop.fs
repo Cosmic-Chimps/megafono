@@ -105,6 +105,30 @@ type private ProfilePageFilter(fakeApp: FakeApp.FakeApp) =
 
                 next.Invoke app)
 
+/// Test-only: stands in for the app's episode pages. `GET /episodes/{objectId}` is an HTML page whose
+/// `<link rel="alternate" type="application/activity+json">` and `Link` header point at the thread post (R-21).
+type private EpisodePageFilter() =
+    interface IStartupFilter with
+        member _.Configure(next: Action<IApplicationBuilder>) : Action<IApplicationBuilder> =
+            Action<IApplicationBuilder>(fun app ->
+                app.Use(
+                    Func<HttpContext, Func<Task>, Task>(fun ctx continuation ->
+                        let path = ctx.Request.Path.Value
+
+                        if ctx.Request.Method = "GET" && path.StartsWith "/episodes/" then
+                            let post = $"https://megafono.test/ap/objects/{path.Substring 10}"
+                            ctx.Response.ContentType <- "text/html; charset=utf-8"
+                            ctx.Response.Headers["Link"] <- $"<{post}>; rel=\"alternate\"; type=\"application/activity+json\""
+
+                            ctx.Response.WriteAsync
+                                $"""<!doctype html><html><head><title>Episode</title><link rel="alternate" type="application/activity+json" href="{post}"></head><body><h1>Episode</h1></body></html>"""
+                        else
+                            continuation.Invoke())
+                )
+                |> ignore
+
+                next.Invoke app)
+
 /// What one POST to an inbox looked like on the wire, and how Megáfono answered
 type InboxRequest =
     { Path: string
@@ -215,6 +239,7 @@ let start (net: FederationNetwork) (pg: PostgresFixture) (fronts: (string * ICon
                 services.AddSingleton<SafeHttp.TestNetwork>(testNetwork) |> ignore
                 services.AddSingleton<IStartupFilter, AvatarFilter>() |> ignore
                 services.AddSingleton<IStartupFilter>(ProfilePageFilter fakeApp) |> ignore
+                services.AddSingleton<IStartupFilter, EpisodePageFilter>() |> ignore
                 services.AddSingleton<IStartupFilter>(InboxLogFilter inboxLog) |> ignore
 
             let overrides =

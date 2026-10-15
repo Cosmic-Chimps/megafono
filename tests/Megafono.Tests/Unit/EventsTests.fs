@@ -9,8 +9,13 @@ open Megafono.Domain
 
 /// A string at a dotted path of a JSON document
 let private get (node: JsonNode) (path: string) : string =
-    let target = path.Split('.') |> Array.fold (fun (n: JsonNode) key -> n[key]) node
+    let target = path.Split('.') |> Array.fold (fun (n: JsonNode) key -> match n with :? JsonArray as a -> a[int key] | o -> o[key]) node
     target.GetValue<string>()
+
+let private nodeAt (node: JsonNode) (path: string) : JsonNode =
+    path.Split('.') |> Array.fold (fun (n: JsonNode) key -> match n with :? JsonArray as a -> a[int key] | o -> o[key]) node
+let private boolAt (node: JsonNode) (path: string) : bool = (nodeAt node path).GetValue<bool>()
+let private intAt (node: JsonNode) (path: string) : int = (nodeAt node path).GetValue<int>()
 
 let private crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
@@ -96,3 +101,107 @@ let ``app-contract type names match the contract and extra fields are added at t
     Assert.Equal("obj-1", get json "object.id")
     Assert.False(json.AsObject().ContainsKey "actor")
     Assert.False(json.AsObject().ContainsKey "follow")
+
+// ---- replies (feature 002, T004, contracts/app-contract.md) ----------------------------------------------
+
+let private bob: Events.ActorSummary =
+    { Id = "https://mastodon.social/users/bob"
+      Handle = "@bob@mastodon.social"
+      Name = "Bob"
+      IconUrl = Some "https://files.mastodon.social/bob.png"
+      ProfileUrl = Some "https://mastodon.social/@bob" }
+
+let private rootGuid = Guid.Parse "6f1c0000-0000-4000-8000-000000000001"
+
+let private reply: Events.ReplyObject =
+    { Id = "https://mastodon.social/users/bob/statuses/1131"
+      Url = Some "https://mastodon.social/@bob/1131"
+      Type = "Note"
+      Content = "<p>that ending!</p>"
+      Summary = Some "Spoilers: S2 E5"
+      Sensitive = true
+      Language = Some "en"
+      Published = DateTimeOffset(2026, 10, 12, 17, 59, 58, TimeSpan.Zero)
+      Updated = None
+      Audience = "public"
+      InReplyTo = "https://frunchy.example/ap/objects/6f1c0000-0000-4000-8000-000000000001"
+      Parent = { Local = true; ObjectId = Some rootGuid; UserId = Some "series-52991" }
+      Thread = { ObjectId = rootGuid; Id = "https://frunchy.example/ap/objects/6f1c0000-0000-4000-8000-000000000001" }
+      Attachments = [ { Type = "Image"; MediaType = Some "image/png"; Url = "https://files.mastodon.social/a.png"; Name = Some "alt text" } ] }
+
+let private envelopeOf (body: Events.EventBody) =
+    JsonNode.Parse(Events.envelope "evt_R" (DateTimeOffset(2026, 10, 12, 18, 0, 0, TimeSpan.Zero)) 812L "series-52991" "frieren" body)
+
+[<Fact>]
+let ``002 app-contract reply.received carries every documented field`` () =
+    let json = envelopeOf (Events.replyBody Events.ReplyReceived bob reply None)
+    Assert.Equal("reply.received", get json "type")
+    Assert.Equal("series-52991", get json "user.id")
+    Assert.Equal("https://mastodon.social/users/bob", get json "actor.id")
+    Assert.Equal("@bob@mastodon.social", get json "actor.handle")
+    Assert.Equal("https://mastodon.social/users/bob/statuses/1131", get json "object.id")
+    Assert.Equal("https://mastodon.social/@bob/1131", get json "object.url")
+    Assert.Equal("Note", get json "object.type")
+    Assert.Equal("<p>that ending!</p>", get json "object.content")
+    Assert.Equal("Spoilers: S2 E5", get json "object.summary")
+    Assert.True(boolAt json "object.sensitive")
+    Assert.Equal("en", get json "object.language")
+    Assert.Equal("2026-10-12T17:59:58Z", get json "object.published")
+    Assert.Null(nodeAt json "object.updated")
+    Assert.True(json["object"].AsObject().ContainsKey "updated")
+    Assert.Equal("public", get json "object.audience")
+    Assert.Equal(reply.InReplyTo, get json "object.inReplyTo")
+    Assert.True(boolAt json "object.parent.local")
+    Assert.Equal("6f1c0000-0000-4000-8000-000000000001", get json "object.parent.objectId")
+    Assert.Equal("series-52991", get json "object.parent.userId")
+    Assert.Equal("6f1c0000-0000-4000-8000-000000000001", get json "object.thread.objectId")
+    Assert.Equal(reply.Thread.Id, get json "object.thread.id")
+    Assert.Equal("Image", get json "object.attachment.0.type")
+    Assert.Equal("image/png", get json "object.attachment.0.mediaType")
+    Assert.Equal("https://files.mastodon.social/a.png", get json "object.attachment.0.url")
+    Assert.Equal("alt text", get json "object.attachment.0.name")
+    Assert.True(json.AsObject().ContainsKey "extensions")
+    Assert.Null json["extensions"]
+
+[<Fact>]
+let ``002 app-contract a reply to a remote reply has parent.local false and no ids, and missing fields are null`` () =
+    let remoteParent = { reply with Parent = { Local = false; ObjectId = None; UserId = None }; Summary = None; Sensitive = false; Language = None; Url = None; Attachments = [] }
+    let json = envelopeOf (Events.replyBody Events.ReplyReceived bob remoteParent None)
+    Assert.False(boolAt json "object.parent.local")
+    Assert.Null(nodeAt json "object.parent.objectId")
+    Assert.Null(nodeAt json "object.parent.userId")
+    Assert.Null(nodeAt json "object.summary")
+    Assert.False(boolAt json "object.sensitive")
+    Assert.Null(nodeAt json "object.language")
+    Assert.Null(nodeAt json "object.url")
+    Assert.Equal(0, (nodeAt json "object.attachment").AsArray().Count)
+
+[<Fact>]
+let ``002 app-contract reply.updated sets object.updated`` () =
+    let updated = { reply with Updated = Some(DateTimeOffset(2026, 10, 12, 18, 5, 0, TimeSpan.Zero)) }
+    let json = envelopeOf (Events.replyBody Events.ReplyUpdated bob updated None)
+    Assert.Equal("reply.updated", get json "type")
+    Assert.Equal("2026-10-12T18:05:00Z", get json "object.updated")
+
+[<Fact>]
+let ``002 app-contract extensions of the reply replace the null`` () =
+    let data = JsonObject()
+    data["watch"] <- JsonNode.Parse """{"episode":5}"""
+    let extensions = JsonObject()
+    extensions["namespace"] <- JsonValue.Create "https://app.example/ns#"
+    extensions["prefix"] <- JsonValue.Create "app"
+    extensions["data"] <- data
+    let json = envelopeOf (Events.replyBody Events.ReplyReceived bob reply (Some(extensions :> JsonNode)))
+    Assert.Equal("https://app.example/ns#", get json "extensions.namespace")
+    Assert.Equal(5, intAt json "extensions.data.watch.episode")
+
+[<Fact>]
+let ``002 app-contract object.deleted has only the id and the thread`` () =
+    let json = envelopeOf (Events.deletedBody bob reply.Id reply.Thread)
+    Assert.Equal("object.deleted", get json "type")
+    Assert.Equal(reply.Id, get json "object.id")
+    Assert.Equal("6f1c0000-0000-4000-8000-000000000001", get json "object.thread.objectId")
+    Assert.Equal(reply.Thread.Id, get json "object.thread.id")
+    Assert.Equal(2, (nodeAt json "object").AsObject().Count)
+    Assert.Equal("@bob@mastodon.social", get json "actor.handle")
+    Assert.Null json["extensions"]

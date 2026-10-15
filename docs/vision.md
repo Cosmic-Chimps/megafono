@@ -32,7 +32,7 @@ US3 — Publish to friends (P1). As an app developer, I want one call to post so
 1. When the app calls publish with audience followers, then every follower's inbox (or shared inbox) receives a signed Create within 1 minute.
 2. Given a follower's server is down, then delivery is retried with backoff for up to 48 hours, then dropped and reported.
 3. Given the post is followers-only, when an unsigned or non-follower request fetches its URL, then Megáfono answers 404.
-US4 — Interactions come back (P2). As an app developer, I want replies, likes and mentions as webhooks.
+US4 — Interactions come back (P2). As an app developer, I want replies, likes and mentions as webhooks. Replies (reply.received, reply.updated, object.deleted, and publishing a reply) are built in specs/002-replies-threads; likes and mentions are still open.
 1. When a remote user replies to or likes a post, then the app receives reply.received or like.received with the verified actor and object.
 2. Given an activity with an invalid signature, then it is rejected with 401 and never reaches the app.
 US5 — Self-host in minutes (P1). As a self-hoster, I want a compose file that just works.
@@ -121,7 +121,7 @@ POST /internal/actors/alex/objects
 }
 Megáfono adds the @context, ids, attributedTo, to/cc, published, and the extension under its prefix. Remote objects carrying the same namespace are passed back to the app in webhooks under extensions.
 Webhook events
-follow.requested, follow.accepted, follow.rejected, follow.removed, reply.received, mention.received, like.received, like.removed, object.deleted, actor.updated, actor.deleted, delivery.failed.
+follow.requested, follow.accepted, follow.rejected, follow.removed, reply.received, reply.updated, mention.received, like.received, like.removed, object.deleted, actor.updated, actor.deleted, delivery.failed.
 {
   "id": "evt_01J…",
   "type": "reply.received",

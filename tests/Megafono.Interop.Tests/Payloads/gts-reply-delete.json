@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-10-11T02:54:07.8576570Z",
+  "activityType": "Delete",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "gotosocial/0.22.2\u002Bgit-fb2bf13 (\u002Bhttps://gts.test)"
+    },
+    {
+      "name": "Accept-Charset",
+      "value": "utf-8"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "zstd,gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/ld\u002Bjson; profile=\u0022https://www.w3.org/ns/activitystreams\u0022"
+    },
+    {
+      "name": "Date",
+      "value": "Sun, 11 Oct 2026 02:54:07 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "479"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=goLXjvTB\u002Bjlq6Qf6T9dhR4y\u002BpI0Ue2LN/uhvErujgGE="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://gts.test/users/alicem0dah/main-key\u0022,algorithm=\u0022hs2019\u0022,headers=\u0022(request-target) host date digest\u0022,signature=\u0022XUaOFT69znJimbB0reyR\u002Bshr\u002BF35TYZTweYdFKIHWMrB6ryl8E54NWb8t3Ce3nM/rM3acFGmlhoQ7Kn4raNpCOZYMlw/vZSGdun\u002BblH526TJwd2EGMwQ1ncsjdgHsf9YRJo00Pv3P\u002BiWLmWkwvW5AfsDFR9iycpGMN\u002BpyaMTQpxoynxZJ9bL6fMqdFtofZ3wBjYq8LgHMCy8yx0chSTYo\u002BQfOGuWQe1B98MUxlDjAXnZaB6qB9Le/LNaPJ67iwQfe86XAe/EN5UzDh8Kio9rcwa/JvFdLkVNNeDLzrSL9s4ri4hb8CCYENE6wCva6oGE/GQyxHaymFX5v2YTYHhNBQ==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.22.0.3"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6Imh0dHBzOi8vd3d3LnczLm9yZy9ucy9hY3Rpdml0eXN0cmVhbXMiLCJhY3RvciI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYWxpY2VtMGRhaCIsImNjIjpbImh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYWxpY2VtMGRhaC9mb2xsb3dlcnMiLCJodHRwczovL21lZ2Fmb25vLnRlc3QvYXAvYWN0b3JzL3Nlcmllcy1zZXJpZXNkMWFlcCJdLCJpZCI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYWxpY2VtMGRhaC9zdGF0dXNlcy8wMU00TUUzR0ZQWDkxUlBCUUhGSE5WMlI1MS9hY3Rpdml0eSNEZWxldGUiLCJvYmplY3QiOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2FsaWNlbTBkYWgvc3RhdHVzZXMvMDFNNE1FM0dGUFg5MVJQQlFIRkhOVjJSNTEiLCJwdWJsaXNoZWQiOiIyMDI2LTEwLTExVDAyOjU0OjA2WiIsInRvIjoiaHR0cHM6Ly93d3cudzMub3JnL25zL2FjdGl2aXR5c3RyZWFtcyNQdWJsaWMiLCJ0eXBlIjoiRGVsZXRlIn0=",
+  "body": "{\u0022@context\u0022:\u0022https://www.w3.org/ns/activitystreams\u0022,\u0022actor\u0022:\u0022https://gts.test/users/alicem0dah\u0022,\u0022cc\u0022:[\u0022https://gts.test/users/alicem0dah/followers\u0022,\u0022https://megafono.test/ap/actors/series-seriesd1aep\u0022],\u0022id\u0022:\u0022https://gts.test/users/alicem0dah/statuses/01M4ME3GFPX91RPBQHFHNV2R51/activity#Delete\u0022,\u0022object\u0022:\u0022https://gts.test/users/alicem0dah/statuses/01M4ME3GFPX91RPBQHFHNV2R51\u0022,\u0022published\u0022:\u00222026-10-11T02:54:06Z\u0022,\u0022to\u0022:\u0022https://www.w3.org/ns/activitystreams#Public\u0022,\u0022type\u0022:\u0022Delete\u0022}",
+  "signer": {
+    "actorId": "https://gts.test/users/alicem0dah",
+    "keyId": "https://gts.test/users/alicem0dah/main-key",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3kFrdNm8DBTgPICo4O9D\nalrwc0REAxJT4T72ouCH7cBCcevwoLqk9BbOVp04nmGsfABLZ2JMWvuq\u002BU0NetAI\n/B53p6O20aS9MoStbA\u002BhGzSJWdWdxhFDArZpxXmWAMoptJ9LbcCD\u002BGLea9KLpYSc\n\u002Bbt/qD7ObaWQ/PyYmgT7oAlPA\u002B/dxEdZFf/0l/FVksZan0CzpuheAKi3q5gMetHy\nOUq05Hg31iSYcw6iZjcF9nNojCkHL0qgac3aCsw2DsKmq4j46/VVHmUHr7EzWzYP\nyT6jK1HKjZexJImuLGSJ\u002BvmkDqznE5ImHJgIL6q81It6Rv1xPrR/0VgxSvE4qdZJ\nCQIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}

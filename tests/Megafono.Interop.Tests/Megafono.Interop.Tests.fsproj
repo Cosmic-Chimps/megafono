@@ -21,6 +21,9 @@
     <Compile Include="InboundFollowTests.fs" />
     <Compile Include="OutboundFollowTests.fs" />
     <Compile Include="PublishTests.fs" />
+    <Compile Include="GroupActorTests.fs" />
+    <Compile Include="RepliesTests.fs" />
+    <Compile Include="ThreadLoadingTests.fs" />
     <Compile Include="DeploymentShapeTests.fs" />
   </ItemGroup>
 

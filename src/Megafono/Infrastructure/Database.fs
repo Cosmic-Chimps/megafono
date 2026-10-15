@@ -97,6 +97,32 @@ let private schema =
         CONSTRAINT ux_objects_idempotency UNIQUE (local_actor, idempotency_key)
     );
 
+    -- Replies and threads (specs/002-replies-threads/data-model.md): a reply points at its parent, a root has neither
+    ALTER TABLE objects ADD COLUMN IF NOT EXISTS in_reply_to text NULL;
+    ALTER TABLE objects ADD COLUMN IF NOT EXISTS thread_root uuid NULL REFERENCES objects (id);
+    CREATE INDEX IF NOT EXISTS ix_objects_thread_root ON objects (thread_root) WHERE thread_root IS NOT NULL;
+
+    -- Every reply in one of our threads, ours or remote. References only: the content lives in the app (R-27).
+    CREATE TABLE IF NOT EXISTS replies (
+        id            text PRIMARY KEY,
+        local_object  uuid NULL REFERENCES objects (id),
+        remote_actor  text NULL REFERENCES remote_actors (id),
+        parent        text NOT NULL,
+        parent_object uuid NULL REFERENCES objects (id),
+        thread_root   uuid NOT NULL REFERENCES objects (id),
+        audience      text NOT NULL CHECK (audience IN ('public', 'unlisted', 'followers', 'direct')),
+        state         text NOT NULL DEFAULT 'live' CHECK (state IN ('live', 'deleted')),
+        published_at  timestamptz NOT NULL,
+        first_seen_at timestamptz NOT NULL DEFAULT now(),
+        updated_at    timestamptz NOT NULL DEFAULT now(),
+        deleted_at    timestamptz NULL,
+        CONSTRAINT ck_replies_one_author CHECK ((local_object IS NULL) <> (remote_actor IS NULL))
+    );
+
+    CREATE INDEX IF NOT EXISTS ix_replies_parent ON replies (parent, state);
+    CREATE INDEX IF NOT EXISTS ix_replies_thread ON replies (thread_root, state);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_replies_local_object ON replies (local_object) WHERE local_object IS NOT NULL;
+
     CREATE TABLE IF NOT EXISTS activities (
         id            uuid PRIMARY KEY,
         local_actor   text NOT NULL REFERENCES local_actors (app_user_id),

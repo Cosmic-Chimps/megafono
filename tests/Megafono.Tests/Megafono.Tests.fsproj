@@ -16,6 +16,7 @@
     <Compile Include="Fixtures/Signed.fs" />
     <Compile Include="Unit/IdsTests.fs" />
     <Compile Include="Unit/AudienceTests.fs" />
+    <Compile Include="Unit/RepliesBuildersTests.fs" />
     <Compile Include="Unit/BackoffTests.fs" />
     <Compile Include="Unit/ConfigTests.fs" />
     <Compile Include="Unit/EventsTests.fs" />
@@ -43,6 +44,12 @@
     <Compile Include="Integration/RemoteActorLookupTests.fs" />
     <Compile Include="Integration/OutboundFollowTests.fs" />
     <Compile Include="Integration/FollowListTests.fs" />
+    <Compile Include="Integration/ThreadsTests.fs" />
+    <Compile Include="Integration/RepliesCollectionTests.fs" />
+    <Compile Include="Integration/InboundRepliesTests.fs" />
+    <Compile Include="Integration/InboundReplyChangesTests.fs" />
+    <Compile Include="Integration/CapturedRepliesTests.fs" />
+    <Compile Include="Integration/OutboundRepliesTests.fs" />
     <Compile Include="SmokeTests.fs" />
     <Compile Include="Integration/GatewayTests.fs" />
     <Compile Include="Integration/SampleAppTests.fs" />
