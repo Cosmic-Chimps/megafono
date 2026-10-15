@@ -123,7 +123,7 @@ let parseProfile (allowHttp: bool) (body: string) : Result<AppProfile, string> =
                 let! handle =
                     match Ids.normalizeHandle rawHandle with
                     | Some handle -> Ok handle
-                    | None -> Error "'handle' must match ^[a-z0-9_]{1,30}$"
+                    | None -> Error "'handle' must match ^[a-z0-9_]([a-z0-9_-]{0,28}[a-z0-9_])?$"
 
                 let kind = defaultArg kind "Person"
 

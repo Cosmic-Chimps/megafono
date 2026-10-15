@@ -37,13 +37,18 @@ let ``FR-004 refuses null`` () =
 [<InlineData("alex", "alex")>]
 [<InlineData("Alex_9", "alex_9")>]
 [<InlineData("ALEX", "alex")>]
+[<InlineData("Anime-Fan", "anime-fan")>]
+[<InlineData("a--b", "a--b")>]
+[<InlineData("_x-y_", "_x-y_")>]
 let ``handles are lowercased then validated`` (input: string, expected: string) =
     Assert.Equal(Some expected, Ids.normalizeHandle input)
 
 [<Theory>]
 [<InlineData("")>]
 [<InlineData("al ex")>]
-[<InlineData("al-ex")>]
+[<InlineData("-alex")>]
+[<InlineData("alex-")>]
+[<InlineData("-")>]
 [<InlineData("alex.b")>]
 [<InlineData("alex\n")>]
 let ``handles outside the pattern are refused`` (input: string) =
@@ -53,6 +58,8 @@ let ``handles outside the pattern are refused`` (input: string) =
 let ``handle length is capped at 30`` () =
     Assert.True(Ids.isValidHandle (String('a', 30)))
     Assert.False(Ids.isValidHandle (String('a', 31)))
+    Assert.True(Ids.isValidHandle ("a" + String('-', 28) + "b"))
+    Assert.False(Ids.isValidHandle ("a" + String('-', 29) + "b"))
 
 [<Fact>]
 let ``isValidHandle wants lowercase, normalizeHandle accepts mixed case`` () =
