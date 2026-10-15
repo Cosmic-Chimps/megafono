@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../Megafono.Tests/Fixtures/PostgresFixture.fs" Link="Fixtures/PostgresFixture.fs" />
+    <Compile Include="../Megafono.Tests/Fixtures/FakeApp.fs" Link="Fixtures/FakeApp.fs" />
+    <Compile Include="Fixtures/TestCa.fs" />
+    <Compile Include="Fixtures/FediClient.fs" />
+    <Compile Include="Fixtures/FederationContext.fs" />
+    <Compile Include="Fixtures/GoToSocialServer.fs" />
+    <Compile Include="Fixtures/MastodonServer.fs" />
+    <Compile Include="Fixtures/FederationNetwork.fs" />
+    <Compile Include="Fixtures/MegafonoInterop.fs" />
+    <Compile Include="HarnessTests.fs" />
+    <Compile Include="MastodonHarnessTests.fs" />
+    <Compile Include="DiscoveryTests.fs" />
+    <Compile Include="InboundFollowTests.fs" />
+    <Compile Include="OutboundFollowTests.fs" />
+    <Compile Include="PublishTests.fs" />
+    <Compile Include="DeploymentShapeTests.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Megafono/Megafono.fsproj" />
+  </ItemGroup>
+
+</Project>

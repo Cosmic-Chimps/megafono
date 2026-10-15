@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="TestSupport.fs" />
+    <Compile Include="Fixtures/PostgresFixture.fs" />
+    <Compile Include="Fixtures/FakeApp.fs" />
+    <Compile Include="Fixtures/StubRemote.fs" />
+    <Compile Include="Fixtures/MegafonoHost.fs" />
+    <Compile Include="Fixtures/Seed.fs" />
+    <Compile Include="Fixtures/Publishing.fs" />
+    <Compile Include="Fixtures/Signed.fs" />
+    <Compile Include="Unit/IdsTests.fs" />
+    <Compile Include="Unit/AudienceTests.fs" />
+    <Compile Include="Unit/BackoffTests.fs" />
+    <Compile Include="Unit/ConfigTests.fs" />
+    <Compile Include="Unit/EventsTests.fs" />
+    <Compile Include="Unit/KeyVaultTests.fs" />
+    <Compile Include="Unit/HttpSignaturesTests.fs" />
+    <Compile Include="Unit/SafeHttpTests.fs" />
+    <Compile Include="Unit/SanitizerTests.fs" />
+    <Compile Include="Integration/SchemaTests.fs" />
+    <Compile Include="Integration/HostTests.fs" />
+    <Compile Include="Integration/AppClientTests.fs" />
+    <Compile Include="Integration/RemoteActorsTests.fs" />
+    <Compile Include="Integration/QueueTests.fs" />
+    <Compile Include="Integration/WebFingerTests.fs" />
+    <Compile Include="Integration/ActorTests.fs" />
+    <Compile Include="Integration/NodeInfoTests.fs" />
+    <Compile Include="Integration/ProfileUpdateTests.fs" />
+    <Compile Include="Integration/PublishTests.fs" />
+    <Compile Include="Integration/FetchPrivacyTests.fs" />
+    <Compile Include="Integration/UpdateDeleteTests.fs" />
+    <Compile Include="Integration/DeliveryTests.fs" />
+    <Compile Include="Load/FanOutTests.fs" />
+    <Compile Include="Integration/InboundFollowTests.fs" />
+    <Compile Include="Integration/InboxSecurityTests.fs" />
+    <Compile Include="Integration/RemoteActorUpdateTests.fs" />
+    <Compile Include="Integration/RemoteActorLookupTests.fs" />
+    <Compile Include="Integration/OutboundFollowTests.fs" />
+    <Compile Include="Integration/FollowListTests.fs" />
+    <Compile Include="SmokeTests.fs" />
+    <Compile Include="Integration/GatewayTests.fs" />
+    <Compile Include="Integration/SampleAppTests.fs" />
+    <Compile Include="RepositoryTests.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Fixtures/payloads/*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Megafono/Megafono.fsproj" />
+    <ProjectReference Include="../../src/Megafono.Gateway/Megafono.Gateway.fsproj" />
+    <ProjectReference Include="../../samples/SampleApp/SampleApp.fsproj" />
+  </ItemGroup>
+
+</Project>

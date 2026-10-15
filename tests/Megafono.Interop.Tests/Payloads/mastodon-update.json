@@ -1,0 +1,63 @@
+{
+  "capturedAt": "2026-10-11T00:50:46.8472070Z",
+  "activityType": "Update",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "Mastodon/4.7.3 (http.rb/5.3.1; \u002Bhttps://mastodon.test/)"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/activity\u002Bjson"
+    },
+    {
+      "name": "Date",
+      "value": "Sun, 11 Oct 2026 00:50:46 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "3169"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=91YQ5To6ZcQW7MAOupSnEnup0BpUI9BfOdsso2RIAa8="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://mastodon.test/ap/users/117419529657200055#rsa-5026fb53bc47ff79\u0022,algorithm=\u0022rsa-sha256\u0022,headers=\u0022host date content-type digest (request-target)\u0022,signature=\u0022NvEYgg8\u002Bi83DUbPgnswwYbdkqvpSpfsa49Cb9evmZaD5S8DCeB\u002B9IuDuFJFd93Se/fGk1s47UF7\u002Bah4zWoEWn3PbO7Kj3Ngcu7ANHC89HgTSX04O5wI7i02ee51fKHQ2pZtPib2oTRowL\u002BvYLm\u002BnJGhrt97zuUImIlgfqJCex4YeqJ7f/L/Az5X9u6R5vC/jzM7VZbbagJMj71Fdc50Hb3Lmv1TAQeP0ReR2oF8TtC4TnwIJOFaGfFOGzZWQSAVpbCbuZ5Fs37jlqndUob/ooz72LqUjvI6E0tTmOt8IJgPc\u002B/IktNaFVhDEjeXwLaG/ThqxgE3R/8nEaBsneFNtZQ==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.24.0.9"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6WyJodHRwczovL3d3dy53My5vcmcvbnMvYWN0aXZpdHlzdHJlYW1zIiwiaHR0cHM6Ly93M2lkLm9yZy9zZWN1cml0eS92MSIsImh0dHBzOi8vcHVybC5hcmNoaXZlLm9yZy9zb2NpYWx3ZWIvd2ViZmluZ2VyIix7Im1hbnVhbGx5QXBwcm92ZXNGb2xsb3dlcnMiOiJhczptYW51YWxseUFwcHJvdmVzRm9sbG93ZXJzIiwidG9vdCI6Imh0dHA6Ly9qb2lubWFzdG9kb24ub3JnL25zIyIsImZlYXR1cmVkIjp7IkBpZCI6InRvb3Q6ZmVhdHVyZWQiLCJAdHlwZSI6IkBpZCJ9LCJmZWF0dXJlZFRhZ3MiOnsiQGlkIjoidG9vdDpmZWF0dXJlZFRhZ3MiLCJAdHlwZSI6IkBpZCJ9LCJhbHNvS25vd25BcyI6eyJAaWQiOiJhczphbHNvS25vd25BcyIsIkB0eXBlIjoiQGlkIn0sIm1vdmVkVG8iOnsiQGlkIjoiYXM6bW92ZWRUbyIsIkB0eXBlIjoiQGlkIn0sInNjaGVtYSI6Imh0dHA6Ly9zY2hlbWEub3JnIyIsIlByb3BlcnR5VmFsdWUiOiJzY2hlbWE6UHJvcGVydHlWYWx1ZSIsInZhbHVlIjoic2NoZW1hOnZhbHVlIiwiZGlzY292ZXJhYmxlIjoidG9vdDpkaXNjb3ZlcmFibGUiLCJzdXNwZW5kZWQiOiJ0b290OnN1c3BlbmRlZCIsIm1lbW9yaWFsIjoidG9vdDptZW1vcmlhbCIsImluZGV4YWJsZSI6InRvb3Q6aW5kZXhhYmxlIiwiYXR0cmlidXRpb25Eb21haW5zIjp7IkBpZCI6InRvb3Q6YXR0cmlidXRpb25Eb21haW5zIiwiQGNvbnRhaW5lciI6IkBzZXQifSwic2hvd0ZlYXR1cmVkIjoidG9vdDpzaG93RmVhdHVyZWQiLCJzaG93TWVkaWEiOiJ0b290OnNob3dNZWRpYSIsInNob3dSZXBsaWVzSW5NZWRpYSI6InRvb3Q6c2hvd1JlcGxpZXNJbk1lZGlhIiwiZ3RzIjoiaHR0cHM6Ly9nb3Rvc29jaWFsLm9yZy9ucyMiLCJpbnRlcmFjdGlvblBvbGljeSI6eyJAaWQiOiJndHM6aW50ZXJhY3Rpb25Qb2xpY3kiLCJAdHlwZSI6IkBpZCJ9LCJjYW5GZWF0dXJlIjp7IkBpZCI6Imh0dHBzOi8vdzNpZC5vcmcvZmVwLzdhYTkjY2FuRmVhdHVyZSIsIkB0eXBlIjoiQGlkIn0sImNhblF1b3RlIjp7IkBpZCI6Imd0czpjYW5RdW90ZSIsIkB0eXBlIjoiQGlkIn0sImF1dG9tYXRpY0FwcHJvdmFsIjp7IkBpZCI6Imd0czphdXRvbWF0aWNBcHByb3ZhbCIsIkB0eXBlIjoiQGlkIn0sIm1hbnVhbEFwcHJvdmFsIjp7IkBpZCI6Imd0czptYW51YWxBcHByb3ZhbCIsIkB0eXBlIjoiQGlkIn19XSwiaWQiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDE5NTI5NjU3MjAwMDU1I3VwZGF0ZXMvMTc5MTY3OTgzOSIsInR5cGUiOiJVcGRhdGUiLCJhY3RvciI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC9hcC91c2Vycy8xMTc0MTk1Mjk2NTcyMDAwNTUiLCJ0byI6WyJodHRwczovL3d3dy53My5vcmcvbnMvYWN0aXZpdHlzdHJlYW1zI1B1YmxpYyJdLCJvYmplY3QiOnsiaWQiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDE5NTI5NjU3MjAwMDU1Iiwid2ViZmluZ2VyIjoiYm9ibXJhc2pAbWFzdG9kb24udGVzdCIsInR5cGUiOiJQZXJzb24iLCJmb2xsb3dpbmciOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDE5NTI5NjU3MjAwMDU1L2ZvbGxvd2luZyIsImZvbGxvd2VycyI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC9hcC91c2Vycy8xMTc0MTk1Mjk2NTcyMDAwNTUvZm9sbG93ZXJzIiwiaW5ib3giOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDE5NTI5NjU3MjAwMDU1L2luYm94Iiwib3V0Ym94IjoiaHR0cHM6Ly9tYXN0b2Rvbi50ZXN0L2FwL3VzZXJzLzExNzQxOTUyOTY1NzIwMDA1NS9vdXRib3giLCJmZWF0dXJlZCI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC9hcC91c2Vycy8xMTc0MTk1Mjk2NTcyMDAwNTUvY29sbGVjdGlvbnMvZmVhdHVyZWQiLCJmZWF0dXJlZFRhZ3MiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDE5NTI5NjU3MjAwMDU1L2NvbGxlY3Rpb25zL3RhZ3MiLCJwcmVmZXJyZWRVc2VybmFtZSI6ImJvYm1yYXNqIiwibmFtZSI6IkJvYiBSZW5hbWVkIiwic3VtbWFyeSI6IiIsInVybCI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC9AYm9ibXJhc2oiLCJtYW51YWxseUFwcHJvdmVzRm9sbG93ZXJzIjp0cnVlLCJkaXNjb3ZlcmFibGUiOmZhbHNlLCJpbmRleGFibGUiOmZhbHNlLCJwdWJsaXNoZWQiOiIyMDI2LTEwLTExVDAwOjAwOjAwWiIsIm1lbW9yaWFsIjpmYWxzZSwic2hvd0ZlYXR1cmVkIjp0cnVlLCJzaG93TWVkaWEiOnRydWUsInNob3dSZXBsaWVzSW5NZWRpYSI6dHJ1ZSwiaW50ZXJhY3Rpb25Qb2xpY3kiOnsiY2FuRmVhdHVyZSI6eyJhdXRvbWF0aWNBcHByb3ZhbCI6WyJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDE5NTI5NjU3MjAwMDU1Il19fSwiZmVhdHVyZWRDb2xsZWN0aW9ucyI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC9hcC91c2Vycy8xMTc0MTk1Mjk2NTcyMDAwNTUvZmVhdHVyZWRfY29sbGVjdGlvbnMiLCJwdWJsaWNLZXkiOnsiaWQiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDE5NTI5NjU3MjAwMDU1I3JzYS01MDI2ZmI1M2JjNDdmZjc5Iiwib3duZXIiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDE5NTI5NjU3MjAwMDU1IiwicHVibGljS2V5UGVtIjoiLS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS1cbk1JSUJJakFOQmdrcWhraUc5dzBCQVFFRkFBT0NBUThBTUlJQkNnS0NBUUVBcldyM1FHNkhubE5BeDgvL29LMGFcbkVDV2Nhc3o0bldtNXBaOWl5ZHN4RXdwdjlCbVZsOG8zVWdselZNTnpmdXRIMG5SUU11UkpXN05DSWF1MmVoTGFcbldkcFc0azN3Z1hzNnNTYm1peldMQnRDdzkyZWxyd2E2SGJOVlJiVklHMEpueDdtdEsrem1LVEU5bXdibzREV1VcbmhwclRKME1La09GZzhtUHVVUDhFRVlZVVpYUGdSeXpqeFV4MzJXOUdQS1E4WHJxdnJsV1Q1U3FjMlIycG1VU3hcblBOa3hHcXB6QWR3L2QxTXI3eWNKbDVPblZtdlpaR0VST0VEQVlIdW9GZUJtMHlneE0rTk4xVG1FcGF6RjB4RytcbjE0TEFiVWt2MXg0ODk2Z09Pd1lJTHRGUUJMbzdrQkszMVZ0dVlHY014UzFoTzUyMzFzdTdSRnQ1d3JxRzVmRVJcbmhRSURBUUFCXG4tLS0tLUVORCBQVUJMSUMgS0VZLS0tLS1cbiJ9LCJ0YWciOltdLCJhdHRhY2htZW50IjpbXSwiZW5kcG9pbnRzIjp7InNoYXJlZEluYm94IjoiaHR0cHM6Ly9tYXN0b2Rvbi50ZXN0L2luYm94In19fQ==",
+  "body": "{\u0022@context\u0022:[\u0022https://www.w3.org/ns/activitystreams\u0022,\u0022https://w3id.org/security/v1\u0022,\u0022https://purl.archive.org/socialweb/webfinger\u0022,{\u0022manuallyApprovesFollowers\u0022:\u0022as:manuallyApprovesFollowers\u0022,\u0022toot\u0022:\u0022http://joinmastodon.org/ns#\u0022,\u0022featured\u0022:{\u0022@id\u0022:\u0022toot:featured\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022featuredTags\u0022:{\u0022@id\u0022:\u0022toot:featuredTags\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022alsoKnownAs\u0022:{\u0022@id\u0022:\u0022as:alsoKnownAs\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022movedTo\u0022:{\u0022@id\u0022:\u0022as:movedTo\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022schema\u0022:\u0022http://schema.org#\u0022,\u0022PropertyValue\u0022:\u0022schema:PropertyValue\u0022,\u0022value\u0022:\u0022schema:value\u0022,\u0022discoverable\u0022:\u0022toot:discoverable\u0022,\u0022suspended\u0022:\u0022toot:suspended\u0022,\u0022memorial\u0022:\u0022toot:memorial\u0022,\u0022indexable\u0022:\u0022toot:indexable\u0022,\u0022attributionDomains\u0022:{\u0022@id\u0022:\u0022toot:attributionDomains\u0022,\u0022@container\u0022:\u0022@set\u0022},\u0022showFeatured\u0022:\u0022toot:showFeatured\u0022,\u0022showMedia\u0022:\u0022toot:showMedia\u0022,\u0022showRepliesInMedia\u0022:\u0022toot:showRepliesInMedia\u0022,\u0022gts\u0022:\u0022https://gotosocial.org/ns#\u0022,\u0022interactionPolicy\u0022:{\u0022@id\u0022:\u0022gts:interactionPolicy\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022canFeature\u0022:{\u0022@id\u0022:\u0022https://w3id.org/fep/7aa9#canFeature\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022canQuote\u0022:{\u0022@id\u0022:\u0022gts:canQuote\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022automaticApproval\u0022:{\u0022@id\u0022:\u0022gts:automaticApproval\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022manualApproval\u0022:{\u0022@id\u0022:\u0022gts:manualApproval\u0022,\u0022@type\u0022:\u0022@id\u0022}}],\u0022id\u0022:\u0022https://mastodon.test/ap/users/117419529657200055#updates/1791679839\u0022,\u0022type\u0022:\u0022Update\u0022,\u0022actor\u0022:\u0022https://mastodon.test/ap/users/117419529657200055\u0022,\u0022to\u0022:[\u0022https://www.w3.org/ns/activitystreams#Public\u0022],\u0022object\u0022:{\u0022id\u0022:\u0022https://mastodon.test/ap/users/117419529657200055\u0022,\u0022webfinger\u0022:\u0022bobmrasj@mastodon.test\u0022,\u0022type\u0022:\u0022Person\u0022,\u0022following\u0022:\u0022https://mastodon.test/ap/users/117419529657200055/following\u0022,\u0022followers\u0022:\u0022https://mastodon.test/ap/users/117419529657200055/followers\u0022,\u0022inbox\u0022:\u0022https://mastodon.test/ap/users/117419529657200055/inbox\u0022,\u0022outbox\u0022:\u0022https://mastodon.test/ap/users/117419529657200055/outbox\u0022,\u0022featured\u0022:\u0022https://mastodon.test/ap/users/117419529657200055/collections/featured\u0022,\u0022featuredTags\u0022:\u0022https://mastodon.test/ap/users/117419529657200055/collections/tags\u0022,\u0022preferredUsername\u0022:\u0022bobmrasj\u0022,\u0022name\u0022:\u0022Bob Renamed\u0022,\u0022summary\u0022:\u0022\u0022,\u0022url\u0022:\u0022https://mastodon.test/@bobmrasj\u0022,\u0022manuallyApprovesFollowers\u0022:true,\u0022discoverable\u0022:false,\u0022indexable\u0022:false,\u0022published\u0022:\u00222026-10-11T00:00:00Z\u0022,\u0022memorial\u0022:false,\u0022showFeatured\u0022:true,\u0022showMedia\u0022:true,\u0022showRepliesInMedia\u0022:true,\u0022interactionPolicy\u0022:{\u0022canFeature\u0022:{\u0022automaticApproval\u0022:[\u0022https://mastodon.test/ap/users/117419529657200055\u0022]}},\u0022featuredCollections\u0022:\u0022https://mastodon.test/ap/users/117419529657200055/featured_collections\u0022,\u0022publicKey\u0022:{\u0022id\u0022:\u0022https://mastodon.test/ap/users/117419529657200055#rsa-5026fb53bc47ff79\u0022,\u0022owner\u0022:\u0022https://mastodon.test/ap/users/117419529657200055\u0022,\u0022publicKeyPem\u0022:\u0022-----BEGIN PUBLIC KEY-----\\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArWr3QG6HnlNAx8//oK0a\\nECWcasz4nWm5pZ9iydsxEwpv9BmVl8o3UglzVMNzfutH0nRQMuRJW7NCIau2ehLa\\nWdpW4k3wgXs6sSbmizWLBtCw92elrwa6HbNVRbVIG0Jnx7mtK\u002BzmKTE9mwbo4DWU\\nhprTJ0MKkOFg8mPuUP8EEYYUZXPgRyzjxUx32W9GPKQ8XrqvrlWT5Sqc2R2pmUSx\\nPNkxGqpzAdw/d1Mr7ycJl5OnVmvZZGEROEDAYHuoFeBm0ygxM\u002BNN1TmEpazF0xG\u002B\\n14LAbUkv1x4896gOOwYILtFQBLo7kBK31VtuYGcMxS1hO5231su7RFt5wrqG5fER\\nhQIDAQAB\\n-----END PUBLIC KEY-----\\n\u0022},\u0022tag\u0022:[],\u0022attachment\u0022:[],\u0022endpoints\u0022:{\u0022sharedInbox\u0022:\u0022https://mastodon.test/inbox\u0022}}}",
+  "signer": {
+    "actorId": "https://mastodon.test/ap/users/117419529657200055",
+    "keyId": "https://mastodon.test/ap/users/117419529657200055#rsa-5026fb53bc47ff79",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArWr3QG6HnlNAx8//oK0a\nECWcasz4nWm5pZ9iydsxEwpv9BmVl8o3UglzVMNzfutH0nRQMuRJW7NCIau2ehLa\nWdpW4k3wgXs6sSbmizWLBtCw92elrwa6HbNVRbVIG0Jnx7mtK\u002BzmKTE9mwbo4DWU\nhprTJ0MKkOFg8mPuUP8EEYYUZXPgRyzjxUx32W9GPKQ8XrqvrlWT5Sqc2R2pmUSx\nPNkxGqpzAdw/d1Mr7ycJl5OnVmvZZGEROEDAYHuoFeBm0ygxM\u002BNN1TmEpazF0xG\u002B\n14LAbUkv1x4896gOOwYILtFQBLo7kBK31VtuYGcMxS1hO5231su7RFt5wrqG5fER\nhQIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}

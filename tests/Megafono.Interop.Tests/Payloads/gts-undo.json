@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-10-11T00:50:15.0798460Z",
+  "activityType": "Undo",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "gotosocial/0.22.2\u002Bgit-fb2bf13 (\u002Bhttps://gts.test)"
+    },
+    {
+      "name": "Accept-Charset",
+      "value": "utf-8"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "zstd,gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/ld\u002Bjson; profile=\u0022https://www.w3.org/ns/activitystreams\u0022"
+    },
+    {
+      "name": "Date",
+      "value": "Sun, 11 Oct 2026 00:50:15 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "467"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=9JDwp0llj\u002BXy3muy0vJzT9SVkZg0TK5bRxJknOOR\u002BkA="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://gts.test/users/carolp417k/main-key\u0022,algorithm=\u0022hs2019\u0022,headers=\u0022(request-target) host date digest\u0022,signature=\u0022G5a5981qftHZ1HUFehPvoTAAsEzR\u002BbgtkMcDuXcVKMvjmgclIQVhf3\u002BhXr8rV26svsZWLSqnSH7WP1hWx84OHLRSG1NsQ9VgaahYh28Il09t3ZW0lMJfvDDO0f0Lwu1icPi8mFmjgqDXpi5pIdJyKX6NgNfCDF\u002BfzoAYfRKJnceyRR0lgB8xXUWIqD7Q0GyOHosBRN0AqyXj6WDYgWUhiP06sjoKUfBQMePsQmYaGXax/ekl97SgVykKmYMWt\u002BfTBNLuoGdMQ4tyizgLSnR2JN\u002BCZCFrPT8qmok9WS4gf5PzNzll62/GeG4PPA6FguZlUxK50B0yOsYkBy5suTFasw==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.24.0.3"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6Imh0dHBzOi8vd3d3LnczLm9yZy9ucy9hY3Rpdml0eXN0cmVhbXMiLCJhY3RvciI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvY2Fyb2xwNDE3ayIsImlkIjoiaHR0cHM6Ly9ndHMudGVzdC8wMU00TTcwUUJZVDM2WEVDNTlZTVdWMlJaQiIsIm9iamVjdCI6eyJhY3RvciI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvY2Fyb2xwNDE3ayIsImlkIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9jYXJvbHA0MTdrL2ZvbGxvdy8wMTdISE5HVEpCOU5QOU45RUFONERIV1MzUCIsIm9iamVjdCI6Imh0dHBzOi8vbWVnYWZvbm8udGVzdC9hcC9hY3RvcnMvdS1sb2NrZDFvdWZkIiwidG8iOiJodHRwczovL21lZ2Fmb25vLnRlc3QvYXAvYWN0b3JzL3UtbG9ja2Qxb3VmZCIsInR5cGUiOiJGb2xsb3cifSwidG8iOiJodHRwczovL21lZ2Fmb25vLnRlc3QvYXAvYWN0b3JzL3UtbG9ja2Qxb3VmZCIsInR5cGUiOiJVbmRvIn0=",
+  "body": "{\u0022@context\u0022:\u0022https://www.w3.org/ns/activitystreams\u0022,\u0022actor\u0022:\u0022https://gts.test/users/carolp417k\u0022,\u0022id\u0022:\u0022https://gts.test/01M4M70QBYT36XEC59YMWV2RZB\u0022,\u0022object\u0022:{\u0022actor\u0022:\u0022https://gts.test/users/carolp417k\u0022,\u0022id\u0022:\u0022https://gts.test/users/carolp417k/follow/017HHNGTJB9NP9N9EAN4DHWS3P\u0022,\u0022object\u0022:\u0022https://megafono.test/ap/actors/u-lockd1oufd\u0022,\u0022to\u0022:\u0022https://megafono.test/ap/actors/u-lockd1oufd\u0022,\u0022type\u0022:\u0022Follow\u0022},\u0022to\u0022:\u0022https://megafono.test/ap/actors/u-lockd1oufd\u0022,\u0022type\u0022:\u0022Undo\u0022}",
+  "signer": {
+    "actorId": "https://gts.test/users/carolp417k",
+    "keyId": "https://gts.test/users/carolp417k/main-key",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwuPDrfsAvfce4HIR42Fb\nGSEsOfEjRORssF2vADMxQQvZ43wSnNKmoDikcOzgCAjajQPirwC4aDMzsV7\u002BhwQW\nekGVEb5yEAUYHuSivR3J1h5a2Dqmk\u002ByuZso2/0ZERN7aEsvzT3QQCnmmMMBr/TYn\n9Vmlmor5Sevr\u002B2LpoVBvFQFiz9IuPmboXua6rsZkQ9ktg0SEAFqkgNgzJDtkzp\u002BO\nvyHR2QLssTtq41RbYw9gVpB2YoyXRwxsXv\u002BnSH9oOr3m1n6Lu4s7O08IPeCRkEAB\nD7e\u002BBx0U30zBIojc/fCMQ5VhEFAJ\u002BVYR5Pk7ibFieNZ4E/CGU7l6Yl5Or0mRMHGx\nUwIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}

@@ -39,13 +39,13 @@ US5 — Self-host in minutes (P1). As a self-hoster, I want a compose file that 
 1. Given a domain with TLS, when I run the example compose file, then a Mastodon account can follow a test user within 10 minutes of setup.
 US6 — Leaving cleanly (P2). When the app deletes a user, then Megáfono sends Delete for the actor to every known follower server and removes the user's keys and follow records.
 Architecture
-Inbound traffic enters only through the gateway, which splits it by path and Accept header. Outbound deliveries leave Megáfono directly. The app and Megáfono talk over a private port, and each keeps its own database: the app owns users and content, Megáfono owns keys, follow relationships, published object copies and the delivery queue.
+Inbound traffic enters only through the gateway, which splits it by path. Outbound deliveries leave Megáfono directly. The app and Megáfono talk over a private port, and each keeps its own database: the app owns users and content, Megáfono owns keys, follow relationships, published object copies and the delivery queue.
 Functional requirements
 Identity and discovery
 • FR-001 Serve /.well-known/webfinger for acct:{user}@{domain}, resolving the user through the app's actor lookup (FR-030). Cache positive answers for 5 minutes.
 • FR-002 Serve /.well-known/nodeinfo and NodeInfo 2.1 with the app's configured software name and version.
 • FR-003 Serve actor documents (Person by default, Service or Group if the app says so) with inbox, outbox, followers, following, shared inbox and publicKey.
-• FR-004 The actor id is configurable as a URL template (default https://{domain}/u/{user}) so it can match the app's human-facing profile URL.
+• FR-004 The actor id is https://{domain}/ap/actors/{id}, where {id} is an identifier the app guarantees is immutable and never reused. The actor's url is the app's human profile URL (decided in specs/001-federation-core).
 • FR-005 Generate one RSA-2048 keypair per actor on first lookup. Private keys never leave Megáfono and are encrypted at rest.
 Inbound
 • FR-010 Verify draft-cavage HTTP Signatures (rsa-sha256 and hs2019) on every inbox POST: (request-target), host, date (±12 hours), digest. Reject with 401 otherwise.
@@ -60,7 +60,7 @@ Outbound
 • FR-023 Queue deliveries in Postgres; retry with exponential backoff (1 min doubling, capped at 6 hours) for 48 hours; mark a server unreachable after 7 days of failures and stop delivering until it answers again.
 • FR-024 Limit concurrency per remote host (default 2) and globally (default 32).
 App integration
-• FR-030 Actor lookup: call the app's GET /megafono/actors/{user}; 404 means the user does not exist.
+• FR-030 Actor lookup: call the app's GET /megafono/actors?handle={handle} or GET /megafono/actors/{id} (immutable id); 404 means the user does not exist.
 • FR-031 Internal API for publish, follow approval, follow and unfollow, block and actor deletion (see App contract).
 • FR-032 Webhooks for every inbound event, signed with HMAC-SHA256 over the body and a timestamp, retried like deliveries.
 • FR-033 The internal API listens on a separate port that the reverse proxy never routes to, and requires a shared bearer token.
@@ -73,8 +73,8 @@ The app implements one endpoint and one webhook receiver; everything else is cal
 The app implements
 Endpoint
 Purpose
-GET /megafono/actors/{user}
-200 with { name, summary, iconUrl?, profileUrl, type?, locked }, or 404
+GET /megafono/actors?handle={handle} and GET /megafono/actors/{id}
+200 with { id, handle, name, summary?, iconUrl?, profileUrl, type?, locked }, or 404 (contract v1: specs/001-federation-core/contracts/app-contract.md)
 POST /megafono/webhooks
 Receives events; 2xx = handled, anything else = retried
 Megáfono exposes (internal port only)
@@ -180,7 +180,7 @@ services:
     image: megafono/megafono
     environment:
       Megafono__Domain: app.example.com
-      Megafono__ActorUrl: https://app.example.com/u/{user}
+      Megafono__ProfileUrl: https://app.example.com/u/{user}
       Megafono__App__BaseUrl: http://app:8080
       Megafono__App__Token: ${MEGAFONO_TOKEN}
       Megafono__App__WebhookSecret: ${MEGAFONO_WEBHOOK_SECRET}
@@ -189,7 +189,7 @@ services:
   db:
     image: postgres:17
 Routing rules the gateway must follow
-1. To Megáfono: /.well-known/webfinger, /.well-known/nodeinfo, /nodeinfo/*, /ap/*, /inbox, and the actor URL path when Accept contains application/activity+json or application/ld+json.
+1. To Megáfono: /.well-known/webfinger, /.well-known/nodeinfo, /nodeinfo/*, /ap/* and /inbox. No routing by Accept header is needed.
 2. Everything else to the app.
 3. Preserve the original Host header (YARP: RequestHeaderOriginalHost: true). Signatures cover it.
 4. Do not rewrite the path or the body on Megáfono routes. Signatures cover the path and the body digest.
@@ -204,15 +204,15 @@ Success criteria
 • SC-004 A post to 1,000 followers on 200 servers is fully delivered within 2 minutes on a 2-vCPU host.
 • SC-005 Restarting Megáfono mid-delivery loses no deliveries and sends none twice to the same inbox.
 Edge cases
-• A username in the app is renamed: actor ids must be stable, so the actor URL template should use an immutable id, or the app must never rename. Decision needed.
+• A username in the app is renamed: actor ids are built from the app's immutable id, so a rename never changes the actor id (decided in specs/001-federation-core). Announcing the new handle to remote servers is a later feature.
 • The app is down: inbound activities are stored and webhooks retried; actor lookups fall back to the last cached profile for 24 hours.
 • A remote actor moves (Move activity): v1 logs it and sends actor.moved; following the move is v2.
 • A remote server sends the same activity with different ids, or forwards activities it did not author: only trust objects whose id host matches the signing key's host, otherwise refetch from origin.
 • Very large inbound bodies: cap at 1 MB.
 Open questions
 [ ] Name: check that "megafono" is free on GitHub, NuGet and Docker Hub. The brand keeps the accent (Megáfono); code, packages and images use megafono.
-[ ] Should the actor URL default to the app's profile URL (content negotiation) or to a separate /ap/actors/{user} path, which needs no Accept-header routing?
-[ ] Keys per actor, or one instance key with per-actor key ids? Per actor is the common choice.
-[ ] Support RFC 9421 signatures in v1, or only draft-cavage?
-[ ] Is a webhook enough for apps that want a timeline of friends' posts, or does v1 need an inbox query API?
-[ ] Activity stream: besides webhooks, should apps on the same Postgres server read a versioned activities table or LISTEN to its notifications? If so, that table becomes part of the public contract, like the webhook payload.
+[x] Actor URL: a separate /ap/actors/{immutableId} path whose url is the app's profile, no Accept-header routing (specs/001-federation-core, clarified 2026-10-10).
+[x] Keys: one RSA-2048 key pair per actor, plus one instance actor key for fetches not made on behalf of a user (specs/001-federation-core, FR-006 and FR-022).
+[x] Signatures: draft-cavage only in v1, behind a SignatureScheme seam; Mastodon signs draft-cavage first and only falls back to RFC 9421 after a 4xx (specs/001-federation-core, research R-01).
+[x] Inbox query API: not in v1; apps keep what they need from webhooks, which are never dropped (specs/001-federation-core, FR-055). Revisit when replies and mentions arrive (US4 of this vision).
+[x] Activity stream table: not in v1; webhooks are the only public channel, so the database schema stays private (specs/001-federation-core).

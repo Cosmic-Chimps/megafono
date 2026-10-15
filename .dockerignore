@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+.git/
+.github/
+.claude/
+.specify/
+.vs/
+.idea/
+TestResults/
+specs/
+tests/
+docs/
+deploy/
+*.md
+**/.DS_Store
