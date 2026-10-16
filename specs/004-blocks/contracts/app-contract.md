@@ -13,3 +13,7 @@ An `outbound` direction is new: the user's own follow of the remote actor ended.
 the actor lookup is not consulted for remote actors, and no webhook announces a block itself (clarified: the app made
 its own blocks, and a remote block shows only through its `follow.removed` events). New replies from a blocked actor
 or domain produce no `reply.received`.
+
+Observed in interop (research R-49): Mastodon sends `Reject{Follow}` of the user's follow before its `Block`, so that
+follow ends `rejected` with the existing `follow.rejected` event; GoToSocial sends only `Undo{Follow}` and `Block`, so
+both follows end with `follow.removed`.

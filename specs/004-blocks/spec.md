@@ -157,7 +157,9 @@ follows end in Megáfono and the app receives the webhooks decided below.
 **Acceptance Scenarios**:
 
 1. **Given** bob and alex follow each other, **When** bob's server sends a verified `Block` of alex signed by bob,
-   **Then** both relationships end and the app receives one `follow.removed` for each (inbound and outbound).
+   **Then** both relationships end and the app receives one `follow.removed` for each (inbound and outbound). A
+   server that first sends a `Reject` of the local user's follow (Mastodon does, before its `Block`) ends that follow
+   as `rejected` with the usual `follow.rejected` instead (observed in interop, research R-49).
 2. **Given** bob blocked alex, **When** bob's server later sends `Undo` of that `Block`, **Then** it is acknowledged;
    no follow is restored.
 3. **Given** a `Block` that names someone else's actor, or that is not signed by its own actor, **Then** nothing
@@ -259,7 +261,8 @@ no follow was restored.
 - **SC-002** On GoToSocial and on Mastodon, after an instance block of the server's domain, a reply from it never
   reaches the app and its attempts to look up a local actor fail (tested end to end).
 - **SC-003** On GoToSocial and on Mastodon, when a remote user blocks a local user, the follows between them end in
-  Megáfono and the app receives its `follow.removed` webhooks within one minute (tested end to end).
+  Megáfono and the app receives a webhook for each within one minute: `follow.removed`, or `follow.rejected` for the
+  local user's follow when the server rejects it first, as Mastodon does (tested end to end).
 - **SC-004** In 100% of tested cases, a fetch signed by a blocked actor or domain answers 404, including for public
   posts and for followers-only posts the blocked actor could see before.
 - **SC-005** In 100% of tested cases, nothing is delivered to a blocked target after the block, whoever publishes.

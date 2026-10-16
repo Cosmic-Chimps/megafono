@@ -220,8 +220,9 @@ What the other side is told:
   stop reaching anyone here.
 
 When a remote user blocks one of your users, their server sends a `Block`: Megáfono ends the follows between them and
-your app gets the `follow.removed` webhooks. Megáfono keeps no record of it; the blocker's server refuses new follows
-while its block lasts.
+your app gets the `follow.removed` webhooks. Mastodon first rejects your user's follow of the blocker, so that one
+arrives as `follow.rejected`. Megáfono keeps no record of the block; the blocker's server refuses new follows while
+its block lasts.
 
 **Limits to tell your users.** Most servers (Mastodon and GoToSocial included) sign their fetches with a server-wide
 key, not the user's own, so a user block of one actor cannot catch those fetches: only a block of the whole domain
