@@ -36,6 +36,5 @@
 - Protocol words (`Block`, `Undo`, 403/404, signed fetch, shared inbox) are kept on purpose: for a protocol sidecar
   they are the product's observable behavior, as in specs 001 to 003. The endpoint path appears only because the
   input names it.
-- The plan, research, data model, contracts and tasks in this folder were written for an earlier draft of this spec
-  (no inbound `Block`, actor ids only, Mastodon not in the tests, the three open points decided). `/speckit-plan` and
-  `/speckit-tasks` must regenerate them from this spec.
+- The plan, research, data model, contracts and tasks were regenerated from the clarified spec (commits 934b662 and
+  afa6aeb); the feature is implemented and verified (spec status Implemented, tasks T001-T030 done).
