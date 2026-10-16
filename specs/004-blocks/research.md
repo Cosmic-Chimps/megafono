@@ -13,7 +13,17 @@ marked "(clarified)".
   request before recording the block; GoToSocial deletes follows and follow requests in both directions. One activity
   therefore ends both follows on the remote side. Both verify it with the actor key they cached when the follow
   started, so the 404 the blocked actor gets on fetches (R-44) does not stop it.
-- **Observed (interop)**: to be filled in by the GoToSocial and Mastodon tests.
+- **Observed (interop)**: GoToSocial 0.22.2 and Mastodon 4.7.3 (`BlockTests`, scenario a). Megáfono's `Block` reached
+  the blocked user's own inbox on both (GoToSocial `/users/{name}/inbox`, Mastodon `/ap/users/{id}/inbox`; the
+  delivery row says `delivered` at the first attempt) within 0.1 to 1.1 s of the call, and within the same second the
+  server had dropped both follows (no `following`, `followed_by` or `requested` in her relationship). Neither server
+  answered with anything: no `Reject`, no `Undo`, nothing at Megáfono's inbox. A `Block` with no `Undo{Follow}` or
+  `Reject{Follow}` next to it was therefore enough on both, as R-40 predicted. The blocked user's own server also
+  refuses her reply to the blocker's public post: GoToSocial 404 `target status not visible`, Mastodon 404 `The post
+  you are trying to reply to does not appear to exist`. A reply of a blocked user therefore cannot be produced through
+  a real client after the block; Megáfono's own drop of one (202, no `reply.received`) is covered by the integration
+  tests (`BlockEnforcementTests`), not by the interop run, which checks that the reply is refused at the sender or
+  never reaches the app. GoToSocial's new accounts are locked by default: the test approves the follow request.
 - **Alternatives considered**: `Reject{Follow}` + `Undo{Follow}` (private, but the remote user can ask to follow again
   at once); nothing (stale follows and deliveries on the remote side). Both declined in clarify.
 
@@ -49,6 +59,14 @@ marked "(clarified)".
   than 408/429 as final, so the blocked server stops retrying. A claim the signature has not proven is enough to
   refuse: someone claiming a blocked key only gets refused. User blocks must not be revealed by the inbox, and one
   shared-inbox activity may concern other local users.
+- **Observed (interop)**: instance block of `gts.test` / `mastodon.test` (`BlockTests`, scenario b). The reply of a
+  remote user to a public post (resolved before the block) was a `Create` POSTed to the shared `/inbox` and answered
+  **403** by Megáfono on both servers; it never reached the app (no `reply.received`). Each server tried once in the
+  test's window of about ten seconds (no retry seen). The server's search of a local actor it had never seen found
+  nothing: its signed fetch is answered 404 (WebFinger is unsigned and is answered). After the block was lifted the
+  same server found that actor at once, so one 403 leaves neither server with cached failures or marked unreachable
+  (a longer-lived failure tracker, such as Mastodon's `DeliveryFailureTracker`, takes days of failures and was not
+  exercised).
 - **Alternatives considered**: 202 for instance blocks (the sender never learns to stop); verifying before refusing
   (the key fetch to the blocked server is the work FR-006 forbids).
 
@@ -88,6 +106,11 @@ marked "(clarified)".
   handler takes it on its target.
 - **Rationale**: under READ COMMITTED a publish either commits before the block (its deliveries are skipped by R-45
   step 1) or waits and then sees the block at enqueue time.
+- **Found by interop**: the lock was `FOR SHARE`, which two writers of one actor hold at once and then both wait on
+  each other when `enqueueEvent` bumps the event sequence (an update of the same row): a deadlock. It is now
+  `FOR NO KEY UPDATE` (the mode of that update), so writers of one actor take turns. The lock order of every write is
+  the actor row first, then its `follows` rows: `Undo{Follow}` and `Accept`/`Reject{Follow}` locked the follow row
+  first, and met an inbound `Block` that held the actor (see R-49).
 
 ## R-47 Hiding blocked replies from collections
 
@@ -119,6 +142,22 @@ marked "(clarified)".
   have already ended the follows on their side; Megáfono only has to catch up so the app's lists and the followers
   audience stay right. Keeping no remote-block row is enough: a new follow from either side goes through the remote
   server, which refuses it while its block lasts.
+- **Observed (interop)**: the remote user blocks the local actor through the client API (`BlockTests`, scenario c),
+  after following each other. GoToSocial 0.22.2 sent `Undo{Follow}` (of her follow of the actor, embedded) and, 8 ms
+  later, `Block` (`to` a single string, id `https://gts.test/users/{name}/blocks/{ulid}`), both to the shared
+  `/inbox`. Mastodon 4.7.3 sent `Undo{Follow}` (id `…#follows/N/undo`), `Reject{Follow}` (of the actor's own follow of
+  her, id `…#rejects/follows/N`) and `Block` (id `https://mastodon.test/{uuid}`, no `to`), in that order within 100
+  ms, to the actor's personal inbox `/ap/actors/{id}/inbox`. Megáfono answered 202 to each and both follows were over
+  in 0.1 to 0.5 s. On GoToSocial the app heard `follow.removed` twice (inbound and outbound), whichever of the Undo
+  and the Block ended each. **On Mastodon the outbound follow ended `rejected`** (the `Reject` came first), so the app
+  heard `follow.removed` for the inbound follow and `follow.rejected` for the outbound one, not two `follow.removed`;
+  the `Block` then found nothing left to end. Both servers sent `Undo{Block}` when she unblocked (GoToSocial to the
+  shared inbox, Mastodon to the personal one): 202, nothing restored. Megáfono sent nothing back for any of it.
+  The first interop run answered one GoToSocial `Block` with a **500**: the `Undo{Follow}` handler locked the follow
+  row and then the actor row, the `Block` handler the actor row and then the follow rows, a deadlock (Postgres 40P01)
+  between two activities that arrive 8 ms apart. Fixed by locking the actor first in every handler (R-46); the real
+  requests are fixtures (`gts-block`, `gts-undo-follow`, `mastodon-block`, `mastodon-undo-follow`,
+  `mastodon-reject`) replayed together by `CapturedBlocksTests`.
 - **Alternatives considered**: storing remote blocks to refuse the blocker's future activities (the blocker chose to
   stop talking; its server enforces that); a dedicated webhook (declined in clarify).
 
