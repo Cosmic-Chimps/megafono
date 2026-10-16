@@ -30,6 +30,7 @@
     <Compile Include="Federation/NodeInfo.fs" />
     <Compile Include="Federation/InboxCommon.fs" />
     <Compile Include="Federation/InboxFollows.fs" />
+    <Compile Include="Federation/InboxBlocks.fs" />
     <Compile Include="Federation/InboxActors.fs" />
     <Compile Include="Federation/InboxReplies.fs" />
     <Compile Include="Federation/Inbox.fs" />

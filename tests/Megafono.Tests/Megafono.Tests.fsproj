@@ -45,6 +45,7 @@
     <Compile Include="Integration/BlockEnforcementTests.fs" />
     <Compile Include="Load/FanOutTests.fs" />
     <Compile Include="Integration/InboundFollowTests.fs" />
+    <Compile Include="Integration/InboundBlockTests.fs" />
     <Compile Include="Integration/InboxSecurityTests.fs" />
     <Compile Include="Integration/RemoteActorUpdateTests.fs" />
     <Compile Include="Integration/RemoteActorLookupTests.fs" />
