@@ -63,7 +63,7 @@ tests/Megafono.Tests`.
 
 ## Phase 5: Interop and polish
 
-- [ ] T011 Interop `tests/Megafono.Interop.Tests/ActorDeletionTests.fs`: on GoToSocial, and on Mastodon
+- [X] T011 Interop `tests/Megafono.Interop.Tests/ActorDeletionTests.fs`: on GoToSocial, and on Mastodon
   (`Suite=mastodon`), a remote user follows an unlocked local actor that published a public post; the app deletes
   the actor; poll until the remote server no longer has the account (lookup/search fails, relationship gone)
   (SC-001)

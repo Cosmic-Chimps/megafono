@@ -13,6 +13,11 @@ Numbering continues after 002 (R-20 to R-27).
   the actor document can already answer 410 when the `Delete` arrives. A server that does not know the actor
   (Mastodon: unknown signer + `Delete` of itself) drops it, which is fine: it has nothing to delete. A server that
   misses the `Delete` and later refetches the actor gets 410, which Mastodon and GoToSocial treat as deletion.
+- **Observed (interop T011, GoToSocial 0.22.2 and Mastodon 4.7.3)**: both accept the `Delete` (202) and process it
+  with the actor id already answering 410. Mastodon destroys the remote account: `GET /api/v1/accounts/{id}` answers
+  404, its relationship is gone and a fresh resolve finds nothing. GoToSocial keeps the row hollowed out: the same
+  call answers 200 with `suspended: true`, an empty display name and note, no statuses or followers, the follow gone,
+  and the post answers 404; a fresh resolve returns that same hollow account, not a new one.
 - **Rejected**: keep serving the actor (with `suspended`) until deliveries end: more state for no gain, since the
   cached key is used. Sending a `Delete` per post: servers delete posts with the account; it would multiply
   deliveries by the post count.

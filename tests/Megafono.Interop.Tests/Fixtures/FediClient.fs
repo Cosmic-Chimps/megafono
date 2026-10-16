@@ -19,7 +19,11 @@ type Account =
       Locked: bool
       /// Mastodon's `group` flag (a Group actor); GoToSocial may not expose it
       Group: bool
-      Bot: bool }
+      Bot: bool
+      /// Set by both servers once a remote account is deleted or suspended (absent from other accounts)
+      Suspended: bool
+      StatusesCount: int
+      FollowersCount: int }
 
 type Status =
     { Id: string
@@ -128,6 +132,26 @@ type FediClient(http: HttpClient, baseUri: string, token: string, username: stri
         task {
             let! body = get "/api/v1/accounts/verify_credentials"
             return parse<Account> body
+        }
+
+    /// The raw body of `GET /api/v1/accounts/{id}` (or the error), for diagnostics
+    member _.AccountRaw(accountId: string) : Task<string> =
+        task {
+            try
+                return! get $"/api/v1/accounts/{accountId}"
+            with FediClientException(_, _, status, body) ->
+                return $"{status} {body}"
+        }
+
+    /// `GET /api/v1/accounts/{id}`: the account as the server shows it now, or None once it answers 404 (some server
+    /// versions hollow a deleted remote account out instead: `Suspended`, empty profile, no counts)
+    member _.GetAccount(accountId: string) : Task<Account option> =
+        task {
+            try
+                let! body = get $"/api/v1/accounts/{accountId}"
+                return Some(parse<Account> body)
+            with FediClientException(_, _, 404, _) ->
+                return None
         }
 
     /// Searches accounts. With `resolve` the server does a WebFinger lookup for unknown remote handles.
