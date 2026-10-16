@@ -220,6 +220,20 @@ type FediClient(http: HttpClient, baseUri: string, token: string, username: stri
             return parse<Relationship> body
         }
 
+    /// Blocks an account: the server drops the follows both ways and sends a `Block` to a remote account's server
+    member _.Block(accountId: string) : Task<Relationship> =
+        task {
+            let! body = post $"/api/v1/accounts/{accountId}/block" []
+            return parse<Relationship> body
+        }
+
+    /// Lifts a block: the server sends `Undo{Block}` to a remote account's server
+    member _.Unblock(accountId: string) : Task<Relationship> =
+        task {
+            let! body = post $"/api/v1/accounts/{accountId}/unblock" []
+            return parse<Relationship> body
+        }
+
     /// Locks the account (`manuallyApprovesFollowers`), so every follow needs approval.
     member _.LockAccount() : Task<Account> =
         task {
