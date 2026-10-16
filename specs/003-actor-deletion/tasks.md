@@ -70,5 +70,5 @@ tests/Megafono.Tests`.
 - [X] T012 [P] Docs: `docs/operating.md` (deleting a user, what remote servers keep: the limit stated plainly),
   `docs/vision.md` (US6 built in specs/003-actor-deletion), `CLAUDE.md` (latest feature), the README if it lists the
   internal API; `.specify/feature.json` points at this feature
-- [ ] T013 Full verification: `dotnet build`, `dotnet build -c Release`, `dotnet test --project tests/Megafono.Tests`,
+- [X] T013 Full verification: `dotnet build`, `dotnet build -c Release`, `dotnet test --project tests/Megafono.Tests`,
   interop GoToSocial and Mastodon suites for the new tests and the existing follow/publish ones

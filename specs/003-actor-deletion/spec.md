@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-15
 
-**Status**: Draft
+**Status**: Implemented
 
 **Input**: User description: "Actor deletion (vision US6), Megáfono feature 003. Source:
 .alta/tasks/2026-10-10-megafono-actor-deletion-vision-us6-before-frunchy-goes-live-wdtq.md, docs/vision.md US6,

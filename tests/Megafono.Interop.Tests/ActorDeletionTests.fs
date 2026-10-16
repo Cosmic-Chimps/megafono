@@ -155,11 +155,11 @@ let private deletionFlow (server: IFediServer) (front: IContainer) (net: Federat
 
         Assert.True(postGone, "the post is gone or emptied")
 
-        // A fresh resolve must not bring the account back: the old record stays (hollowed out) or the actor is
-        // refused with Megáfono's 410
+        // A fresh resolve must not bring the account back: nothing is found (WebFinger 404 while the app still knows
+        // the user), or the old record stays hollowed out. A live account, under any id, would be a revival.
         let! again = carol.SearchAccount($"{handle}@megafono.test", true)
         printfn "%s: a fresh resolve finds %s" server.Domain (match again with None -> "nothing" | Some a -> $"account {a.Id} suspended={a.Suspended}")
-        Assert.True(again |> Option.forall (fun a -> a.Suspended || a.Id <> account.Id) , "a fresh resolve does not revive the account")
+        Assert.True(gone again, "a fresh resolve does not revive the account")
 
         // 5. Megáfono answers 410 on the actor and its post, and the app still has the user
         let! actorStatus = plainGet megafono $"/ap/actors/{userId}"
