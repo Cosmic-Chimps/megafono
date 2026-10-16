@@ -3,9 +3,13 @@ module Megafono.Tests.Fixtures.Signed
 
 open System
 open System.Net.Http
+open System.Net
 open System.Text
 open System.Text.Json.Nodes
+open System.Text.RegularExpressions
 open System.Threading.Tasks
+open Megafono.Tests.Fixtures.PostgresFixture
+open Megafono.Tests.Fixtures.Publishing
 
 /// A POST with the stub's signature headers (`sign` may alter them, e.g. to make the date stale)
 let private build (url: string) (body: byte[]) (headers: (string * string) list) : HttpRequestMessage =
@@ -125,3 +129,54 @@ let deleteNote (stub: StubRemote.StubRemote) (name: string) (suffix: string) (to
         o["object"] <- JsonValue.Create(noteId stub name suffix)
 
     o.ToJsonString()
+
+// ---- requests that name another key (feature 004) -----------------------------------------------------------
+
+/// POST to a Megáfono inbox, signed as `name` on the stub
+let send (rig: Rig) (name: string) (url: string) (body: string) : Task<HttpStatusCode> =
+    task {
+        use client = new HttpClient()
+        use! response = postText client rig.Stub name url body
+        return response.StatusCode
+    }
+
+/// The headers of a request the stub signed, claiming `keyId` instead of the stub's own. The string a signature covers
+/// does not include the key id, so the signature still verifies for whoever holds the stub's key: a request that comes
+/// from "another server" without a second stub, whose host is the same 127.0.0.1 a domain block names.
+let claiming (keyId: string) (headers: (string * string) list) : (string * string) list =
+    headers
+    |> List.map (fun (name, value) ->
+        if name = "Signature" then name, Regex.Replace(value, "keyId=\"[^\"]*\"", $"keyId=\"{keyId}\"") else name, value)
+
+/// An actor `https://{host}/users/{name}` whose key is the stub's, cached, so a request claiming its key id is verified
+/// from the cache and Megáfono never has to reach the server
+let cachedActorOn (rig: Rig) (host: string) (name: string) : Task<string> =
+    task {
+        let id = $"https://{host}/users/{name}"
+
+        do!
+            Db.execute
+                rig.Db
+                $"""INSERT INTO remote_actors (id, host, handle, actor_type, inbox, key_id, public_key_pem)
+                    VALUES ('{id}', '{host}', '{name}@{host}', 'Person', '{id}/inbox', '{id}#main-key', '{rig.Stub.PublicKeyPem}')"""
+
+        return id
+    }
+
+/// POST signed by the stub's key, claiming `keyId`; `alter` may change what the stub signed
+let sendClaiming
+    (rig: Rig)
+    (name: string)
+    (keyId: string option)
+    (url: string)
+    (body: string)
+    (alter: (string * string) list -> (string * string) list)
+    : Task<HttpStatusCode> =
+    task {
+        use client = new HttpClient()
+        let bytes = Encoding.UTF8.GetBytes body
+        let headers = rig.Stub.Sign(name, "POST", url, Some bytes)
+        let headers = (match keyId with Some k -> claiming k headers | None -> headers) |> alter
+        use! response = postRaw client url bytes headers
+        return response.StatusCode
+    }

@@ -111,8 +111,8 @@ skipped deliveries, an inbound POST (403, the stub saw no key fetch), signed fet
 **Independent Test**: alex has two followers and one follow on the stub remote's domain; block the domain for alex;
 check the activities the stub receives and that carol is unaffected.
 
-- [ ] T021 [P] [US3] Tests in `tests/Megafono.Tests/Integration/BlockTests.fs`: user domain block → each inbound follow on the domain or a subdomain gets a `Reject` embedding its Follow id, each outbound one an `Undo{Follow}`, each at the actor's own inbox; the follows are `removed` with events; alex's pending deliveries to the domain are skipped, carol's are not; afterwards a Follow from that domain to alex is dropped and one to carol is handled; a signed fetch of alex's post by a key of that domain → 404 (FR-004 to FR-008)
-- [ ] T022 [US3] Make T021 pass in `src/Megafono/Internal/Blocks.fs` (domain path from `4532b8b`)
+- [X] T021 [P] [US3] Tests in `tests/Megafono.Tests/Integration/BlockTests.fs`: user domain block → each inbound follow on the domain or a subdomain gets a `Reject` embedding its Follow id, each outbound one an `Undo{Follow}`, each at the actor's own inbox; the follows are `removed` with events; alex's pending deliveries to the domain are skipped, carol's are not; afterwards a Follow from that domain to alex is dropped and one to carol is handled; a signed fetch of alex's post by a key of that domain → 404 (FR-004 to FR-008)
+- [X] T022 [US3] Make T021 pass in `src/Megafono/Internal/Blocks.fs` (domain path from `4532b8b`)
 
 ---
 

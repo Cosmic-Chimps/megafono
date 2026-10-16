@@ -617,3 +617,230 @@ type BlockTests(pg: PostgresFixture) =
             let! rows = count rig "SELECT count(*) FROM blocks"
             Assert.Equal(1L, rows)
         }
+
+    // ---- a user blocks a whole server (User Story 3, T021) ------------------------------------------------
+
+    [<Fact>]
+    member _.``FR-004 FR-005 a user domain block sends a Reject of each inbound follow and an Undo of each outbound one, each at the actor's own inbox``() : Task =
+        task {
+            let! rig = start pg [ "bob"; "carol" ]
+            use _ = disposeRig rig
+            let shared = $"{rig.Stub.BaseUrl}/inbox"
+            // alex: bob follows (with a shared inbox), carol's request is pending, and alex follows bob
+            do! addFollower rig.Db "u-1" rig.Stub "bob" "accepted" (Some shared)
+            do! addFollower rig.Db "u-1" rig.Stub "carol" "pending" None
+            do! outboundFollow rig "u-1" rig.Stub "bob" "accepted"
+            // bea has the same server's bob as a follower: the block is alex's alone
+            do! addFollower rig.Db "u-2" rig.Stub "bob" "accepted" None
+            let! toBob = pendingDelivery rig "u-1" (rig.Stub.InboxUrl "bob")
+            let! toShared = pendingDelivery rig "u-1" shared
+            let! beas = pendingDelivery rig "u-2" (rig.Stub.InboxUrl "bob")
+
+            let! status, text = blockUser rig "u-1" [ "domain", "127.0.0.1" ]
+            Assert.Equal(201, status)
+            Assert.Equal("127.0.0.1", jstr (at (json text) "domain"))
+            Assert.Null(at (json text) "actor")
+
+            do! waitForPosts rig.Stub "Reject" 2
+            do! waitForPosts rig.Stub "Undo" 1
+            do! settle ()
+            // Three requests in all: no Block next to them (R-41), and none at the shared inbox
+            let sent = rig.Stub.Posts |> List.map (fun p -> p, json (Encoding.UTF8.GetString p.Body))
+            Assert.Equal(3, sent.Length)
+            Assert.Empty(posted rig.Stub "Block")
+            Assert.DoesNotContain(sent, fun (p, _) -> p.Path = "/inbox")
+
+            let local = "https://megafono.test/ap/actors/u-1"
+
+            let rejects = posted rig.Stub "Reject" |> List.sortBy (fun (p, _) -> p.Path)
+            Assert.Equal<string list>([ "/users/bob/inbox"; "/users/carol/inbox" ], rejects |> List.map (fun (p, _) -> p.Path))
+
+            for (_, activity), name in List.zip rejects [ "bob"; "carol" ] do
+                Assert.Equal(local, jstr (at activity "actor"))
+                // The Follow it answers, by the id the remote side sent it with
+                Assert.Equal(Signed.followId rig.Stub name "1", jstr (at activity "object.id"))
+                Assert.Equal("Follow", jstr (at activity "object.type"))
+                Assert.Equal(rig.Stub.ActorId name, jstr (at activity "object.actor"))
+                Assert.Equal(local, jstr (at activity "object.object"))
+
+            // The Undo of alex's own Follow, with the id Megáfono sent it under
+            let! followIri = Db.scalar rig.Db $"SELECT follow_activity_id FROM follows WHERE direction = 'outbound' AND local_actor = 'u-1'"
+            let undo, activity = posted rig.Stub "Undo" |> List.exactlyOne
+            Assert.Equal("/users/bob/inbox", undo.Path)
+            Assert.Equal(local, jstr (at activity "actor"))
+            Assert.Equal(string followIri, jstr (at activity "object.id"))
+            Assert.Equal("Follow", jstr (at activity "object.type"))
+            Assert.Equal(local, jstr (at activity "object.actor"))
+            Assert.Equal(rig.Stub.ActorId "bob", jstr (at activity "object.object"))
+
+            // The follows ended, each with an event to alex; bea's did not
+            for direction, name in [ "inbound", "bob"; "inbound", "carol"; "outbound", "bob" ] do
+                let! s = followStatus rig direction "u-1" rig.Stub name
+                Assert.Equal("removed", s)
+
+            let! beasFollow = followStatus rig "inbound" "u-2" rig.Stub "bob"
+            Assert.Equal("accepted", beasFollow)
+            do! waitForEvents rig "follow.removed" 3
+            Assert.Equal(3, (events rig "follow.removed").Length)
+            Assert.All(events rig "follow.removed", fun e -> Assert.Equal("u-1", jstr (at e.Json "user.id")))
+
+            // alex's waiting deliveries to the domain are skipped, the shared inbox's too; bea's is not
+            for activity in [ toBob; toShared ] do
+                let! state, error = deliveryState rig activity
+                Assert.Equal("skipped", state)
+                Assert.Equal("blocked", error)
+
+            let! state, _ = deliveryState rig beas
+            Assert.Equal("pending", state)
+
+            // The block belongs to alex and sent no Block, so there is nothing to undo later
+            let! rows = count rig $"SELECT count(*) FROM blocks WHERE local_actor = 'u-1' AND domain = '127.0.0.1' AND actor IS NULL AND block_activity IS NULL"
+            Assert.Equal(1L, rows)
+            let! all = count rig "SELECT count(*) FROM blocks"
+            Assert.Equal(1L, all)
+        }
+
+    [<Fact>]
+    member _.``FR-005 a user domain block covers the domain and its subdomains, with a Reject or Undo each, and not a lookalike name``() : Task =
+        task {
+            let! rig = start pg []
+            use _ = disposeRig rig
+            let at' = DateTimeOffset.UtcNow
+            let spam, sub, subPort = "https://spam.example/users/a", "https://a.spam.example/users/b", "https://c.spam.example:8443/users/c"
+            let cousin, longer = "https://notspam.example/users/d", "https://spam.example.org/users/e"
+
+            do! Seed.followRow rig.Db "inbound" "u-1" spam "accepted" at'
+            do! Seed.followRow rig.Db "inbound" "u-1" sub "pending" at'
+            do! Seed.followRow rig.Db "outbound" "u-1" subPort "accepted" at'
+            do! Seed.followRow rig.Db "inbound" "u-1" cousin "accepted" at'
+            do! Seed.followRow rig.Db "inbound" "u-1" longer "accepted" at'
+            // bea has the blocked domain's actor too
+            do! Seed.followRow rig.Db "inbound" "u-2" spam "accepted" at'
+
+            let! status, text = blockUser rig "u-1" [ "domain", "Spam.Example." ]
+            Assert.Equal(201, status)
+            Assert.Equal("spam.example", jstr (at (json text) "domain"))
+
+            let statusOf (user: string) (actor: string) =
+                task {
+                    let! v = Db.scalar rig.Db $"SELECT status FROM follows WHERE local_actor = '{user}' AND remote_actor = '{actor}'"
+                    return string v
+                }
+
+            for actor in [ spam; sub; subPort ] do
+                let! s = statusOf "u-1" actor
+                Assert.Equal("removed", s)
+
+            for user, actor in [ "u-1", cousin; "u-1", longer; "u-2", spam ] do
+                let! s = statusOf user actor
+                Assert.Equal("accepted", s)
+
+            // What was queued: per ended follow one activity of alex's, to that actor's own inbox, and nothing else
+            let! queued =
+                Publishing.strings
+                    rig.Db
+                    """SELECT a.activity_type || ' ' || d.inbox_url FROM deliveries d JOIN activities a ON a.id = d.activity
+                       ORDER BY d.inbox_url"""
+
+            Assert.Equal<string list>(
+                [ $"Reject {sub}/inbox"; $"Reject {spam}/inbox"; $"Undo {subPort}/inbox" ] |> List.sortBy (fun s -> s.Substring(s.IndexOf ' ' + 1)),
+                queued
+            )
+
+            let! authors = Publishing.strings rig.Db "SELECT DISTINCT local_actor FROM activities"
+            Assert.Equal<string list>([ "u-1" ], authors)
+
+            // The Reject names the Follow of its row; the Undo the row of alex's own Follow
+            let! follows = Publishing.strings rig.Db "SELECT follow_activity_id FROM follows WHERE status = 'removed'"
+            let! bodies = Publishing.strings rig.Db "SELECT convert_from(body, 'UTF8') FROM activities"
+            let embedded = bodies |> List.map (fun b -> jstr (at (json b) "object.id"))
+            Assert.Equal<string list>(follows |> List.sort, embedded |> List.sort)
+
+            do! waitForEvents rig "follow.removed" 3
+            do! settle ()
+            Assert.Equal(3, (events rig "follow.removed").Length)
+            Assert.All(events rig "follow.removed", fun e -> Assert.Equal("u-1", jstr (at e.Json "user.id")))
+        }
+
+    [<Fact>]
+    member _.``FR-006 FR-008 FR-010 afterwards a Follow from the domain to the user is 202 and dropped, to another user it is handled, and the domain's signed fetches of the user are 404``() : Task =
+        task {
+            let! rig = start pg [ "bob"; "carol" ]
+            use _ = disposeRig rig
+            let! alexs = publish rig "u-1" "public" "<p>from alex</p>"
+            let! beas = publish rig "u-2" "public" "<p>from bea</p>"
+
+            let! status, _ = blockUser rig "u-1" [ "domain", "127.0.0.1" ]
+            Assert.Equal(201, status)
+
+            // Shared inbox, and garbage at the personal one: dropped before the body is read
+            let! status = send rig "bob" (rig.Host.FederationUrl + "/inbox") (followBody rig.Stub "bob" "1" (ourActor "u-1"))
+            Assert.Equal(Net.HttpStatusCode.Accepted, status)
+            let! status = send rig "carol" (rig.Host.FederationUrl + "/ap/actors/u-1/inbox") "not json at all"
+            Assert.Equal(Net.HttpStatusCode.Accepted, status)
+            do! settle ()
+            let! rows = count rig "SELECT count(*) FROM follows WHERE local_actor = 'u-1'"
+            Assert.Equal(0L, rows)
+            Assert.Empty(events rig "follow.requested")
+            Assert.Empty(events rig "follow.accepted")
+
+            // The same server's carol follows bea, who blocked nobody
+            let! status = send rig "carol" (rig.Host.FederationUrl + "/inbox") (followBody rig.Stub "carol" "2" (ourActor "u-2"))
+            Assert.Equal(Net.HttpStatusCode.Accepted, status)
+            do! waitForEvents rig "follow.accepted" 1
+            Assert.Equal("u-2", jstr (at (events rig "follow.accepted").Head.Json "user.id"))
+            let! beasFollowers = count rig "SELECT count(*) FROM follows WHERE local_actor = 'u-2' AND status = 'accepted'"
+            Assert.Equal(1L, beasFollowers)
+
+            // Either user of the blocked domain reads nothing of alex's, but all of bea's
+            for name in [ "bob"; "carol" ] do
+                for path in [ "/ap/actors/u-1"; objectPath alexs; $"{objectPath alexs}/replies"; "/ap/actors/u-1/followers" ] do
+                    use! response = signedGet rig rig.Stub name path
+                    Assert.True((response.StatusCode = Net.HttpStatusCode.NotFound), $"{name} {path}: {response.StatusCode}")
+
+                for path in [ "/ap/actors/u-2"; objectPath beas ] do
+                    use! response = signedGet rig rig.Stub name path
+                    Assert.True((response.StatusCode = Net.HttpStatusCode.OK), $"{name} {path}: {response.StatusCode}")
+
+            use! response = federationGet rig (objectPath alexs) []
+            Assert.Equal(Net.HttpStatusCode.OK, response.StatusCode)
+        }
+
+    [<Fact>]
+    member _.``FR-005 FR-006 FR-008 the user's domain block refuses a subdomain's key and a Follow from its actor, and lets a lookalike name through``() : Task =
+        task {
+            let! rig = start pg [ "bob" ]
+            use _ = disposeRig rig
+            let! alexs = publish rig "u-1" "public" "<p>from alex</p>"
+            let! beas = publish rig "u-2" "public" "<p>from bea</p>"
+            // Actors cached with the stub's key, so a request that claims their key id verifies without any server
+            let! onSub = cachedActorOn rig "a.spam.example" "x"
+            let! onDomain = cachedActorOn rig "spam.example" "y"
+            let! lookalike = cachedActorOn rig "notspam.example" "z"
+            let! longer = cachedActorOn rig "spam.example.org" "w"
+
+            let! status, _ = blockUser rig "u-1" [ "domain", "spam.example" ]
+            Assert.Equal(201, status)
+
+            let follow (actor: string) =
+                $"""{{"@context":"https://www.w3.org/ns/activitystreams","id":"{actor}/follows/1","type":"Follow","actor":"{actor}","object":"{ourActor "u-1"}"}}"""
+
+            for actor, blocked in [ onSub, true; onDomain, true; lookalike, false; longer, false ] do
+                let key = $"{actor}#main-key"
+
+                // A Follow: 202 whatever happens; the row says whether it was handled
+                let! status = sendClaiming rig "bob" (Some key) (rig.Host.FederationUrl + "/inbox") (follow actor) id
+                Assert.Equal(Net.HttpStatusCode.Accepted, status)
+                let! rows = count rig $"SELECT count(*) FROM follows WHERE local_actor = 'u-1' AND remote_actor = '{actor}'"
+                Assert.Equal((if blocked then 0L else 1L), rows)
+
+                // A signed fetch of alex's post, and of bea's
+                let signedBy (path: string) =
+                    federationGet rig path (claiming key (rig.Stub.Sign("bob", "GET", rig.Host.FederationUrl + path, None)))
+
+                use! response = signedBy (objectPath alexs)
+                let expected = if blocked then Net.HttpStatusCode.NotFound else Net.HttpStatusCode.OK
+                Assert.True((response.StatusCode = expected), $"{actor} alex's post: {response.StatusCode}")
+                use! response = signedBy (objectPath beas)
+                Assert.True((response.StatusCode = Net.HttpStatusCode.OK), $"{actor} bea's post: {response.StatusCode}")
+        }

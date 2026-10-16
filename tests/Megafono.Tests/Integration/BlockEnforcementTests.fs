@@ -42,14 +42,6 @@ let private settle () = Task.Delay 700
 
 let private count (rig: Rig) (sql: string) : Task<int64> = Db.count rig.Db sql
 
-/// POST to a Megáfono inbox, signed as `name` on the stub
-let private send (rig: Rig) (name: string) (url: string) (body: string) : Task<HttpStatusCode> =
-    task {
-        use client = new HttpClient()
-        use! response = Signed.postText client rig.Stub name url body
-        return response.StatusCode
-    }
-
 let private sharedInbox (rig: Rig) = rig.Host.FederationUrl + "/inbox"
 let private personalInbox (rig: Rig) (user: string) = $"{rig.Host.FederationUrl}/ap/actors/{user}/inbox"
 
@@ -82,40 +74,6 @@ let private liftDomain (rig: Rig) (domain: string) =
     task {
         let! status, text = sendInternal rig HttpMethod.Delete $"/internal/blocks?domain={Uri.EscapeDataString domain}" None
         Assert.True((status = 204), $"lift answered {status}: {text}")
-    }
-
-/// The headers of a request the stub signed, claiming `keyId` instead of the stub's own. The string a signature covers
-/// does not include the key id, so the signature still verifies for whoever holds the stub's key: a request that comes
-/// from "another server" without a second stub, whose host is the same 127.0.0.1 a domain block names.
-let private claiming (keyId: string) (headers: (string * string) list) : (string * string) list =
-    headers
-    |> List.map (fun (name, value) ->
-        if name = "Signature" then name, Regex.Replace(value, "keyId=\"[^\"]*\"", $"keyId=\"{keyId}\"") else name, value)
-
-/// An actor on `other.example` whose key is the stub's, cached, so a request claiming its key id is verified from the
-/// cache and Megáfono never has to reach the server
-let private otherServerActor (rig: Rig) (name: string) : Task<string> =
-    task {
-        let id = $"https://other.example/users/{name}"
-
-        do!
-            Db.execute
-                rig.Db
-                $"""INSERT INTO remote_actors (id, host, handle, actor_type, inbox, key_id, public_key_pem)
-                    VALUES ('{id}', 'other.example', '{name}@other.example', 'Person', '{id}/inbox', '{id}#main-key', '{rig.Stub.PublicKeyPem}')"""
-
-        return id
-    }
-
-/// POST signed by the stub's key, claiming `keyId`; `alter` may change what the stub signed
-let private sendClaiming (rig: Rig) (name: string) (keyId: string option) (url: string) (body: string) (alter: (string * string) list -> (string * string) list) : Task<HttpStatusCode> =
-    task {
-        use client = new HttpClient()
-        let bytes = Encoding.UTF8.GetBytes body
-        let headers = rig.Stub.Sign(name, "POST", url, Some bytes)
-        let headers = (match keyId with Some k -> claiming k headers | None -> headers) |> alter
-        use! response = Signed.postRaw client url bytes headers
-        return response.StatusCode
     }
 
 let private breakSignature (headers: (string * string) list) : (string * string) list =
@@ -600,7 +558,7 @@ type BlockEnforcementTests(pg: PostgresFixture) =
             let! rig = rigWithStub pg
             use _ = disposeRig rig
             let! root = publish rig "u-1" "public" "<p>Episode 5</p>"
-            let! carol = otherServerActor rig "carol"
+            let! carol = cachedActorOn rig "other.example" "carol"
 
             // The Note lives on the stub (bob's server) and is attributed to carol of another server: the activity
             // carries only its id, so Megáfono has to fetch it from its origin
