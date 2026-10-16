@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-15
 
-**Status**: Clarified
+**Status**: Implemented
 
 **Input**: User description: "Per-actor and per-instance blocks, Megáfono feature 004. Source:
 .alta/tasks/2026-10-10-megafono-per-actor-and-per-instance-blocks-before-public-com-583k.md, docs/vision.md
