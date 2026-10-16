@@ -115,6 +115,16 @@ let isBlockedBy (tx: NpgsqlTransaction) (localUser: string) (actorId: string) (h
         return! scalarBool command
     }
 
+/// `isBlockedBy` outside a transaction, for the early drop at a personal inbox where nothing is written (R-43)
+let isBlockedForUser (dataSource: NpgsqlDataSource) (localUser: string) (actorId: string) (host: string) : Task<bool> =
+    task {
+        use command = dataSource.CreateCommand("SELECT " + (coveredSql "@user" "@actor" "@host"))
+        command.Parameters.AddWithValue("user", localUser) |> ignore
+        command.Parameters.AddWithValue("actor", actorId) |> ignore
+        command.Parameters.AddWithValue("host", host) |> ignore
+        return! scalarBool command
+    }
+
 /// The claim check of R-43 and R-44, on a signature's `keyId` before anything is verified or fetched: true when the
 /// key's host is on a blocked domain, or the key's owner is a blocked actor (the cached owner of the key, else the key
 /// id without its fragment, which is the actor id on Mastodon). With `localUser`, that user's blocks count next to the

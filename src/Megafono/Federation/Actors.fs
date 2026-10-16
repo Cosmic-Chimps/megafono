@@ -59,10 +59,22 @@ let private gone (ctx: HttpContext) (appUserId: string) (actorType: string) (del
     let options = ctx.GetService<Config.MegafonoOptions>()
     respond ctx 410 activityJson (ActivityStreams.actorTombstone options.Domain appUserId actorType deletedAt)
 
+/// True when the request is not for the canonical URL, or claims a key the instance or this user blocks (R-44): both
+/// answer 404, before anything else is done
+let private hidden (ctx: HttpContext) (appUserId: string) (canonicalPath: string) : Task<bool> =
+    task {
+        if not (isCanonical ctx canonicalPath) then
+            return true
+        else
+            return! claimsBlockedKey ctx (Some appUserId)
+    }
+
 let private actor (appUserId: string) : EndpointHandler =
     fun ctx ->
         task {
-            if not (isCanonical ctx $"/ap/actors/{appUserId}") then
+            let! hide = hidden ctx appUserId $"/ap/actors/{appUserId}"
+
+            if hide then
                 return! notFound ctx
             else
                 match! find ctx appUserId with
@@ -96,7 +108,9 @@ let private count (dataSource: NpgsqlDataSource) (sql: string) (appUserId: strin
 let private collection (name: string) (sql: string) (appUserId: string) : EndpointHandler =
     fun ctx ->
         task {
-            if not (isCanonical ctx $"/ap/actors/{appUserId}/{name}") then
+            let! hide = hidden ctx appUserId $"/ap/actors/{appUserId}/{name}"
+
+            if hide then
                 return! notFound ctx
             else
                 match! find ctx appUserId with

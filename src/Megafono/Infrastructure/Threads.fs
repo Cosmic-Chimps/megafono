@@ -265,8 +265,16 @@ type CollectionPage =
       HasNext: bool }
 
 // The app's own replies first, then remote ones, each oldest first (research R-20)
-let private order = "ORDER BY (local_object IS NULL), published_at, id"
-let private listable = "state = 'live' AND audience IN ('public', 'unlisted')"
+let private order = "ORDER BY (rp.local_object IS NULL), rp.published_at, rp.id"
+
+// The replies a collection lists: live, public or unlisted, and not by a remote actor an instance block or a block of the
+// thread's root author covers (R-47). The rows stay, so lifting a block shows them again; the app's own replies have no
+// remote author and are never covered.
+let private from = "FROM replies rp JOIN objects ro ON ro.id = rp.thread_root LEFT JOIN remote_actors ra ON ra.id = rp.remote_actor"
+
+let private listable =
+    "rp.state = 'live' AND rp.audience IN ('public', 'unlisted') AND NOT "
+    + Blocks.coveredSql "ro.local_actor" "rp.remote_actor" "ra.host"
 
 let private ids (reader: Data.Common.DbDataReader) : string list =
     let items = ResizeArray<string>()
@@ -280,12 +288,12 @@ let private ids (reader: Data.Common.DbDataReader) : string list =
 let repliesPage (dataSource: NpgsqlDataSource) (parentIri: string) (number: int) : Task<CollectionPage> =
     task {
         let number = max 1 number
-        use count = dataSource.CreateCommand $"SELECT count(*) FROM replies WHERE parent = @parent AND {listable}"
+        use count = dataSource.CreateCommand $"SELECT count(*) {from} WHERE rp.parent = @parent AND {listable}"
         count.Parameters.AddWithValue("parent", parentIri) |> ignore
         let! total = count.ExecuteScalarAsync()
 
         use page =
-            dataSource.CreateCommand $"SELECT id FROM replies WHERE parent = @parent AND {listable} {order} LIMIT @limit OFFSET @offset"
+            dataSource.CreateCommand $"SELECT rp.id {from} WHERE rp.parent = @parent AND {listable} {order} LIMIT @limit OFFSET @offset"
 
         page.Parameters.AddWithValue("parent", parentIri) |> ignore
         page.Parameters.AddWithValue("limit", ActivityStreams.pageSize + 1) |> ignore
@@ -301,7 +309,7 @@ let contextPage (dataSource: NpgsqlDataSource) (domain: string) (root: Guid) (nu
     task {
         let number = max 1 number
         let size = ActivityStreams.pageSize
-        use count = dataSource.CreateCommand $"SELECT count(*) FROM replies WHERE thread_root = @root AND {listable}"
+        use count = dataSource.CreateCommand $"SELECT count(*) {from} WHERE rp.thread_root = @root AND {listable}"
         count.Parameters.AddWithValue("root", root) |> ignore
         let! total = count.ExecuteScalarAsync()
 
@@ -309,7 +317,7 @@ let contextPage (dataSource: NpgsqlDataSource) (domain: string) (root: Guid) (nu
         let offset, limit = if number = 1 then 0, size - 1 else size - 1 + (number - 2) * size, size
 
         use page =
-            dataSource.CreateCommand $"SELECT id FROM replies WHERE thread_root = @root AND {listable} {order} LIMIT @limit OFFSET @offset"
+            dataSource.CreateCommand $"SELECT rp.id {from} WHERE rp.thread_root = @root AND {listable} {order} LIMIT @limit OFFSET @offset"
 
         page.Parameters.AddWithValue("root", root) |> ignore
         page.Parameters.AddWithValue("limit", limit + 1) |> ignore

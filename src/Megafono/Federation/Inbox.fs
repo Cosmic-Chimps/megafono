@@ -7,6 +7,7 @@
 ///  4. Digest present and equal to the raw bytes                      -> 401
 ///  5. key fetched (signed by the instance actor), signature checked, one refetch on failure -> 401
 ///  6. per-verified-host rate limit                                   -> 429
+///     a personal inbox whose user blocks the signer                  -> 202, dropped before the body is read
 ///  7. JSON parsed                                                    -> 400
 ///  8. activity id seen in the last 7 days                            -> 202, ignored (in the handler's transaction)
 ///  9. embedded ids on another host than the signer are not trusted (see InboxCommon.isOnSignerHost)
@@ -172,7 +173,8 @@ let private inbox (localUser: string option) : EndpointHandler =
                         match RateLimits.tryHost limits signer.Host with
                         | Some retryAfter -> return! RateLimits.tooManyRequests ctx retryAfter
                         | None ->
-                            // A personal inbox of a user the app does not know (404) or of a deleted actor (410)
+                            // A personal inbox of a user the app does not know (404) or of a deleted actor (410); of a user who
+                            // blocks the signer (the user's or the instance's block): 202, dropped before the body is read (R-43)
                             let! refusal =
                                 match localUser with
                                 | None -> Task.FromResult None
@@ -180,7 +182,9 @@ let private inbox (localUser: string option) : EndpointHandler =
                                     task {
                                         match! env.App.ById id with
                                         | AppClient.Found _
-                                        | AppClient.UnavailableWithFallback _ -> return None
+                                        | AppClient.UnavailableWithFallback _ ->
+                                            let! blocked = Blocks.isBlockedForUser env.DataSource id signer.Id signer.Host
+                                            return if blocked then Some 202 else None
                                         | AppClient.Deleted -> return Some 410
                                         | _ -> return Some 404
                                     }

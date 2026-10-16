@@ -194,6 +194,17 @@ let private audienceOf (signer: RemoteActor) (activity: JsonNode) (note: JsonObj
     let addressed (name: string) = if isNull note[name] then iris activity[name] else iris note[name]
     Audience.fromAddressing signer.FollowersUrl (addressed "to") (addressed "cc")
 
+/// True when the instance or the author of the thread's root blocks the signer, or the local author of the reply's
+/// parent does (FR-006): a block of either keeps the signer out of what they said
+let private isBlocked (tx: NpgsqlTransaction) (signer: RemoteActor) (rootAuthor: string) (parentAuthor: string option) : Task<bool> =
+    task {
+        let! byRoot = Blocks.isBlockedBy tx rootAuthor signer.Id signer.Host
+
+        match parentAuthor with
+        | Some author when not byRoot && author <> rootAuthor -> return! Blocks.isBlockedBy tx author signer.Id signer.Host
+        | _ -> return byRoot
+    }
+
 // ---- Create ----------------------------------------------------------------------------------------------
 
 let handleCreate (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
@@ -214,9 +225,15 @@ let handleCreate (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Ou
                         do! tx.RollbackAsync()
                         return Ignored "not a reply to one of our objects or to a live reply in one of our threads"
                     | Threads.Resolved parent ->
-                        let! fresh = markProcessed tx env.Time createId
+                        // Serialized with the thread author's block call and deletion (R-46), then the blocks are read
+                        let! live = Outbox.lockLiveActor tx parent.RootAuthor
+                        let! blocked = if live then isBlocked tx signer parent.RootAuthor parent.LocalUser else Task.FromResult false
+                        let! fresh = if live && not blocked then markProcessed tx env.Time createId else Task.FromResult true
 
-                        if not fresh then
+                        if not live || blocked then
+                            do! tx.RollbackAsync()
+                            return Ignored(if blocked then "blocked" else "the thread's author was deleted")
+                        elif not fresh then
                             do! tx.RollbackAsync()
                             return Ignored "already processed"
                         else
@@ -273,36 +290,43 @@ let handleUpdate (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Ou
 
             match ownedBy signer known with
             | None -> return Ignored "not a live reply recorded from the signer"
-            | Some _ ->
+            | Some earlier ->
                 match! noteOf env signer activity["object"] with
                 | Some note when str note "id" = Some replyId ->
                     use! connection = env.DataSource.OpenConnectionAsync()
                     use! tx = connection.BeginTransactionAsync()
+                    // The thread author's row first, then the reply's (the order every writer takes them in, R-46)
+                    let! live = Outbox.lockLiveActor tx earlier.RootAuthor
+                    let! blocked = if live then isBlocked tx signer earlier.RootAuthor earlier.ParentUser else Task.FromResult false
 
-                    let! found = Threads.findReply tx replyId
-
-                    match ownedBy signer found with
-                    | None ->
+                    if not live || blocked then
                         do! tx.RollbackAsync()
-                        return Ignored "the reply was deleted meanwhile"
-                    | Some row ->
-                        // GoToSocial gives every Update of a status the same activity id (`…/activity#Update`), Mastodon one per
-                        // edit: the edit's own `updated` time tells two edits apart, so a second edit is not taken for a repeat
-                        let dedupId = match str note "updated" with Some updated -> $"{updateId}|{updated}" | None -> updateId
-                        let! fresh = markProcessed tx env.Time dedupId
+                        return Ignored(if blocked then "blocked" else "the thread's author was deleted")
+                    else
+                        let! found = Threads.findReply tx replyId
 
-                        if not fresh then
+                        match ownedBy signer found with
+                        | None ->
                             do! tx.RollbackAsync()
-                            return Ignored "already processed"
-                        else
-                            let now = env.Time.GetUtcNow()
-                            let updated = time note "updated" |> Option.defaultValue now
-                            let reply = replyObject env note row.Audience (parentRef row) row.ThreadRoot row.PublishedAt (Some updated)
-                            let! extensions = extensionsOf tx row.ThreadRoot activity["@context"] note
-                            do! Threads.markUpdated tx env.Time replyId
-                            let! _ = Outbox.enqueueEvent tx env.Time row.RootAuthor (Events.replyBody Events.ReplyUpdated (actorSummary signer) reply extensions)
-                            do! tx.CommitAsync()
-                            return Handled
+                            return Ignored "the reply was deleted meanwhile"
+                        | Some row ->
+                            // GoToSocial gives every Update of a status the same activity id (`…/activity#Update`), Mastodon one per
+                            // edit: the edit's own `updated` time tells two edits apart, so a second edit is not taken for a repeat
+                            let dedupId = match str note "updated" with Some updated -> $"{updateId}|{updated}" | None -> updateId
+                            let! fresh = markProcessed tx env.Time dedupId
+
+                            if not fresh then
+                                do! tx.RollbackAsync()
+                                return Ignored "already processed"
+                            else
+                                let now = env.Time.GetUtcNow()
+                                let updated = time note "updated" |> Option.defaultValue now
+                                let reply = replyObject env note row.Audience (parentRef row) row.ThreadRoot row.PublishedAt (Some updated)
+                                let! extensions = extensionsOf tx row.ThreadRoot activity["@context"] note
+                                do! Threads.markUpdated tx env.Time replyId
+                                let! _ = Outbox.enqueueEvent tx env.Time row.RootAuthor (Events.replyBody Events.ReplyUpdated (actorSummary signer) reply extensions)
+                                do! tx.CommitAsync()
+                                return Handled
                 | _ -> return Ignored "the edited reply could not be read from the signer"
         | _ -> return Ignored "the Update is not the signer's own"
     }

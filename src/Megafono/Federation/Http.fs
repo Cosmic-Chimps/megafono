@@ -5,6 +5,7 @@ module Megafono.Federation.Http
 open System.Text.Json.Nodes
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Http
+open Npgsql
 open Oxpecker
 open Megafono.Domain
 open Megafono.Infrastructure
@@ -36,3 +37,10 @@ let claimedKeyId (ctx: HttpContext) : string option =
         match HttpSignatures.parseSignatureHeader value with
         | Ok parsed -> Some parsed.KeyId
         | Error _ -> None
+
+/// True when the request claims a key a block refuses (R-44): instance blocks, and with `localUser` that user's own.
+/// Asked before any other work, so a blocked key gets the same 404 as a missing document.
+let claimsBlockedKey (ctx: HttpContext) (localUser: string option) : Task<bool> =
+    match claimedKeyId ctx with
+    | None -> Task.FromResult false
+    | Some keyId -> Blocks.isKeyRefused (ctx.GetService<NpgsqlDataSource>()) keyId localUser

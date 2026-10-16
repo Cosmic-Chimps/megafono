@@ -66,11 +66,16 @@ let handleFollow (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Ou
                 use! tx = connection.BeginTransactionAsync()
                 // Serialized with the actor's deletion: no row, Accept or event after its Delete (R-34)
                 let! live = Outbox.lockLiveActor tx local.AppUserId
-                let! fresh = if live then markProcessed tx env.Time followId else Task.FromResult true
+                // A block by the user or the instance, read after the row is locked so it cannot race the block call (R-46)
+                let! blocked = if live then Blocks.isBlockedBy tx local.AppUserId signer.Id signer.Host else Task.FromResult false
+                let! fresh = if live && not blocked then markProcessed tx env.Time followId else Task.FromResult true
 
                 if not live then
                     do! tx.RollbackAsync()
                     return Refused 404
+                elif blocked then
+                    do! tx.RollbackAsync()
+                    return Ignored "blocked"
                 elif not fresh then
                     do! tx.RollbackAsync()
                     return Ignored "already processed"

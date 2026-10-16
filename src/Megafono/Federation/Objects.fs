@@ -190,8 +190,14 @@ let private guarded
                 | Some row ->
                     // Checked before the deleted state too: a deleted followers-only object answers 410 only to
                     // someone who could have seen it, and 404 to everyone else, so its existence stays hidden
+                    // A key the instance or the author blocks gets the 404 of a missing object, before anything is verified
+                    // or any rate limit is spent (R-44)
+                    let! refused = claimsBlockedKey ctx (Some row.Author)
+
                     let! verdict =
-                        if Audience.isPrivate row.Audience then authorize ctx row.Author else Task.FromResult Allowed
+                        if refused then Task.FromResult NotAllowed
+                        elif Audience.isPrivate row.Audience then authorize ctx row.Author
+                        else Task.FromResult Allowed
 
                     match verdict with
                     | RateLimited -> return! tooManyRequests ctx
