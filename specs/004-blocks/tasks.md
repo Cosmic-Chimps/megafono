@@ -134,8 +134,8 @@ check the activities the stub receives and that carol is unaffected.
 **Independent Test**: create blocks, list, lift each kind, check what the stub remote receives and that the blocked
 side is handled again.
 
-- [ ] T025 [P] [US5] Tests in `tests/Megafono.Tests/Integration/BlockTests.fs`: `GET /internal/actors/alex/blocks` and `GET /internal/blocks` list each block newest first with `actor`/`domain`/`createdAt`; `DELETE …?actor=` (by URL and by handle) → 204 and the stub receives an `Undo` embedding the original `Block` id; `DELETE …?domain=` → 204, nothing sent; a second DELETE → 404; no follow is restored; after lifting, a Follow from bob reaches alex again and bob's signed fetch is answered; 400 without exactly one parameter; 404/410 for unknown/deleted users
-- [ ] T026 [US5] Make T025 pass in `src/Megafono/Internal/Blocks.fs` (lifting by handle from T005; listing and lifting from `4532b8b`)
+- [X] T025 [P] [US5] Tests in `tests/Megafono.Tests/Integration/BlockTests.fs`: `GET /internal/actors/alex/blocks` and `GET /internal/blocks` list each block newest first with `actor`/`domain`/`createdAt`; `DELETE …?actor=` (by URL and by handle) → 204 and the stub receives an `Undo` embedding the original `Block` id; `DELETE …?domain=` → 204, nothing sent; a second DELETE → 404; no follow is restored; after lifting, a Follow from bob reaches alex again and bob's signed fetch is answered; 400 without exactly one parameter; 404/410 for unknown/deleted users
+- [X] T026 [US5] Make T025 pass in `src/Megafono/Internal/Blocks.fs` (lifting by handle from T005; listing and lifting from `4532b8b`)
 
 ---
 

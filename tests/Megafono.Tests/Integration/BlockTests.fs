@@ -844,3 +844,286 @@ type BlockTests(pg: PostgresFixture) =
                 use! response = signedBy (objectPath beas)
                 Assert.True((response.StatusCode = Net.HttpStatusCode.OK), $"{actor} bea's post: {response.StatusCode}")
         }
+
+    // ---- blocks can be listed and lifted (User Story 5, T025) ---------------------------------------------
+
+    [<Fact>]
+    member _.``FR-014 the lists hold each owner's blocks newest first, with actor or domain and createdAt, and nobody else's``() : Task =
+        task {
+            let! rig = start pg [ "bob" ]
+            use _ = disposeRig rig
+
+            let create (path: string) (fields: (string * string) list) =
+                task {
+                    let! status, _ = sendInternal rig HttpMethod.Post path (Some(body fields))
+                    Assert.Equal(201, status)
+                    rig.Time.Advance(TimeSpan.FromMinutes 1.0)
+                }
+
+            let alex = "/internal/actors/u-1/blocks"
+            do! create alex [ "domain", "spam.example" ]
+            do! create alex [ "actor", rig.Stub.ActorId "bob" ]
+            do! create "/internal/actors/u-2/blocks" [ "domain", "bea-only.example" ]
+            do! create alex [ "domain", "other.example" ]
+            do! create "/internal/blocks" [ "domain", "everyone.example" ]
+
+            let list (path: string) =
+                task {
+                    let! status, text = sendInternal rig HttpMethod.Get path None
+                    Assert.Equal(200, status)
+                    let items = (json text)["items"] :?> JsonArray
+                    return [ for item in items -> item ]
+                }
+
+            let! mine = list alex
+            let text (node: JsonNode) : string = if isNull node then null else jstr node
+            let shown = mine |> List.map (fun i -> text (at i "domain"), text (at i "actor"))
+            Assert.Equal<(string * string) list>([ "other.example", null; null, rig.Stub.ActorId "bob"; "spam.example", null ], shown)
+
+            let times = mine |> List.map (fun i -> DateTimeOffset.Parse(jstr (at i "createdAt")))
+            Assert.Equal<DateTimeOffset list>(times |> List.sortDescending, times)
+            Assert.Equal(3, times |> List.distinct |> List.length)
+
+            let! beas = list "/internal/actors/u-2/blocks"
+            Assert.Equal<string list>([ "bea-only.example" ], beas |> List.map (fun i -> jstr (at i "domain")))
+            // The instance's own list holds neither user's blocks
+            let! instance = list "/internal/blocks"
+            Assert.Equal<string list>([ "everyone.example" ], instance |> List.map (fun i -> jstr (at i "domain")))
+            Assert.Null(at instance.Head "actor")
+            // A user who blocked nobody gets an empty list
+            let! status, _ = sendInternal rig HttpMethod.Delete "/internal/actors/u-1/blocks?domain=other.example" None
+            Assert.Equal(204, status)
+            let! status, _ = sendInternal rig HttpMethod.Delete "/internal/actors/u-1/blocks?domain=spam.example" None
+            Assert.Equal(204, status)
+            let bob = Uri.EscapeDataString(rig.Stub.ActorId "bob")
+            let! status, _ = sendInternal rig HttpMethod.Delete $"/internal/actors/u-1/blocks?actor={bob}" None
+            Assert.Equal(204, status)
+            let! none = list alex
+            Assert.Empty none
+        }
+
+    [<Fact>]
+    member _.``FR-015 lifting an actor block by URL or by handle is 204 and sends an Undo that embeds the Block that was sent; a second lift is 404``() : Task =
+        task {
+            let! rig = start pg [ "bob"; "carol" ]
+            use _ = disposeRig rig
+            do! addFollower rig.Db "u-1" rig.Stub "bob" "accepted" None
+            let bob, carol = rig.Stub.ActorId "bob", rig.Stub.ActorId "carol"
+            let! status, _ = blockActor rig "u-1" bob
+            Assert.Equal(201, status)
+            let! status, _ = blockActor rig "u-1" $"@carol@{rig.Stub.Authority}"
+            Assert.Equal(201, status)
+            do! waitForPosts rig.Stub "Block" 2
+            do! waitForEvents rig "follow.removed" 1
+
+            let blockIdAt (path: string) =
+                let _, block = posted rig.Stub "Block" |> List.filter (fun (p, _) -> p.Path = path) |> List.exactlyOne
+                jstr (at block "id")
+
+            let bobsBlock, carolsBlock = blockIdAt "/users/bob/inbox", blockIdAt "/users/carol/inbox"
+            let lift (query: string) = sendInternal rig HttpMethod.Delete $"/internal/actors/u-1/blocks?actor={Uri.EscapeDataString query}" None
+
+            // By URL
+            let! status, text = lift bob
+            Assert.Equal(204, status)
+            Assert.Equal("", text)
+            do! waitForPosts rig.Stub "Undo" 1
+            // By handle (the cached actor answers; no lookup is needed)
+            let! status, _ = lift $"carol@{rig.Stub.Authority}"
+            Assert.Equal(204, status)
+            do! waitForPosts rig.Stub "Undo" 2
+            do! settle ()
+
+            let local = "https://megafono.test/ap/actors/u-1"
+            let undos = posted rig.Stub "Undo" |> List.sortBy (fun (p, _) -> p.Path)
+            Assert.Equal<string list>([ "/users/bob/inbox"; "/users/carol/inbox" ], undos |> List.map (fun (p, _) -> p.Path))
+
+            for (_, undo), target, blockId in List.zip3 undos [ bob; carol ] [ bobsBlock; carolsBlock ] do
+                Assert.Equal("Undo", jstr (at undo "type"))
+                Assert.Equal(local, jstr (at undo "actor"))
+                Assert.Equal(blockId, jstr (at undo "object.id"))
+                Assert.Equal("Block", jstr (at undo "object.type"))
+                Assert.Equal(local, jstr (at undo "object.actor"))
+                Assert.Equal(target, jstr (at undo "object.object"))
+                Assert.Equal(target, jstr (at undo "to.0"))
+
+            // Nothing else went out, the rows are gone, and a second lift finds nothing
+            Assert.Equal(4, rig.Stub.Posts.Length)
+            let! rows = count rig "SELECT count(*) FROM blocks"
+            Assert.Equal(0L, rows)
+
+            for target in [ bob; $"@bob@{rig.Stub.Authority}" ] do
+                let! status, text = lift target
+                Assert.Equal(404, status)
+                Assert.Equal("not_found", jstr (at (json text) "error"))
+
+            do! settle ()
+            Assert.Equal(4, rig.Stub.Posts.Length)
+
+            // The follow the block ended stays ended: no event, no row restored
+            let! s = followStatus rig "inbound" "u-1" rig.Stub "bob"
+            Assert.Equal("removed", s)
+            Assert.Equal(1, (events rig "follow.removed").Length)
+            Assert.Empty(events rig "follow.accepted")
+        }
+
+    [<Fact>]
+    member _.``FR-015 lifting a user or instance domain block, or an instance actor block, is 204 and sends nothing; a second lift is 404``() : Task =
+        task {
+            let! rig = start pg [ "bob"; "carol" ]
+            use _ = disposeRig rig
+            do! addFollower rig.Db "u-1" rig.Stub "bob" "accepted" None
+            // The stub is 127.0.0.1:port: alex's domain block sends it a Reject of bob's follow, nothing else
+            let! status, _ = blockUser rig "u-1" [ "domain", "127.0.0.1" ]
+            Assert.Equal(201, status)
+            do! waitForPosts rig.Stub "Reject" 1
+            let! status, _ = sendInternal rig HttpMethod.Post "/internal/blocks" (Some(body [ "actor", rig.Stub.ActorId "carol" ]))
+            Assert.Equal(201, status)
+            let! status, _ = sendInternal rig HttpMethod.Post "/internal/blocks" (Some(body [ "domain", "spam.example" ]))
+            Assert.Equal(201, status)
+            do! settle ()
+            Assert.Equal(1, rig.Stub.Posts.Length)
+            let requests = rig.Stub.Gets.Length
+
+            let delete (path: string) = sendInternal rig HttpMethod.Delete path None
+            let carol = Uri.EscapeDataString(rig.Stub.ActorId "carol")
+
+            // The same names, lifted from the wrong owner: 404 and nothing changes
+            let! status, _ = delete "/internal/blocks?domain=127.0.0.1"
+            Assert.Equal(404, status)
+            let! status, _ = delete "/internal/actors/u-1/blocks?domain=spam.example"
+            Assert.Equal(404, status)
+            let! status, _ = delete "/internal/actors/u-2/blocks?domain=127.0.0.1"
+            Assert.Equal(404, status)
+            let! rows = count rig "SELECT count(*) FROM blocks"
+            Assert.Equal(3L, rows)
+
+            // User block of a domain: the name is normalized the way it was when stored
+            let! status, text = delete "/internal/actors/u-1/blocks?domain=127.0.0.1."
+            Assert.Equal(204, status)
+            Assert.Equal("", text)
+            // Instance blocks of an actor (by handle, from the cache) and of a domain
+            let carolsHandle = Uri.EscapeDataString $"@carol@{rig.Stub.Authority}"
+            let! status, _ = delete $"/internal/blocks?actor={carolsHandle}"
+            Assert.Equal(204, status)
+            let! status, _ = delete "/internal/blocks?domain=SPAM.example"
+            Assert.Equal(204, status)
+
+            for path in [ "/internal/actors/u-1/blocks?domain=127.0.0.1"; $"/internal/blocks?actor={carol}"; "/internal/blocks?domain=spam.example" ] do
+                let! status, text = delete path
+                Assert.Equal(404, status)
+                Assert.Equal("not_found", jstr (at (json text) "error"))
+
+            let! rows = count rig "SELECT count(*) FROM blocks"
+            Assert.Equal(0L, rows)
+            // No Undo of anything: a domain block never sent a Block, and lifting asks no server anything
+            do! settle ()
+            Assert.Equal(1, rig.Stub.Posts.Length)
+            Assert.Empty(posted rig.Stub "Undo")
+            Assert.Equal(requests, rig.Stub.Gets.Length)
+            // No follow is restored
+            let! s = followStatus rig "inbound" "u-1" rig.Stub "bob"
+            Assert.Equal("removed", s)
+            let! undos = count rig "SELECT count(*) FROM activities WHERE activity_type = 'Undo'"
+            Assert.Equal(0L, undos)
+        }
+
+    [<Fact>]
+    member _.``FR-015 after a lift a Follow from the actor or the domain reaches the user again and the signed fetches are answered``() : Task =
+        task {
+            let! rig = start pg [ "bob"; "carol" ]
+            use _ = disposeRig rig
+            let! alexs = publish rig "u-1" "public" "<p>from alex</p>"
+            let bob = rig.Stub.ActorId "bob"
+            let inbox = rig.Host.FederationUrl + "/inbox"
+
+            let read (name: string) =
+                task {
+                    use! response = signedGet rig rig.Stub name (objectPath alexs)
+                    return response.StatusCode
+                }
+
+            // An actor block, then its lift: bob is heard again, carol never was affected
+            let! status, _ = blockActor rig "u-1" bob
+            Assert.Equal(201, status)
+            let! status = send rig "bob" inbox (followBody rig.Stub "bob" "1" (ourActor "u-1"))
+            Assert.Equal(Net.HttpStatusCode.Accepted, status)
+            let! rows = count rig "SELECT count(*) FROM follows WHERE local_actor = 'u-1'"
+            Assert.Equal(0L, rows)
+            let! seen = read "bob"
+            Assert.Equal(Net.HttpStatusCode.NotFound, seen)
+
+            let bobQuery = Uri.EscapeDataString bob
+            let! status, _ = sendInternal rig HttpMethod.Delete $"/internal/actors/u-1/blocks?actor={bobQuery}" None
+            Assert.Equal(204, status)
+            let! status = send rig "bob" inbox (followBody rig.Stub "bob" "2" (ourActor "u-1"))
+            Assert.Equal(Net.HttpStatusCode.Accepted, status)
+            do! waitForEvents rig "follow.accepted" 1
+            let! s = followStatus rig "inbound" "u-1" rig.Stub "bob"
+            Assert.Equal("accepted", s)
+            let! seen = read "bob"
+            Assert.Equal(Net.HttpStatusCode.OK, seen)
+
+            // A domain block, then its lift: now carol
+            let! status, _ = blockUser rig "u-1" [ "domain", "127.0.0.1" ]
+            Assert.Equal(201, status)
+            let! status = send rig "carol" inbox (followBody rig.Stub "carol" "1" (ourActor "u-1"))
+            Assert.Equal(Net.HttpStatusCode.Accepted, status)
+            let! seen = read "carol"
+            Assert.Equal(Net.HttpStatusCode.NotFound, seen)
+            let carolsId = rig.Stub.ActorId "carol"
+            let! carols = count rig $"SELECT count(*) FROM follows WHERE remote_actor = '{carolsId}'"
+            Assert.Equal(0L, carols)
+
+            let! status, _ = sendInternal rig HttpMethod.Delete "/internal/actors/u-1/blocks?domain=127.0.0.1" None
+            Assert.Equal(204, status)
+            let! status = send rig "carol" inbox (followBody rig.Stub "carol" "2" (ourActor "u-1"))
+            Assert.Equal(Net.HttpStatusCode.Accepted, status)
+            do! waitForEvents rig "follow.accepted" 2
+            let! s = followStatus rig "inbound" "u-1" rig.Stub "carol"
+            Assert.Equal("accepted", s)
+            let! seen = read "carol"
+            Assert.Equal(Net.HttpStatusCode.OK, seen)
+            let! seen = read "bob"
+            Assert.Equal(Net.HttpStatusCode.OK, seen)
+        }
+
+    [<Fact>]
+    member _.``contract lifting and listing: 400 without exactly one of actor and domain or with a bad name, 404 for an unknown user, 410 for a deleted one``() : Task =
+        task {
+            let! rig = start pg [ "bob" ]
+            use _ = disposeRig rig
+            let bob = Uri.EscapeDataString(rig.Stub.ActorId "bob")
+
+            for owner in [ "/internal/actors/u-1/blocks"; "/internal/blocks" ] do
+                for query in
+                    [ ""
+                      $"?actor={bob}&domain=spam.example"
+                      "?actor=not%20a%20url"
+                      "?actor=%40%40"
+                      "?domain=spam.example:8443"
+                      "?domain=https%3A%2F%2Fspam.example"
+                      "?actor=https%3A%2F%2Fmegafono.test%2Fap%2Factors%2Fu-2"
+                      "?domain=megafono.test" ] do
+                    let! status, text = sendInternal rig HttpMethod.Delete (owner + query) None
+                    Assert.Equal(400, status)
+                    Assert.Equal("invalid_request", jstr (at (json text) "error"))
+
+            // A user the app does not know, then one that was deleted
+            let! status, text = sendInternal rig HttpMethod.Delete $"/internal/actors/nobody/blocks?actor={bob}" None
+            Assert.Equal(404, status)
+            Assert.Equal("not_found", jstr (at (json text) "error"))
+            let! status, _ = sendInternal rig HttpMethod.Get "/internal/actors/nobody/blocks" None
+            Assert.Equal(404, status)
+
+            let! status, _ = blockUser rig "u-2" [ "domain", "spam.example" ]
+            Assert.Equal(201, status)
+            let! status, _ = sendInternal rig HttpMethod.Delete "/internal/actors/u-2" None
+            Assert.Equal(202, status)
+            let! status, text = sendInternal rig HttpMethod.Delete "/internal/actors/u-2/blocks?domain=spam.example" None
+            Assert.Equal(410, status)
+            Assert.Equal("gone", jstr (at (json text) "error"))
+            let! status, text = sendInternal rig HttpMethod.Get "/internal/actors/u-2/blocks" None
+            Assert.Equal(410, status)
+            Assert.Equal("gone", jstr (at (json text) "error"))
+        }
