@@ -135,7 +135,10 @@ let private process' (env: Env) (job: Job) : Task<Outcome> =
             let failure (message: string) =
                 if Backoff.isPastDeadline createdAt (env.Time.GetUtcNow()) then GaveUp message else Failed message
 
-            match! skipReason env host with
+            // An instance block that came after the enqueue (R-45): nothing is sent to a blocked server
+            let! blocked = Blocks.instanceBlocksDelivery env.DataSource inbox host
+
+            match! (if blocked then Task.FromResult(Some "blocked") else skipReason env host) with
             | Some reason -> return Skipped reason
             | None ->
                 let! key = loadKey env author

@@ -396,3 +396,224 @@ type BlockTests(pg: PostgresFixture) =
             let! status, _ = sendInternal rig HttpMethod.Post "/internal/actors/u-2/following" (Some(body [ "target", rig.Stub.ActorId "bob" ]))
             Assert.Equal(202, status)
         }
+
+    // ---- instance blocks (User Story 2, T015) -------------------------------------------------------------
+
+    [<Fact>]
+    member _.``FR-002 FR-003 FR-004 a domain block ends every user's follows with that domain and its subdomains, with an event to each user``() : Task =
+        task {
+            let! rig = start pg []
+            use _ = disposeRig rig
+            let at' = DateTimeOffset.UtcNow
+            let spam, sub, subPort = "https://spam.example/users/a", "https://a.spam.example/users/b", "https://c.spam.example:8443/users/c"
+            let cousin, longer = "https://notspam.example/users/d", "https://spam.example.org/users/e"
+
+            // alex: an inbound follow from the domain, one from its subdomain, one from a lookalike
+            do! Seed.followRow rig.Db "inbound" "u-1" spam "accepted" at'
+            do! Seed.followRow rig.Db "inbound" "u-1" sub "pending" at'
+            do! Seed.followRow rig.Db "inbound" "u-1" cousin "accepted" at'
+            // bea: an outbound follow of the subdomain (with a port) and an inbound one from a longer name
+            do! Seed.followRow rig.Db "outbound" "u-2" subPort "accepted" at'
+            do! Seed.followRow rig.Db "inbound" "u-2" longer "accepted" at'
+
+            let! status, text = sendInternal rig HttpMethod.Post "/internal/blocks" (Some(body [ "domain", "Spam.Example." ]))
+            Assert.Equal(201, status)
+            let view = json text
+            Assert.Equal("spam.example", jstr (at view "domain"))
+            Assert.Null(at view "actor")
+            Assert.True(fst (DateTimeOffset.TryParse(jstr (at view "createdAt"))))
+            let! rows = count rig "SELECT count(*) FROM blocks WHERE local_actor IS NULL AND domain = 'spam.example' AND actor IS NULL"
+            Assert.Equal(1L, rows)
+
+            let statusOf (user: string) (actor: string) =
+                task {
+                    let! v = Db.scalar rig.Db $"SELECT status FROM follows WHERE local_actor = '{user}' AND remote_actor = '{actor}'"
+                    return string v
+                }
+
+            for user, actor in [ "u-1", spam; "u-1", sub; "u-2", subPort ] do
+                let! s = statusOf user actor
+                Assert.Equal("removed", s)
+
+            for user, actor in [ "u-1", cousin; "u-2", longer ] do
+                let! s = statusOf user actor
+                Assert.Equal("accepted", s)
+
+            do! waitForEvents rig "follow.removed" 3
+            do! settle ()
+            let removed = events rig "follow.removed"
+            Assert.Equal(3, removed.Length)
+
+            let perUser =
+                removed
+                |> List.map (fun e -> jstr (at e.Json "user.id"), jstr (at e.Json "actor.id"), jstr (at e.Json "follow.direction"))
+                |> List.sort
+
+            Assert.Equal<(string * string * string) list>(
+                [ "u-1", sub, "inbound"; "u-1", spam, "inbound"; "u-2", subPort, "outbound" ] |> List.sort,
+                perUser
+            )
+        }
+
+    [<Fact>]
+    member _.``FR-004 a domain block cancels every waiting delivery to the domain whoever the author, and nothing is queued afterwards``() : Task =
+        task {
+            let! rig = start pg []
+            use _ = disposeRig rig
+            let! alexs = pendingDelivery rig "u-1" "https://spam.example/inbox"
+            let! beas = pendingDelivery rig "u-2" "https://a.spam.example/users/b/inbox"
+            let! elsewhere = pendingDelivery rig "u-1" "https://notspam.example/inbox"
+
+            let! status, _ = sendInternal rig HttpMethod.Post "/internal/blocks" (Some(body [ "domain", "spam.example" ]))
+            Assert.Equal(201, status)
+
+            for activity in [ alexs; beas ] do
+                let! state, error = deliveryState rig activity
+                Assert.Equal("skipped", state)
+                Assert.Equal("blocked", error)
+
+            let! state, _ = deliveryState rig elsewhere
+            Assert.Equal("pending", state)
+
+            // The enqueue leaves the blocked host out for every author
+            let! activity, _ = Seed.activity rig.Db "u-2"
+
+            let! inserted =
+                Seed.enqueueDeliveries rig.Db rig.Time activity [ "https://spam.example/inbox"; "https://x.spam.example/inbox"; "https://notspam.example/inbox" ]
+
+            Assert.Equal(1, inserted)
+            let! hosts = Publishing.strings rig.Db $"SELECT host FROM deliveries WHERE activity = '{activity}'"
+            Assert.Equal<string list>([ "notspam.example" ], hosts)
+        }
+
+    [<Fact>]
+    member _.``FR-004 FR-009 a domain block sends nothing to the server and every lookup of its handles is 409 blocked without a request``() : Task =
+        task {
+            let! rig = start pg [ "bob" ]
+            use _ = disposeRig rig
+            do! addFollower rig.Db "u-1" rig.Stub "bob" "accepted" None
+            do! outboundFollow rig "u-2" rig.Stub "bob" "pending"
+            let handle = $"@bob@{rig.Stub.Authority}"
+            let requestsBefore = rig.Stub.Gets.Length + rig.Stub.Posts.Length
+
+            // The stub is 127.0.0.1:port; a block names the host, whatever the port
+            let! status, _ = sendInternal rig HttpMethod.Post "/internal/blocks" (Some(body [ "domain", "127.0.0.1" ]))
+            Assert.Equal(201, status)
+
+            let! inbound = followStatus rig "inbound" "u-1" rig.Stub "bob"
+            let! outbound = followStatus rig "outbound" "u-2" rig.Stub "bob"
+            Assert.Equal("removed", inbound)
+            Assert.Equal("removed", outbound)
+            do! waitForEvents rig "follow.removed" 2
+
+            // Nothing is told to the blocked server: no Block, Reject or Undo (R-41)
+            do! settle ()
+            Assert.Empty rig.Stub.Posts
+
+            use client = rig.Host.InternalClient(Some MegafonoHost.token)
+            use! lookup = client.GetAsync $"/internal/remote-actors?handle={Uri.EscapeDataString handle}"
+            Assert.Equal(409, int lookup.StatusCode)
+            let! text = lookup.Content.ReadAsStringAsync()
+            Assert.Equal("blocked", jstr (at (json text) "error"))
+
+            for target in [ handle; rig.Stub.ActorId "bob" ] do
+                let! status, text = sendInternal rig HttpMethod.Post "/internal/actors/u-1/following" (Some(body [ "target", target ]))
+                Assert.Equal(409, status)
+                Assert.Equal("blocked", jstr (at (json text) "error"))
+
+            // Blocking a user of that server by handle is refused the same way: nothing is contacted
+            let! status, text = blockActor rig "u-1" handle
+            Assert.Equal(409, status)
+            Assert.Equal("blocked", jstr (at (json text) "error"))
+            Assert.Equal(requestsBefore, rig.Stub.Gets.Length + rig.Stub.Posts.Length)
+        }
+
+    [<Fact>]
+    member _.``FR-002 an instance block of one actor covers only that actor: carol on the same server, the shared inbox and the others stay``() : Task =
+        task {
+            let! rig = start pg [ "bob"; "carol" ]
+            use _ = disposeRig rig
+            let shared = $"{rig.Stub.BaseUrl}/inbox"
+            do! addFollower rig.Db "u-1" rig.Stub "bob" "accepted" (Some shared)
+            do! addFollower rig.Db "u-2" rig.Stub "bob" "pending" (Some shared)
+            do! addFollower rig.Db "u-1" rig.Stub "carol" "accepted" (Some shared)
+            let! toBob = pendingDelivery rig "u-2" (rig.Stub.InboxUrl "bob")
+            let! toCarol = pendingDelivery rig "u-1" (rig.Stub.InboxUrl "carol")
+            let! toShared = pendingDelivery rig "u-1" shared
+
+            let! status, text = sendInternal rig HttpMethod.Post "/internal/blocks" (Some(body [ "actor", rig.Stub.ActorId "bob" ]))
+            Assert.Equal(201, status)
+            Assert.Equal(rig.Stub.ActorId "bob", jstr (at (json text) "actor"))
+            Assert.Null(at (json text) "domain")
+
+            // Both users' follows of bob end, carol's stays
+            let! alexBob = followStatus rig "inbound" "u-1" rig.Stub "bob"
+            let! beaBob = followStatus rig "inbound" "u-2" rig.Stub "bob"
+            let! alexCarol = followStatus rig "inbound" "u-1" rig.Stub "carol"
+            Assert.Equal("removed", alexBob)
+            Assert.Equal("removed", beaBob)
+            Assert.Equal("accepted", alexCarol)
+            do! waitForEvents rig "follow.removed" 2
+            do! settle ()
+            Assert.Equal(2, (events rig "follow.removed").Length)
+            Assert.Equal<string list>([ "u-1"; "u-2" ], events rig "follow.removed" |> List.map (fun e -> jstr (at e.Json "user.id")) |> List.sort)
+
+            // bob's own inbox is cut off whoever the author; the shared inbox serves carol too
+            let! state, error = deliveryState rig toBob
+            Assert.Equal("skipped", state)
+            Assert.Equal("blocked", error)
+            let! state, _ = deliveryState rig toCarol
+            Assert.Equal("pending", state)
+            let! state, _ = deliveryState rig toShared
+            Assert.Equal("pending", state)
+            Assert.Empty rig.Stub.Posts
+        }
+
+    [<Fact>]
+    member _.``FR-002 a repeated instance block answers 200 and changes nothing``() : Task =
+        task {
+            let! rig = start pg []
+            use _ = disposeRig rig
+            let! first, text = sendInternal rig HttpMethod.Post "/internal/blocks" (Some(body [ "domain", "spam.example" ]))
+            Assert.Equal(201, first)
+            do! Seed.followRow rig.Db "inbound" "u-1" "https://spam.example/users/a" "accepted" DateTimeOffset.UtcNow
+
+            let! again, again' = sendInternal rig HttpMethod.Post "/internal/blocks" (Some(body [ "domain", "SPAM.example" ]))
+            Assert.Equal(200, again)
+            Assert.Equal(jstr (at (json text) "createdAt"), jstr (at (json again') "createdAt"))
+            // The repeat does not re-run the block: a follow that appeared after the first one is left alone
+            let! v = Db.scalar rig.Db "SELECT status FROM follows WHERE local_actor = 'u-1'"
+            Assert.Equal("accepted", string v)
+            let! rows = count rig "SELECT count(*) FROM blocks"
+            Assert.Equal(1L, rows)
+            do! settle ()
+            Assert.Empty(events rig "follow.removed")
+        }
+
+    [<Fact>]
+    member _.``contract an instance block of the instance's own domain or a parent of it, or a malformed one, is 400``() : Task =
+        task {
+            let! rig = start pg [ "bob" ]
+            use _ = disposeRig rig
+
+            for fields in
+                [ [ "domain", "megafono.test" ]
+                  [ "domain", "MEGAFONO.test." ]
+                  [ "domain", "test" ]
+                  [ "domain", "spam.example:8443" ]
+                  [ "domain", "https://spam.example" ]
+                  [ "domain", "bad domain" ]
+                  [ "domain", "spam.example"; "actor", rig.Stub.ActorId "bob" ]
+                  []
+                  [ "actor", "https://megafono.test/ap/actors/u-1" ]
+                  [ "actor", "@alex@megafono.test" ] ] do
+                let! status, text = sendInternal rig HttpMethod.Post "/internal/blocks" (Some(body fields))
+                Assert.Equal(400, status)
+                Assert.Equal("invalid_request", jstr (at (json text) "error"))
+
+            // a lookalike is another name, not the instance's own
+            let! status, _ = sendInternal rig HttpMethod.Post "/internal/blocks" (Some(body [ "domain", "notmegafono.test" ]))
+            Assert.Equal(201, status)
+            let! rows = count rig "SELECT count(*) FROM blocks"
+            Assert.Equal(1L, rows)
+        }

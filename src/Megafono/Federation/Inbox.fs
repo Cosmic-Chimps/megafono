@@ -5,7 +5,9 @@
 ///  2. body read as raw bytes, over 1 MB                              -> 413
 ///  3. signature present, headers covered, Date within ±12 h         -> 401
 ///  4. Digest present and equal to the raw bytes                      -> 401
-///  5. key fetched (signed by the instance actor), signature checked, one refetch on failure -> 401
+///  5. the claimed key id on a domain or of an actor the instance blocks -> 403, before any key is fetched
+///     key fetched (signed by the instance actor), signature checked, one refetch on failure -> 401
+///     the verified signer blocked by the instance                    -> 403
 ///  6. per-verified-host rate limit                                   -> 429
 ///     a personal inbox whose user blocks the signer                  -> 202, dropped before the body is read
 ///  7. JSON parsed                                                    -> 400
@@ -83,11 +85,13 @@ let private checkWithoutKey (time: TimeProvider) (request: SignedRequest) : Resu
 type private SignerResult =
     | Signer of RemoteActor
     | Unauthorized
+    /// The instance blocks the key or its owner (specs/004-blocks R-43)
+    | Blocked
     | RateLimited of retryAfter: int
 
-/// Step 5: the key is the cached one while fresh; on a signature mismatch it is fetched again once, in case the actor
+/// The key is the cached one while fresh; on a signature mismatch it is fetched again once, in case the actor
 /// rotated its key. Every fetch is signed by the instance actor and costs the claimed host a key-fetch token.
-let private resolveSigner (env: Env) (limits: RateLimits.RateLimits) (request: SignedRequest) (parsed: ParsedSignature) : Task<SignerResult> =
+let private verifySigner (env: Env) (limits: RateLimits.RateLimits) (request: SignedRequest) (parsed: ParsedSignature) : Task<SignerResult> =
     task {
         let verifyWith (actor: RemoteActor) =
             try
@@ -126,6 +130,23 @@ let private resolveSigner (env: Env) (limits: RateLimits.RateLimits) (request: S
                 | Ok() -> return Signer cached
                 | Error BadSignature -> return! fetchAndVerify () // the one refetch
                 | Error _ -> return Unauthorized
+    }
+
+/// Step 5, with the instance's blocks around it (R-43): a claimed key id on a blocked domain, or of a blocked actor, is
+/// refused before anything is fetched or verified (a blocked server costs no request; senders treat a 4xx as final, so
+/// it stops retrying), and the verified signer is checked again, since a key id does not always name its owner.
+let private resolveSigner (env: Env) (limits: RateLimits.RateLimits) (request: SignedRequest) (parsed: ParsedSignature) : Task<SignerResult> =
+    task {
+        let! claimRefused = Blocks.isKeyRefused env.DataSource parsed.KeyId None
+
+        if claimRefused then
+            return Blocked
+        else
+            match! verifySigner env limits request parsed with
+            | Signer signer ->
+                let! blocked = Blocks.isInstanceBlocked env.DataSource signer.Id signer.Host
+                return if blocked then Blocked else Signer signer
+            | other -> return other
     }
 
 let private envOf (ctx: HttpContext) : Env =
@@ -168,6 +189,7 @@ let private inbox (localUser: string option) : EndpointHandler =
                 | Ok parsed ->
                     match! resolveSigner env limits request parsed with
                     | Unauthorized -> return! status ctx 401
+                    | Blocked -> return! status ctx 403
                     | RateLimited retryAfter -> return! RateLimits.tooManyRequests ctx retryAfter
                     | Signer signer ->
                         match RateLimits.tryHost limits signer.Host with

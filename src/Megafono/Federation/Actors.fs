@@ -88,7 +88,10 @@ let private actor (appUserId: string) : EndpointHandler =
 let private instanceActor: EndpointHandler =
     fun ctx ->
         task {
-            if not (isCanonical ctx "/ap/actor") then
+            // A key the instance blocks gets the 404 of a missing document (R-44)
+            let! refused = claimsBlockedKey ctx None
+
+            if refused || not (isCanonical ctx "/ap/actor") then
                 return! notFound ctx
             else
                 let options = ctx.GetService<Config.MegafonoOptions>()

@@ -8,6 +8,7 @@ open System.Net.Http
 open System.Text
 open System.Text.Json
 open System.Text.Json.Nodes
+open System.Text.RegularExpressions
 open System.Threading.Tasks
 open Xunit
 open Megafono.Tests.TestSupport
@@ -64,6 +65,85 @@ let private getJson (rig: Rig) (path: string) : Task<int * JsonNode> =
 
 let private total (node: JsonNode) : int = node["totalItems"].GetValue<int>()
 let private items (node: JsonNode) : string list = [ for i in (node["items"] :?> JsonArray) -> jstr i ]
+
+let private blockDomain (rig: Rig) (domain: string) =
+    task {
+        let! status, text = sendInternal rig HttpMethod.Post "/internal/blocks" (Some(JsonSerializer.Serialize {| domain = domain |}))
+        Assert.True((status = 201 || status = 200), $"instance block answered {status}: {text}")
+    }
+
+let private blockInstanceActor (rig: Rig) (actor: string) =
+    task {
+        let! status, text = sendInternal rig HttpMethod.Post "/internal/blocks" (Some(JsonSerializer.Serialize {| actor = actor |}))
+        Assert.True((status = 201 || status = 200), $"instance block answered {status}: {text}")
+    }
+
+let private liftDomain (rig: Rig) (domain: string) =
+    task {
+        let! status, text = sendInternal rig HttpMethod.Delete $"/internal/blocks?domain={Uri.EscapeDataString domain}" None
+        Assert.True((status = 204), $"lift answered {status}: {text}")
+    }
+
+/// The headers of a request the stub signed, claiming `keyId` instead of the stub's own. The string a signature covers
+/// does not include the key id, so the signature still verifies for whoever holds the stub's key: a request that comes
+/// from "another server" without a second stub, whose host is the same 127.0.0.1 a domain block names.
+let private claiming (keyId: string) (headers: (string * string) list) : (string * string) list =
+    headers
+    |> List.map (fun (name, value) ->
+        if name = "Signature" then name, Regex.Replace(value, "keyId=\"[^\"]*\"", $"keyId=\"{keyId}\"") else name, value)
+
+/// An actor on `other.example` whose key is the stub's, cached, so a request claiming its key id is verified from the
+/// cache and Megáfono never has to reach the server
+let private otherServerActor (rig: Rig) (name: string) : Task<string> =
+    task {
+        let id = $"https://other.example/users/{name}"
+
+        do!
+            Db.execute
+                rig.Db
+                $"""INSERT INTO remote_actors (id, host, handle, actor_type, inbox, key_id, public_key_pem)
+                    VALUES ('{id}', 'other.example', '{name}@other.example', 'Person', '{id}/inbox', '{id}#main-key', '{rig.Stub.PublicKeyPem}')"""
+
+        return id
+    }
+
+/// POST signed by the stub's key, claiming `keyId`; `alter` may change what the stub signed
+let private sendClaiming (rig: Rig) (name: string) (keyId: string option) (url: string) (body: string) (alter: (string * string) list -> (string * string) list) : Task<HttpStatusCode> =
+    task {
+        use client = new HttpClient()
+        let bytes = Encoding.UTF8.GetBytes body
+        let headers = rig.Stub.Sign(name, "POST", url, Some bytes)
+        let headers = (match keyId with Some k -> claiming k headers | None -> headers) |> alter
+        use! response = Signed.postRaw client url bytes headers
+        return response.StatusCode
+    }
+
+let private breakSignature (headers: (string * string) list) : (string * string) list =
+    headers
+    |> List.map (fun (name, value) ->
+        if name = "Signature" then name, Regex.Replace(value, "signature=\"[^\"]*\"", "signature=\"AAAA\"") else name, value)
+
+let private deliveryRow (rig: Rig) (activity: Guid) : Task<string * string> =
+    task {
+        use command = rig.Db.CreateCommand $"SELECT status, COALESCE(last_error, '') FROM deliveries WHERE activity = '{activity}'"
+        use! reader = command.ExecuteReaderAsync()
+        reader.Read() |> ignore
+        return reader.GetString 0, reader.GetString 1
+    }
+
+/// A delivery to `inbox` of one of alex's activities, due long ago: the worker takes it at once
+let private dueDelivery (rig: Rig) (inbox: string) : Task<Guid> =
+    task {
+        let! activity, _ = Seed.activity rig.Db "u-1"
+
+        do!
+            Db.execute
+                rig.Db
+                $"""INSERT INTO deliveries (id, activity, inbox_url, host, next_attempt_at)
+                    VALUES (gen_random_uuid(), '{activity}', '{inbox}', '{Uri(inbox).Authority}', '2000-01-01')"""
+
+        return activity
+    }
 
 /// A rig whose stub server has bob and carol
 let private rigWithStub (pg: PostgresFixture) : Task<Rig> = start pg [ "bob"; "carol" ]
@@ -308,4 +388,305 @@ type BlockEnforcementTests(pg: PostgresFixture) =
             Assert.Equal(3, total whole)
             Assert.Equal(5, total context)
             Assert.Contains(bobs.Head, items (whole["first"]))
+        }
+
+    // ---- instance blocks (User Story 2, T016) -------------------------------------------------------------
+
+    [<Fact>]
+    member _.``FR-006 R-43 a request signed with a key on a blocked domain is 403 before any key fetch, valid signature or not``() : Task =
+        task {
+            let! rig = rigWithStub pg
+            use _ = disposeRig rig
+            do! blockDomain rig "127.0.0.1"
+            do! blockDomain rig "spam.example"
+            Assert.Empty rig.Stub.Gets
+
+            // Valid, with a broken signature, to the personal inbox, and a key on a subdomain of the other block
+            let follow = followBody rig.Stub "bob" "1" (ourActor "u-1")
+            let! status = sendClaiming rig "bob" None (sharedInbox rig) follow id
+            Assert.Equal(HttpStatusCode.Forbidden, status)
+            let! status = sendClaiming rig "bob" None (sharedInbox rig) follow breakSignature
+            Assert.Equal(HttpStatusCode.Forbidden, status)
+            let! status = sendClaiming rig "carol" None (personalInbox rig "u-1") follow id
+            Assert.Equal(HttpStatusCode.Forbidden, status)
+            let! status = sendClaiming rig "bob" (Some "https://a.spam.example/users/x#main-key") (sharedInbox rig) follow id
+            Assert.Equal(HttpStatusCode.Forbidden, status)
+            let! status = sendClaiming rig "bob" (Some "https://spam.example/users/x/main-key") (sharedInbox rig) follow breakSignature
+            Assert.Equal(HttpStatusCode.Forbidden, status)
+
+            // The stub was never asked for a key (R-43), and nothing was recorded
+            Assert.Empty rig.Stub.Gets
+            let! rows = count rig "SELECT count(*) FROM follows"
+            Assert.Equal(0L, rows)
+            let! actors = count rig "SELECT count(*) FROM remote_actors"
+            Assert.Equal(0L, actors)
+
+            // The same request is accepted once the block is lifted
+            do! liftDomain rig "127.0.0.1"
+            let! status = send rig "bob" (sharedInbox rig) follow
+            Assert.Equal(HttpStatusCode.Accepted, status)
+        }
+
+    [<Fact>]
+    member _.``FR-006 R-43 an instance-blocked actor is 403 from its key id alone, carol on the same server is not``() : Task =
+        task {
+            let! rig = rigWithStub pg
+            use _ = disposeRig rig
+            do! blockInstanceActor rig (rig.Stub.ActorId "bob")
+            // Blocking by URL read the actor's document, so the requests so far are not zero
+            let getsBefore = rig.Stub.Gets.Length
+
+            // Mastodon's key id is the actor id plus a fragment: refused from the claim alone
+            let follow = followBody rig.Stub "bob" "1" (ourActor "u-1")
+            let! status = send rig "bob" (sharedInbox rig) follow
+            Assert.Equal(HttpStatusCode.Forbidden, status)
+            Assert.Equal(getsBefore, rig.Stub.Gets.Length)
+            let! status = send rig "bob" (personalInbox rig "u-2") follow
+            Assert.Equal(HttpStatusCode.Forbidden, status)
+
+            // carol is on the same server and not blocked
+            let! status = send rig "carol" (sharedInbox rig) (followBody rig.Stub "carol" "1" (ourActor "u-1"))
+            Assert.Equal(HttpStatusCode.Accepted, status)
+            let carol = rig.Stub.ActorId "carol"
+            let! rows = count rig $"SELECT count(*) FROM follows WHERE local_actor = 'u-1' AND remote_actor = '{carol}'"
+            Assert.Equal(1L, rows)
+            let bob = rig.Stub.ActorId "bob"
+            let! rows = count rig $"SELECT count(*) FROM follows WHERE remote_actor = '{bob}'"
+            Assert.Equal(0L, rows)
+        }
+
+    [<Fact>]
+    member _.``FR-006 R-43 a key whose id does not name its owner is caught once the signer is resolved: 403 for the blocked actor only``() : Task =
+        task {
+            let! rig = rigWithStub pg
+            use _ = disposeRig rig
+            // GoToSocial's key ids (`…/users/bob/main-key`) say nothing of the actor until the key is fetched
+            rig.Stub.KeyStyle <- StubRemote.PathStub
+            do! blockInstanceActor rig (rig.Stub.ActorId "bob")
+            // Blocking by URL cached the actor with its key id, which would refuse the claim; a key Megáfono has not
+            // seen (a rotation, a second key) is what only the resolved owner can refuse
+            do! Db.execute rig.Db "UPDATE remote_actors SET key_id = key_id || '-old'"
+            let getsBefore = rig.Stub.Gets.Length
+
+            let! status = send rig "bob" (sharedInbox rig) (followBody rig.Stub "bob" "1" (ourActor "u-1"))
+            Assert.Equal(HttpStatusCode.Forbidden, status)
+            // The key was fetched to learn the owner, and the owner decided
+            Assert.True(rig.Stub.Gets.Length > getsBefore)
+            Assert.Contains(rig.Stub.Gets |> List.skip getsBefore, fun g -> g.Path = "/users/bob/main-key")
+            let bob = rig.Stub.ActorId "bob"
+            let! rows = count rig $"SELECT count(*) FROM follows WHERE remote_actor = '{bob}'"
+            Assert.Equal(0L, rows)
+
+            let! status = send rig "carol" (sharedInbox rig) (followBody rig.Stub "carol" "1" (ourActor "u-1"))
+            Assert.Equal(HttpStatusCode.Accepted, status)
+            let! rows = count rig "SELECT count(*) FROM follows WHERE local_actor = 'u-1'"
+            Assert.Equal(1L, rows)
+        }
+
+    [<Fact>]
+    member _.``FR-008 SC-004 fetches signed by a key on a blocked domain are 404 on every local actor's documents and on the instance actor``() : Task =
+        task {
+            let! rig = rigWithStub pg
+            use _ = disposeRig rig
+            let! pub = publish rig "u-1" "public" "<p>hello</p>"
+            let! beas = publish rig "u-2" "public" "<p>from bea</p>"
+            let! activity = createActivityId rig pub
+
+            let paths =
+                [ "/ap/actor"
+                  "/ap/actors/u-1"
+                  "/ap/actors/u-1/followers"
+                  "/ap/actors/u-1/following"
+                  "/ap/actors/u-1/outbox"
+                  "/ap/actors/u-2"
+                  objectPath pub
+                  objectPath beas
+                  $"{objectPath pub}/replies"
+                  $"/ap/contexts/{pub}"
+                  $"/ap/activities/{activity}" ]
+
+            for path in paths do
+                use! response = signedGet rig rig.Stub "bob" path
+                Assert.True((response.StatusCode = HttpStatusCode.OK), $"before the block {path}: {response.StatusCode}")
+
+            do! blockDomain rig "127.0.0.1"
+
+            // bob and carol both live there
+            for name in [ "bob"; "carol" ] do
+                for path in paths do
+                    use! response = signedGet rig rig.Stub name path
+                    Assert.True((response.StatusCode = HttpStatusCode.NotFound), $"{name} after the block {path}: {response.StatusCode}")
+                    Assert.False(response.Headers.Contains "WWW-Authenticate", $"{path}: no hint")
+                    let! text = response.Content.ReadAsStringAsync()
+                    Assert.Equal("", text)
+
+            // Unsigned fetches are unchanged, and so is a key of another server
+            for path in paths do
+                use! response = federationGet rig path []
+                Assert.True((response.StatusCode = HttpStatusCode.OK), $"unsigned {path}: {response.StatusCode}")
+
+                use! response = federationGet rig path (claiming "https://other.example/users/x#main-key" (rig.Stub.Sign("bob", "GET", rig.Host.FederationUrl + path, None)))
+                Assert.True((response.StatusCode = HttpStatusCode.OK), $"other server {path}: {response.StatusCode}")
+
+            // Lifted, bob reads again
+            do! liftDomain rig "127.0.0.1"
+
+            for path in paths do
+                use! response = signedGet rig rig.Stub "bob" path
+                Assert.True((response.StatusCode = HttpStatusCode.OK), $"after the lift {path}: {response.StatusCode}")
+        }
+
+    [<Fact>]
+    member _.``FR-008 an instance block of one actor refuses that actor's key everywhere and nobody else's``() : Task =
+        task {
+            let! rig = rigWithStub pg
+            use _ = disposeRig rig
+            let! pub = publish rig "u-1" "public" "<p>hello</p>"
+            do! blockInstanceActor rig (rig.Stub.ActorId "bob")
+
+            for path in [ "/ap/actor"; "/ap/actors/u-1"; "/ap/actors/u-2/outbox"; objectPath pub; $"{objectPath pub}/replies" ] do
+                use! response = signedGet rig rig.Stub "bob" path
+                Assert.True((response.StatusCode = HttpStatusCode.NotFound), $"bob {path}: {response.StatusCode}")
+                use! response = signedGet rig rig.Stub "carol" path
+                Assert.True((response.StatusCode = HttpStatusCode.OK), $"carol {path}: {response.StatusCode}")
+        }
+
+    [<Fact>]
+    member _.``FR-011 the replies of a blocked actor or domain leave the collections of every local actor's posts``() : Task =
+        task {
+            let! rig = rigWithStub pg
+            use _ = disposeRig rig
+            let! alexs = publish rig "u-1" "public" "<p>Episode 5</p>"
+            let! beas = publish rig "u-2" "public" "<p>Episode 6</p>"
+            let! _ = reply rig "bob" "1" (objectIri alexs)
+            let! _ = reply rig "bob" "2" (objectIri beas)
+            let! _ = reply rig "carol" "1" (objectIri alexs)
+            let! _ = reply rig "carol" "2" (objectIri beas)
+
+            let totals () =
+                task {
+                    let! _, a = getJson rig $"{objectPath alexs}/replies"
+                    let! _, b = getJson rig $"{objectPath beas}/replies"
+                    let! _, ca = getJson rig $"/ap/contexts/{alexs}"
+                    let! _, cb = getJson rig $"/ap/contexts/{beas}"
+                    return [ total a; total b; total ca; total cb ]
+                }
+
+            let! before = totals ()
+            Assert.Equal<int list>([ 2; 2; 3; 3 ], before)
+
+            // One actor of the server: its replies leave both users' threads, carol's stay
+            do! blockInstanceActor rig (rig.Stub.ActorId "bob")
+            let! afterActor = totals ()
+            Assert.Equal<int list>([ 1; 1; 2; 2 ], afterActor)
+            let! _, page = getJson rig $"{objectPath alexs}/replies?page=1"
+            Assert.Equal<string list>([ noteId rig.Stub "carol" "1" ], items page)
+
+            // The whole domain: carol's go too
+            do! blockDomain rig "127.0.0.1"
+            let! afterDomain = totals ()
+            Assert.Equal<int list>([ 0; 0; 1; 1 ], afterDomain)
+            // The rows stay; lifting brings the replies back
+            let! recorded = count rig "SELECT count(*) FROM replies WHERE state = 'live'"
+            Assert.Equal(4L, recorded)
+            do! liftDomain rig "127.0.0.1"
+            let! restored = totals ()
+            Assert.Equal<int list>([ 1; 1; 2; 2 ], restored)
+        }
+
+    [<Fact>]
+    member _.``FR-009 a reply whose object lives on a blocked domain is never fetched, though the signer is another server's``() : Task =
+        task {
+            let! rig = rigWithStub pg
+            use _ = disposeRig rig
+            let! root = publish rig "u-1" "public" "<p>Episode 5</p>"
+            let! carol = otherServerActor rig "carol"
+
+            // The Note lives on the stub (bob's server) and is attributed to carol of another server: the activity
+            // carries only its id, so Megáfono has to fetch it from its origin
+            let create (suffix: string) =
+                let note = Signed.note rig.Stub "bob" suffix (objectIri root)
+                note["attributedTo"] <- JsonValue.Create carol
+                rig.Stub.ServeNote("bob", suffix, note)
+                let activity = JsonObject()
+                activity["@context"] <- JsonValue.Create "https://www.w3.org/ns/activitystreams"
+                activity["id"] <- JsonValue.Create $"{carol}/statuses/{suffix}/activity"
+                activity["type"] <- JsonValue.Create "Create"
+                activity["actor"] <- JsonValue.Create carol
+                activity["to"] <- JsonArray(JsonValue.Create publicIri)
+                activity["object"] <- JsonValue.Create(noteId rig.Stub "bob" suffix)
+                activity.ToJsonString()
+
+            let fetched (suffix: string) =
+                rig.Stub.Gets |> List.exists (fun g -> g.Path = $"/users/bob/statuses/{suffix}")
+
+            let claim = $"{carol}#main-key"
+
+            // Before the block the note is fetched and the reply recorded
+            let! status = sendClaiming rig "bob" (Some claim) (sharedInbox rig) (create "1") id
+            Assert.Equal(HttpStatusCode.Accepted, status)
+            Assert.True(fetched "1")
+            let! recorded = count rig "SELECT count(*) FROM replies"
+            Assert.Equal(1L, recorded)
+
+            do! blockDomain rig "127.0.0.1"
+            let getsBefore = rig.Stub.Gets.Length
+
+            let! status = sendClaiming rig "bob" (Some claim) (sharedInbox rig) (create "2") id
+            Assert.Equal(HttpStatusCode.Accepted, status)
+            Assert.False(fetched "2")
+            Assert.Equal(getsBefore, rig.Stub.Gets.Length)
+            let! recorded = count rig "SELECT count(*) FROM replies"
+            Assert.Equal(1L, recorded)
+        }
+
+    [<Fact>]
+    member _.``FR-013 SC-005 a delivery to a blocked domain that was queued after the block is skipped by the worker as blocked, with no request``() : Task =
+        task {
+            let! rig = rigWithStub pg
+            use _ = disposeRig rig
+            do! blockDomain rig "127.0.0.1"
+
+            // As if an enqueue had committed just after the block's own transaction
+            let! activity = dueDelivery rig (rig.Stub.InboxUrl "bob")
+            rig.Host.Wake()
+
+            do!
+                waitUntilAsync "the delivery is skipped" (TimeSpan.FromSeconds 20.0) (fun () ->
+                    task {
+                        let! state, _ = deliveryRow rig activity
+                        return state = "skipped"
+                    })
+
+            let! _, error = deliveryRow rig activity
+            Assert.Equal("blocked", error)
+            // The app is told it did not go out, like any skipped delivery
+            do! waitForEvents rig "delivery.failed" 1
+            Assert.Equal("blocked", jstr (at (events rig "delivery.failed").Head.Json "delivery.lastError"))
+            do! settle ()
+            Assert.Empty rig.Stub.Posts
+        }
+
+    [<Fact>]
+    member _.``FR-013 the worker skips a late delivery to a blocked actor's own inbox and still sends the others``() : Task =
+        task {
+            let! rig = rigWithStub pg
+            use _ = disposeRig rig
+            do! blockInstanceActor rig (rig.Stub.ActorId "bob")
+
+            let! toBob = dueDelivery rig (rig.Stub.InboxUrl "bob")
+            let! toCarol = dueDelivery rig (rig.Stub.InboxUrl "carol")
+            rig.Host.Wake()
+
+            do!
+                waitUntilAsync "both are settled" (TimeSpan.FromSeconds 20.0) (fun () ->
+                    task {
+                        let! a, _ = deliveryRow rig toBob
+                        let! b, _ = deliveryRow rig toCarol
+                        return a = "skipped" && b = "delivered"
+                    })
+
+            let! _, error = deliveryRow rig toBob
+            Assert.Equal("blocked", error)
+            Assert.Equal<string list>([ "/users/carol/inbox" ], rig.Stub.Posts |> List.map (fun p -> p.Path))
         }
