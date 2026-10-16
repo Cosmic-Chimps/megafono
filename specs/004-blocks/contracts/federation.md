@@ -39,7 +39,10 @@ fetchable (404), like every activity that is not a Create or Update. A user bloc
 | the same, key id of an instance-blocked actor (cached key owner, or key id without fragment), or verified signer blocked | **403**, body not parsed |
 | `POST /ap/actors/{id}/inbox`, verified signer blocked by `{id}` (actor or domain) | **202**, dropped |
 | `POST /inbox`, Follow of a user who blocks the signer | **202**, dropped, nothing sent |
-| `POST /inbox`, Create/Update of a reply in a thread whose root author (or the reply's local parent author) blocks the signer | **202**, dropped, not recorded |
+| `POST /inbox`, Create/Update of a reply in a thread whose root author (or the reply's local parent author) blocks the signer | **202**, dropped, not recorded, no `reply.received` |
+| `Block` (personal or shared inbox), `actor` the signer, `object` a live local actor (R-49) | **202**; follows between them `removed` both ways, `follow.removed` per row; nothing sent back |
+| `Block` of an unknown, deleted or non-local object, or not by its signer | **202**, ignored |
+| `Undo{Block}` | **202**, acknowledged; nothing restored |
 
 ## Fetches
 
