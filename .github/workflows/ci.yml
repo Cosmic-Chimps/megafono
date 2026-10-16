@@ -1,8 +1,12 @@
 name: CI
 
 on:
+  # Branches only: a release tag runs these tests through release.yml instead
   push:
+    branches: ['**']
   pull_request:
+  # The release workflow runs these same tests before it builds the images
+  workflow_call:
 
 permissions:
   contents: read
@@ -45,9 +49,9 @@ jobs:
 
       - name: Build the images
         run: |
-          docker build -f deploy/Dockerfile.megafono -t megafono/megafono:ci .
-          docker build -f deploy/Dockerfile.gateway -t megafono/gateway:ci .
-          docker build -f deploy/Dockerfile.sample -t megafono/sample:ci .
+          docker build -f deploy/Dockerfile.megafono -t ghcr.io/cosmic-chimps/megafono:ci .
+          docker build -f deploy/Dockerfile.gateway -t ghcr.io/cosmic-chimps/megafono-gateway:ci .
+          docker build -f deploy/Dockerfile.sample -t ghcr.io/cosmic-chimps/megafono-sample:ci .
 
       - name: Upload test output
         if: failure()

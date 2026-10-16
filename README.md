@@ -44,6 +44,17 @@ it reaches your app, and its signed fetches answer 404. A user block of an accou
 [`docs/operating.md`](docs/operating.md) has the full walk-through, every setting, the master key and the gateway
 routing rules.
 
+## Images
+
+Each release tag (`v0.1.0`) publishes two multi-arch (amd64, arm64) images:
+
+- `ghcr.io/cosmic-chimps/megafono`: the service (8080 federation, 8081 internal API).
+- `ghcr.io/cosmic-chimps/megafono-gateway`: the reference YARP gateway that splits a domain by path between
+  Megáfono and the app. Without a certificate it serves plain http on 8080, for running behind a TLS proxy.
+
+Tags: `0.1.0`, `0.1` and `latest` (prereleases such as `v0.2.0-rc.1` get only their own tag). Pin a version in
+production. The workflow is [`.github/workflows/release.yml`](.github/workflows/release.yml).
+
 ## Privacy limit
 
 Followers-only on the fediverse is a request, not a guarantee: once a post is delivered, the receiving server can
@@ -68,9 +79,13 @@ The stack is F# on .NET 10, Oxpecker, raw Npgsql and Postgres. Tests use xUnit v
 ## Status
 
 Features 001 (federation core, [`specs/001-federation-core`](specs/001-federation-core)), 002 (replies and threads,
-[`specs/002-replies-threads`](specs/002-replies-threads)) and 003 (actor deletion,
-[`specs/003-actor-deletion`](specs/003-actor-deletion)) are done; each folder holds the spec, plan and tasks.
-[`docs/vision.md`](docs/vision.md) holds the product vision. Blocks are next.
+[`specs/002-replies-threads`](specs/002-replies-threads)), 003 (actor deletion,
+[`specs/003-actor-deletion`](specs/003-actor-deletion)) and 004 (blocks, [`specs/004-blocks`](specs/004-blocks)) are
+done; each folder holds the spec, plan and tasks. [`docs/vision.md`](docs/vision.md) holds the product vision.
+
+## License
+
+MIT, see [`LICENSE`](LICENSE).
 
 ## Related projects
 

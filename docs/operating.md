@@ -51,6 +51,10 @@ run Megáfono outside this compose file, give the internal listener an address t
 The deployment test (`DeploymentShapeTests`) checks both: 8081 refuses connections from `edge`, and answers 401 without
 the token from `internal`.
 
+On a platform without private networks between containers (Caravana, for example, where every container on the host
+can reach every other one), not routing 8081 is all the platform gives you: the bearer token is then the only lock on
+the internal API. Use a long random token (`openssl rand -base64 32`), keep it out of logs, and rotate it if it leaks.
+
 Megáfono creates its own schema at startup and answers `GET /health` (on the internal port) with `200` when the
 database is reachable and `503` when it is not.
 

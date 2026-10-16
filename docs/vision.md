@@ -210,7 +210,7 @@ Edge cases
 • A remote server sends the same activity with different ids, or forwards activities it did not author: only trust objects whose id host matches the signing key's host, otherwise refetch from origin.
 • Very large inbound bodies: cap at 1 MB.
 Open questions
-[ ] Name: check that "megafono" is free on GitHub, NuGet and Docker Hub. The brand keeps the accent (Megáfono); code, packages and images use megafono.
+[x] Name: the code lives at github.com/Cosmic-Chimps/megafono (MIT) and the images at ghcr.io/cosmic-chimps/megafono and ghcr.io/cosmic-chimps/megafono-gateway. "megafono" is free on NuGet, but the GitHub organization and the Docker Hub namespace "megafono" belong to others (checked 2026-10-16), so no image is ever named docker.io/megafono/…. The brand keeps the accent (Megáfono); code, packages and images use megafono.
 [x] Actor URL: a separate /ap/actors/{immutableId} path whose url is the app's profile, no Accept-header routing (specs/001-federation-core, clarified 2026-10-10).
 [x] Keys: one RSA-2048 key pair per actor, plus one instance actor key for fetches not made on behalf of a user (specs/001-federation-core, FR-006 and FR-022).
 [x] Signatures: draft-cavage only in v1, behind a SignatureScheme seam; Mastodon signs draft-cavage first and only falls back to RFC 9421 after a 4xx (specs/001-federation-core, research R-01).

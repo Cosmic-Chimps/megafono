@@ -1,0 +1,129 @@
+# Release: push a tag like v0.1.0 and this workflow
+#
+#   1. runs the same tests as CI (ci.yml),
+#   2. builds linux/amd64 and linux/arm64 and pushes ghcr.io/<owner>/megafono:0.1.0 and
+#      ghcr.io/<owner>/megafono-gateway:0.1.0 (and :latest, unless the tag is a prerelease such as v0.2.0-rc.1),
+#   3. keeps the last 10 versions of each image and deletes older ones.
+#
+# Nothing is deployed from here. Megáfono runs as services of the app it serves (on Caravana: one app with the
+# gateway, the app, Megáfono and Postgres, since separate apps cannot reach each other), so that app's deployment pins
+# a Megáfono version and rolls it out. The sample image is never published.
+#
+# Packages: on the first push GHCR creates both packages as private under the organization. Make them public once
+# (package settings, "Change visibility") so they pull without credentials.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+# Two tags pushed close together run one after the other, never at once: the prune of one must not race the push of
+# the next.
+concurrency: release
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - package: megafono
+            dockerfile: deploy/Dockerfile.megafono
+          - package: megafono-gateway
+            dockerfile: deploy/Dockerfile.gateway
+    steps:
+      - uses: actions/checkout@v4
+
+      # GHCR names are lowercase, and a GitHub owner can have capitals (Cosmic-Chimps)
+      - name: Image name
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.package }}" >> "$GITHUB_OUTPUT"
+
+      # The build stage runs on the runner's own platform and publishes portable IL, and the runtime stage has no RUN,
+      # so no QEMU is needed for the arm64 image.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # org.opencontainers.image.source (the repository) is among the labels this sets: it links the package to the
+      # repository on GHCR. `latest` only moves for a release: a tag with a "-" is a prerelease.
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.name.outputs.image }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-') }}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.package }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.package }}
+
+      - name: Summary
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### $IMAGE"
+            echo
+            echo "Digest: \`$DIGEST\`"
+            echo
+            echo "Tags:"
+            echo
+            while read -r tag; do echo "- \`$tag\`"; done <<< "$TAGS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Keep the last 10 versions of each image. A multi-arch index keeps its per-architecture children
+  # (scripts/prune-images.sh explains why), so a pinned digest never breaks.
+  prune:
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        package: [megafono, megafono-gateway]
+    steps:
+      - uses: actions/checkout@v4
+      # The script reads manifests from the registry, which needs a login while a package is still private
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Delete old image versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE: ${{ matrix.package }}
+          KEEP: "10"
+        run: .github/scripts/prune-images.sh

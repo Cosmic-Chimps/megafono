@@ -31,12 +31,20 @@ let private repoRoot () =
 
     up (DirectoryInfo AppContext.BaseDirectory)
 
+// The Dockerfiles build on $BUILDPLATFORM, which BuildKit sets and the classic builder Testcontainers uses does not.
+// Docker's Linux VM has the host's architecture, so the host's is the build platform.
+let private buildPlatform =
+    match Runtime.InteropServices.RuntimeInformation.OSArchitecture with
+    | Runtime.InteropServices.Architecture.Arm64 -> "linux/arm64"
+    | _ -> "linux/amd64"
+
 let private buildImage (root: string) (dockerfile: string) (name: string) : Task<IImage> =
     task {
         let image =
             ImageFromDockerfileBuilder()
                 .WithDockerfileDirectory(root)
                 .WithDockerfile(dockerfile)
+                .WithBuildArgument("BUILDPLATFORM", buildPlatform)
                 .WithName($"megafono-deployment-test/{name}:{Guid.NewGuid():N}")
                 .WithDeleteIfExists(true)
                 .Build()

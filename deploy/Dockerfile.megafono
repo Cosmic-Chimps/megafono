@@ -1,6 +1,10 @@
 # Build context is the repository root: docker build -f deploy/Dockerfile.megafono .
-# Multi-arch: both stages follow the build host, so linux/amd64 and linux/arm64 work without a RID.
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+# Multi-arch (docker buildx build --platform linux/amd64,linux/arm64): the build stage runs on the build host
+# ($BUILDPLATFORM) and publishes portable IL with no RID, so an arm64 image built on an amd64 runner never compiles
+# under QEMU; the runtime stage has no RUN, so it needs no emulation either. BuildKit sets BUILDPLATFORM itself; the
+# classic builder (Testcontainers' image builds) does not, so it must be passed as a build argument there.
+ARG BUILDPLATFORM
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props ./
 COPY src/ src/
@@ -10,6 +14,9 @@ RUN dotnet publish src/Megafono/Megafono.fsproj -c Release -o /app /p:UseAppHost
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app .
+# The image is published, so the terms travel with it
+LABEL org.opencontainers.image.licenses="MIT"
+COPY LICENSE /app/LICENSE
 # Non-root: the aspnet image ships the unprivileged user "app"
 USER $APP_UID
 EXPOSE 8080 8081

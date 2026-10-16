@@ -9,7 +9,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.gateway
-    image: megafono/gateway
+    image: ghcr.io/cosmic-chimps/megafono-gateway
     restart: unless-stopped
     ports:
       - "443:443" # the only published port
@@ -30,7 +30,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.sample
-    image: megafono/sample
+    image: ghcr.io/cosmic-chimps/megafono-sample # built from this checkout, never published
     restart: unless-stopped
     environment:
       APP__DOMAIN: ${DOMAIN:?set DOMAIN}
@@ -44,7 +44,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.megafono
-    image: megafono/megafono
+    image: ghcr.io/cosmic-chimps/megafono
     restart: unless-stopped
     environment:
       Megafono__Domain: ${DOMAIN:?set DOMAIN}
