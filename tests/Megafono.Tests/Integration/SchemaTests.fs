@@ -308,3 +308,58 @@ type SchemaTests(pg: PostgresFixture) =
                 let! names = tables dataSource
                 Assert.Contains("replies", names)
             })
+
+    [<Fact>]
+    member _.``004 data-model blocks: one target per row, one row per owner and target, Block is an activity type, the replaced check stays single``() : Task =
+        withDatabase (fun dataSource connectionString ->
+            task {
+                do! Database.initializeSchema dataSource
+
+                let actor id handle =
+                    $"INSERT INTO local_actors (app_user_id, handle, name, profile_url, public_key_pem, enc_private_key) VALUES ('{id}', '{handle}', 'N', 'https://app/u', 'pem', '\\x00')"
+
+                do! execute dataSource (actor "u1" "alex")
+                do! execute dataSource (actor "u2" "bea")
+
+                let block (owner: string) (target: string) (domain: string) =
+                    $"INSERT INTO blocks (id, local_actor, actor, domain) VALUES (gen_random_uuid(), {owner}, {target}, {domain})"
+
+                // exactly one of actor and domain
+                do! rejected dataSource checkViolation (block "'u1'" "'https://h/a'" "'h'")
+                do! rejected dataSource checkViolation (block "'u1'" "NULL" "NULL")
+
+                // one block per owner and target, also for the instance (NULL owner) where a plain unique index would not hold
+                do! execute dataSource (block "'u1'" "'https://h/a'" "NULL")
+                do! rejected dataSource uniqueViolation (block "'u1'" "'https://h/a'" "NULL")
+                do! execute dataSource (block "NULL" "'https://h/a'" "NULL")
+                do! rejected dataSource uniqueViolation (block "NULL" "'https://h/a'" "NULL")
+                do! execute dataSource (block "'u1'" "NULL" "'h.example'")
+                do! rejected dataSource uniqueViolation (block "'u1'" "NULL" "'h.example'")
+                do! execute dataSource (block "NULL" "NULL" "'h.example'")
+                do! rejected dataSource uniqueViolation (block "NULL" "NULL" "'h.example'")
+
+                // the same target for two owners
+                do! execute dataSource (block "'u2'" "'https://h/a'" "NULL")
+                do! execute dataSource (block "'u2'" "NULL" "'h.example'")
+
+                // the owner must be a local actor
+                do! rejected dataSource "23503" (block "'nobody'" "'https://h/z'" "NULL")
+
+                // 'Block' is an activity type
+                do! execute dataSource "INSERT INTO activities (id, local_actor, activity_type, audience, body) VALUES (gen_random_uuid(), 'u1', 'Block', 'direct', '\\x7b7d')"
+
+                // A database made before blocks has the old check: it is replaced once, then left alone
+                do! execute dataSource "DELETE FROM activities"
+                do! execute dataSource "ALTER TABLE activities DROP CONSTRAINT activities_activity_type_check"
+                do!
+                    execute
+                        dataSource
+                        "ALTER TABLE activities ADD CONSTRAINT activities_activity_type_check CHECK (activity_type IN ('Create', 'Update', 'Delete', 'Accept', 'Reject', 'Follow', 'Undo'))"
+
+                do! rejected dataSource checkViolation "INSERT INTO activities (id, local_actor, activity_type, audience, body) VALUES (gen_random_uuid(), 'u1', 'Block', 'direct', '\\x7b7d')"
+                do! Database.initializeSchema dataSource
+                do! Database.initializeSchema dataSource
+                do! execute dataSource "INSERT INTO activities (id, local_actor, activity_type, audience, body) VALUES (gen_random_uuid(), 'u1', 'Block', 'direct', '\\x7b7d')"
+                let! checks = scalar dataSource "SELECT count(*) FROM pg_constraint WHERE conname = 'activities_activity_type_check'"
+                Assert.Equal(1L, checks :?> int64)
+            })

@@ -7,6 +7,7 @@ open System.Threading.Tasks
 open Microsoft.AspNetCore.Http
 open Oxpecker
 open Megafono.Domain
+open Megafono.Infrastructure
 
 let activityJson = "application/activity+json"
 let jrdJson = "application/jrd+json"
@@ -25,3 +26,13 @@ let notFound (ctx: HttpContext) : Task =
 /// that was requested, byte for byte (research R-02). Anything but the canonical path is a 404.
 let isCanonical (ctx: HttpContext) (canonicalPath: string) : bool =
     ctx.Request.Path.Value = canonicalPath
+
+/// The `keyId` the request's `Signature` header claims, None when the header is absent or unparsable. Nothing is verified:
+/// a claim is only ever used to refuse (a blocked key gets a 404), never to grant (specs/004-blocks R-44).
+let claimedKeyId (ctx: HttpContext) : string option =
+    match ctx.Request.Headers["Signature"].ToString() with
+    | "" -> None
+    | value ->
+        match HttpSignatures.parseSignatureHeader value with
+        | Ok parsed -> Some parsed.KeyId
+        | Error _ -> None

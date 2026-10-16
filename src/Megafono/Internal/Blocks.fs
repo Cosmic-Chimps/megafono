@@ -39,34 +39,59 @@ let private targetView (target: Target) (createdAt: DateTime) =
     | ActorTarget actor -> blockView actor null createdAt
     | DomainTarget domain -> blockView null domain createdAt
 
-/// What the app names: exactly one remote actor id (an absolute https URL, http only under the test switch, never
-/// one of ours) or one domain (a host name, never the instance's own domain or one that covers it). Error: the
+/// What the app named, before a handle is resolved (R-48)
+type private Named =
+    | NamedUrl of string
+    | NamedHandle of string
+    | NamedDomain of string
+
+/// Why naming a target failed: the app's mistake (400) or what resolving a handle met on the way
+type private Failure =
+    | BadRequest of string
+    | Remote of RemoteError
+
+/// A target ready for the transaction, with the actor's document when it was had (the inbox for the `Block`)
+type private Resolved = { Target: Target; Fetched: RemoteActor option }
+
+/// An id on this instance's own domain: never blockable
+let private isOwn (options: Config.MegafonoOptions) (actorId: string) =
+    (localActorId options.Domain actorId).IsSome
+    || (match Uri.TryCreate(actorId, UriKind.Absolute) with
+        | true, uri -> RemoteActors.authority uri = options.Domain.ToLowerInvariant()
+        | _ -> false)
+
+let private ownMessage = "This instance's own actors cannot be blocked"
+
+/// What the app names: exactly one remote actor (an absolute https URL, http only under the test switch, or a handle,
+/// never one of ours) or one domain (a host name, never the instance's own domain or one that covers it). Error: the
 /// message of the 400.
-let private parseTarget (ctx: HttpContext) (actor: string option) (domain: string option) : Result<Target, string> =
+let private parseNamed (ctx: HttpContext) (actor: string option) (domain: string option) : Result<Named, string> =
     let options = ctx.GetService<Config.MegafonoOptions>()
 
     match actor, domain with
     | Some _, Some _
     | None, None -> Error "Give exactly one of actor and domain"
     | Some actor, None ->
+        let text = actor.Trim()
         let allowHttp = ctx.GetService<RemoteActors.Env>().AllowPrivateAddresses
 
-        match Uri.TryCreate(actor.Trim(), UriKind.Absolute) with
-        | true, uri when uri.Scheme = Uri.UriSchemeHttps || (allowHttp && uri.Scheme = Uri.UriSchemeHttp) ->
-            let id = uri.AbsoluteUri
-
-            if (localActorId options.Domain id).IsSome || RemoteActors.authority uri = options.Domain.ToLowerInvariant() then
-                Error "This instance's own actors cannot be blocked"
-            else
-                Ok(ActorTarget id)
-        | _ -> Error "actor must be an absolute https URL"
+        if text.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || text.StartsWith("https://", StringComparison.OrdinalIgnoreCase) then
+            match Uri.TryCreate(text, UriKind.Absolute) with
+            | true, uri when uri.Scheme = Uri.UriSchemeHttps || (allowHttp && uri.Scheme = Uri.UriSchemeHttp) ->
+                if isOwn options uri.AbsoluteUri then Error ownMessage else Ok(NamedUrl uri.AbsoluteUri)
+            | _ -> Error "actor must be an absolute https URL or a handle (@user@host)"
+        else
+            match RemoteActors.parseHandle text with
+            | Some(_, host) when host = options.Domain.ToLowerInvariant() -> Error ownMessage
+            | Some _ -> Ok(NamedHandle text)
+            | None -> Error "actor must be an absolute https URL or a handle (@user@host)"
     | None, Some domain ->
         match Blocks.normalizeDomain domain with
         | None -> Error "domain must be a host name, without port, scheme or path"
         | Some name when Blocks.domainMatches name options.Domain -> Error "This instance's own domain cannot be blocked"
-        | Some name -> Ok(DomainTarget name)
+        | Some name -> Ok(NamedDomain name)
 
-let private readBody (ctx: HttpContext) : Task<Result<Target, string>> =
+let private readBody (ctx: HttpContext) : Task<Result<Named, string>> =
     task {
         let! body =
             task {
@@ -80,11 +105,59 @@ let private readBody (ctx: HttpContext) : Task<Result<Target, string>> =
 
         match body with
         | None -> return Error "The body must be {\"actor\": ...} or {\"domain\": ...}"
-        | Some o -> return parseTarget ctx (str o "actor") (str o "domain")
+        | Some o -> return parseNamed ctx (str o "actor") (str o "domain")
     }
 
-let private readQuery (ctx: HttpContext) : Result<Target, string> =
-    parseTarget ctx (ctx.TryGetQueryValue "actor") (ctx.TryGetQueryValue "domain")
+let private readQuery (ctx: HttpContext) : Result<Named, string> =
+    parseNamed ctx (ctx.TryGetQueryValue "actor") (ctx.TryGetQueryValue "domain")
+
+/// The id of a cached actor known by this handle (`user@host`, any case), without any request
+let private cachedByHandle (ctx: HttpContext) (handle: string) : Task<string option> =
+    task {
+        match RemoteActors.parseHandle handle with
+        | None -> return None
+        | Some(user, host) ->
+            use command = ctx.GetService<NpgsqlDataSource>().CreateCommand "SELECT id FROM remote_actors WHERE lower(handle) = lower(@handle)"
+            command.Parameters.AddWithValue("handle", $"{user}@{host}") |> ignore
+
+            match! command.ExecuteScalarAsync() with
+            | :? string as id -> return Some id
+            | _ -> return None
+    }
+
+/// Before any transaction (no network call while a row is locked): a handle is resolved, an actor URL is used as given
+/// but its canonical id replaces it when the actor's document can be had, so a block by handle and a block by URL are
+/// the same block (R-48). A URL whose document cannot be had stays as given: blocking works while the server is down,
+/// only no `Block` can be sent. When lifting, a handle is looked up in the cache before the remote server is asked.
+let private resolve (ctx: HttpContext) (lifting: bool) (named: Named) : Task<Result<Resolved, Failure>> =
+    task {
+        let options = ctx.GetService<Config.MegafonoOptions>()
+        let env = ctx.GetService<RemoteActors.Env>()
+
+        let canonical (remote: RemoteActor) =
+            if isOwn options remote.Id then Error(BadRequest ownMessage) else Ok { Target = ActorTarget remote.Id; Fetched = Some remote }
+
+        match named with
+        | NamedDomain domain -> return Ok { Target = DomainTarget domain; Fetched = None }
+        | NamedUrl url ->
+            match! RemoteActors.getActor env url with
+            | Ok remote -> return canonical remote
+            | Error _ -> return Ok { Target = ActorTarget url; Fetched = None }
+        | NamedHandle handle ->
+            let! cached = if lifting then cachedByHandle ctx handle else Task.FromResult None
+
+            match cached with
+            | Some id -> return Ok { Target = ActorTarget id; Fetched = None }
+            | None ->
+                match! RemoteActors.resolveTarget env handle with
+                | Ok remote -> return canonical remote
+                | Error failure -> return Error(Remote failure)
+    }
+
+let private failed (ctx: HttpContext) (failure: Failure) : Task =
+    match failure with
+    | BadRequest message -> invalid ctx message
+    | Remote error -> Megafono.Internal.RemoteActors.resolutionError ctx error
 
 // ---- the effects of a block ---------------------------------------------------------------------------------
 
@@ -300,6 +373,57 @@ let private lockUser (tx: NpgsqlTransaction) (appUserId: string) : Task<Result<u
 let private userProblem (ctx: HttpContext) (status: int) =
     if status = 410 then gone ctx else error ctx 404 "not_found" "The app does not know this user"
 
+/// The transaction of data-model.md "The user block transaction", after the target is resolved
+let private createUserBlock (appUserId: string) (resolved: Resolved) (ctx: HttpContext) : Task =
+    task {
+        let target, fetched = resolved.Target, resolved.Fetched
+        let time = ctx.GetService<TimeProvider>()
+        let domain = ctx.GetService<Config.MegafonoOptions>().Domain
+
+        use! connection = ctx.GetService<NpgsqlDataSource>().OpenConnectionAsync()
+        use! tx = connection.BeginTransactionAsync()
+
+        match! lockUser tx appUserId with
+        | Error status ->
+            do! tx.RollbackAsync()
+            return! userProblem ctx status
+        | Ok() ->
+            match! insertBlock tx time (Some appUserId) target with
+            | None ->
+                let! created = existingBlock tx (Some appUserId) target
+                do! tx.RollbackAsync()
+                return! ctx.WriteJson(targetView target created)
+            | Some created ->
+                let! follows = findFollows tx (Some appUserId) target
+                let kept = ResizeArray<Guid>()
+
+                match target with
+                | ActorTarget actorId ->
+                    // One Block, to the actor's own inbox; its id is kept so the block can be undone (R-40)
+                    let! remote = match fetched with Some r -> Task.FromResult(Some r) | None -> loadRemote tx actorId
+
+                    match remote with
+                    | Some remote ->
+                        let activityGuid = Guid.NewGuid()
+                        let local = Ids.actorId domain appUserId
+                        let document = ActivityStreams.block (Ids.activityId domain activityGuid) local actorId
+                        do! queueOwn tx time "Block" appUserId activityGuid document remote.Inbox
+                        let! _ = execute tx "UPDATE blocks SET block_activity = @activity WHERE local_actor = @user AND actor = @actor" [ "activity", box activityGuid; "user", box appUserId; "actor", box actorId ]
+                        kept.Add activityGuid
+                    | None -> ()
+                | DomainTarget _ ->
+                    // No Block for a domain: each ended follow gets its Reject or Undo (R-41)
+                    for f in follows do
+                        let! activityGuid = queueFollowEnd tx time domain f
+                        kept.Add activityGuid
+
+                do! removeFollows tx time follows
+                let! _ = skipDeliveries tx (Some appUserId) target (List.ofSeq kept)
+                do! tx.CommitAsync()
+                ctx.SetStatusCode 201
+                return! ctx.WriteJson(targetView target created)
+    }
+
 let private blockForUser (appUserId: string) : EndpointHandler =
     fun ctx ->
         task {
@@ -309,64 +433,10 @@ let private blockForUser (appUserId: string) : EndpointHandler =
             | Some true ->
                 match! readBody ctx with
                 | Error message -> return! invalid ctx message
-                | Ok target ->
-                    let time = ctx.GetService<TimeProvider>()
-                    let domain = ctx.GetService<Config.MegafonoOptions>().Domain
-
-                    // The actor's document is had before the transaction opens (no network call while the row is locked).
-                    // Failing to get it only means no Block is sent: the block itself and its local effects stand.
-                    let! fetched =
-                        task {
-                            match target with
-                            | ActorTarget actorId ->
-                                match! RemoteActors.getActor (ctx.GetService<RemoteActors.Env>()) actorId with
-                                | Ok remote -> return Some remote
-                                | Error _ -> return None
-                            | DomainTarget _ -> return None
-                        }
-
-                    use! connection = ctx.GetService<NpgsqlDataSource>().OpenConnectionAsync()
-                    use! tx = connection.BeginTransactionAsync()
-
-                    match! lockUser tx appUserId with
-                    | Error status ->
-                        do! tx.RollbackAsync()
-                        return! userProblem ctx status
-                    | Ok() ->
-                        match! insertBlock tx time (Some appUserId) target with
-                        | None ->
-                            let! created = existingBlock tx (Some appUserId) target
-                            do! tx.RollbackAsync()
-                            return! ctx.WriteJson(targetView target created)
-                        | Some created ->
-                            let! follows = findFollows tx (Some appUserId) target
-                            let kept = ResizeArray<Guid>()
-
-                            match target with
-                            | ActorTarget actorId ->
-                                // One Block, to the actor's own inbox; its id is kept so the block can be undone (R-40)
-                                let! remote = match fetched with Some r -> Task.FromResult(Some r) | None -> loadRemote tx actorId
-
-                                match remote with
-                                | Some remote ->
-                                    let activityGuid = Guid.NewGuid()
-                                    let local = Ids.actorId domain appUserId
-                                    let document = ActivityStreams.block (Ids.activityId domain activityGuid) local actorId
-                                    do! queueOwn tx time "Block" appUserId activityGuid document remote.Inbox
-                                    let! _ = execute tx "UPDATE blocks SET block_activity = @activity WHERE local_actor = @user AND actor = @actor" [ "activity", box activityGuid; "user", box appUserId; "actor", box actorId ]
-                                    kept.Add activityGuid
-                                | None -> ()
-                            | DomainTarget _ ->
-                                // No Block for a domain: each ended follow gets its Reject or Undo (R-41)
-                                for f in follows do
-                                    let! activityGuid = queueFollowEnd tx time domain f
-                                    kept.Add activityGuid
-
-                            do! removeFollows tx time follows
-                            let! _ = skipDeliveries tx (Some appUserId) target (List.ofSeq kept)
-                            do! tx.CommitAsync()
-                            ctx.SetStatusCode 201
-                            return! ctx.WriteJson(targetView target created)
+                | Ok named ->
+                    match! resolve ctx false named with
+                    | Error failure -> return! failed ctx failure
+                    | Ok resolved -> return! createUserBlock appUserId resolved ctx
         }
 
 let private listBlocks (user: string option) (ctx: HttpContext) : Task =
@@ -407,77 +477,85 @@ let private listBlocks (user: string option) (ctx: HttpContext) : Task =
             return! ctx.WriteJson {| items = items |}
     }
 
+/// Deletes the user's block and queues the `Undo` of the `Block` it had sent (data-model.md "Lifting")
+let private liftUserBlock (appUserId: string) (target: Target) (ctx: HttpContext) : Task =
+    task {
+        let time = ctx.GetService<TimeProvider>()
+        let domain = ctx.GetService<Config.MegafonoOptions>().Domain
+        use! connection = ctx.GetService<NpgsqlDataSource>().OpenConnectionAsync()
+        use! tx = connection.BeginTransactionAsync()
+
+        match! lockUser tx appUserId with
+        | Error status ->
+            do! tx.RollbackAsync()
+            return! userProblem ctx status
+        | Ok() ->
+            use delete =
+                new NpgsqlCommand(
+                    """DELETE FROM blocks WHERE local_actor = @user AND actor IS NOT DISTINCT FROM @actor AND domain IS NOT DISTINCT FROM @domain
+                       RETURNING block_activity""",
+                    connection,
+                    tx
+                )
+
+            delete.Parameters.AddWithValue("user", appUserId) |> ignore
+            delete.Parameters.Add(NpgsqlParameter("actor", NpgsqlDbType.Text, Value = (match target with ActorTarget a -> box a | _ -> box DBNull.Value))) |> ignore
+            delete.Parameters.Add(NpgsqlParameter("domain", NpgsqlDbType.Text, Value = (match target with DomainTarget d -> box d | _ -> box DBNull.Value))) |> ignore
+            use! reader = delete.ExecuteReaderAsync()
+
+            let row =
+                if reader.Read() then Some(if reader.IsDBNull 0 then None else Some(reader.GetGuid 0)) else None
+
+            do! reader.CloseAsync()
+
+            match row, target with
+            | None, _ ->
+                do! tx.RollbackAsync()
+                return! error ctx 404 "not_found" "No such block"
+            | Some(Some blockActivity), ActorTarget actorId ->
+                // Undo of the Block that was sent, embedding it; the block is gone, so the normal filter lets it through
+                match! loadRemote tx actorId with
+                | Some remote ->
+                    let activityGuid = Guid.NewGuid()
+                    let local = Ids.actorId domain appUserId
+
+                    let sent: ActivityStreams.BlockRef =
+                        { Id = Ids.activityId domain blockActivity
+                          Actor = local
+                          Object = actorId }
+
+                    let document = ActivityStreams.undoBlock (Ids.activityId domain activityGuid) local sent
+
+                    let! _ =
+                        execute
+                            tx
+                            """INSERT INTO activities (id, local_actor, activity_type, audience, body, created_at)
+                               VALUES (@id, @actor, 'Undo', 'direct', @body, @now)"""
+                            [ "id", box activityGuid
+                              "actor", box appUserId
+                              "body", box (ActivityStreams.toBytes document)
+                              "now", box (time.GetUtcNow().UtcDateTime) ]
+
+                    let! _ = Outbox.enqueueDeliveries tx time activityGuid [ remote.Inbox ]
+                    ()
+                | None -> ()
+
+                do! tx.CommitAsync()
+                ctx.SetStatusCode 204
+            | Some _, _ ->
+                do! tx.CommitAsync()
+                ctx.SetStatusCode 204
+    }
+
 let private liftForUser (appUserId: string) : EndpointHandler =
     fun ctx ->
         task {
             match readQuery ctx with
             | Error message -> return! invalid ctx message
-            | Ok target ->
-                let time = ctx.GetService<TimeProvider>()
-                let domain = ctx.GetService<Config.MegafonoOptions>().Domain
-                use! connection = ctx.GetService<NpgsqlDataSource>().OpenConnectionAsync()
-                use! tx = connection.BeginTransactionAsync()
-
-                match! lockUser tx appUserId with
-                | Error status ->
-                    do! tx.RollbackAsync()
-                    return! userProblem ctx status
-                | Ok() ->
-                    use delete =
-                        new NpgsqlCommand(
-                            """DELETE FROM blocks WHERE local_actor = @user AND actor IS NOT DISTINCT FROM @actor AND domain IS NOT DISTINCT FROM @domain
-                               RETURNING block_activity""",
-                            connection,
-                            tx
-                        )
-
-                    delete.Parameters.AddWithValue("user", appUserId) |> ignore
-                    delete.Parameters.Add(NpgsqlParameter("actor", NpgsqlDbType.Text, Value = (match target with ActorTarget a -> box a | _ -> box DBNull.Value))) |> ignore
-                    delete.Parameters.Add(NpgsqlParameter("domain", NpgsqlDbType.Text, Value = (match target with DomainTarget d -> box d | _ -> box DBNull.Value))) |> ignore
-                    use! reader = delete.ExecuteReaderAsync()
-
-                    let row =
-                        if reader.Read() then Some(if reader.IsDBNull 0 then None else Some(reader.GetGuid 0)) else None
-
-                    do! reader.CloseAsync()
-
-                    match row, target with
-                    | None, _ ->
-                        do! tx.RollbackAsync()
-                        return! error ctx 404 "not_found" "No such block"
-                    | Some(Some blockActivity), ActorTarget actorId ->
-                        // Undo of the Block that was sent, embedding it; the block is gone, so the normal filter lets it through
-                        match! loadRemote tx actorId with
-                        | Some remote ->
-                            let activityGuid = Guid.NewGuid()
-                            let local = Ids.actorId domain appUserId
-
-                            let sent: ActivityStreams.BlockRef =
-                                { Id = Ids.activityId domain blockActivity
-                                  Actor = local
-                                  Object = actorId }
-
-                            let document = ActivityStreams.undoBlock (Ids.activityId domain activityGuid) local sent
-
-                            let! _ =
-                                execute
-                                    tx
-                                    """INSERT INTO activities (id, local_actor, activity_type, audience, body, created_at)
-                                       VALUES (@id, @actor, 'Undo', 'direct', @body, @now)"""
-                                    [ "id", box activityGuid
-                                      "actor", box appUserId
-                                      "body", box (ActivityStreams.toBytes document)
-                                      "now", box (time.GetUtcNow().UtcDateTime) ]
-
-                            let! _ = Outbox.enqueueDeliveries tx time activityGuid [ remote.Inbox ]
-                            ()
-                        | None -> ()
-
-                        do! tx.CommitAsync()
-                        ctx.SetStatusCode 204
-                    | Some _, _ ->
-                        do! tx.CommitAsync()
-                        ctx.SetStatusCode 204
+            | Ok named ->
+                match! resolve ctx true named with
+                | Error failure -> return! failed ctx failure
+                | Ok resolved -> return! liftUserBlock appUserId resolved.Target ctx
         }
 
 // ---- instance blocks ----------------------------------------------------------------------------------------
@@ -504,7 +582,29 @@ let private lockAffectedUsers (tx: NpgsqlTransaction) (target: Target) : Task =
 
         command.Parameters.AddWithValue("target", targetValue target) |> ignore
         use! reader = command.ExecuteReaderAsync()
-        while reader.Read() do () 
+        while reader.Read() do ()
+    }
+
+let private createInstanceBlock (target: Target) (ctx: HttpContext) : Task =
+    task {
+        let time = ctx.GetService<TimeProvider>()
+        use! connection = ctx.GetService<NpgsqlDataSource>().OpenConnectionAsync()
+        use! tx = connection.BeginTransactionAsync()
+
+        match! insertBlock tx time None target with
+        | None ->
+            let! created = existingBlock tx None target
+            do! tx.RollbackAsync()
+            return! ctx.WriteJson(targetView target created)
+        | Some created ->
+            // Nothing is sent to the blocked server (R-41); every follow it covers ends, every waiting delivery is cancelled
+            do! lockAffectedUsers tx target
+            let! follows = findFollows tx None target
+            do! removeFollows tx time follows
+            let! _ = skipDeliveries tx None target []
+            do! tx.CommitAsync()
+            ctx.SetStatusCode 201
+            return! ctx.WriteJson(targetView target created)
     }
 
 let private blockForInstance: EndpointHandler =
@@ -512,45 +612,37 @@ let private blockForInstance: EndpointHandler =
         task {
             match! readBody ctx with
             | Error message -> return! invalid ctx message
-            | Ok target ->
-                let time = ctx.GetService<TimeProvider>()
-                use! connection = ctx.GetService<NpgsqlDataSource>().OpenConnectionAsync()
-                use! tx = connection.BeginTransactionAsync()
-
-                match! insertBlock tx time None target with
-                | None ->
-                    let! created = existingBlock tx None target
-                    do! tx.RollbackAsync()
-                    return! ctx.WriteJson(targetView target created)
-                | Some created ->
-                    // Nothing is sent to the blocked server (R-41); every follow it covers ends, every waiting delivery is cancelled
-                    do! lockAffectedUsers tx target
-                    let! follows = findFollows tx None target
-                    do! removeFollows tx time follows
-                    let! _ = skipDeliveries tx None target []
-                    do! tx.CommitAsync()
-                    ctx.SetStatusCode 201
-                    return! ctx.WriteJson(targetView target created)
+            | Ok named ->
+                match! resolve ctx false named with
+                | Error failure -> return! failed ctx failure
+                | Ok resolved -> return! createInstanceBlock resolved.Target ctx
         }
+
+let private liftInstanceBlock (target: Target) (ctx: HttpContext) : Task =
+    task {
+        use delete =
+            (ctx.GetService<NpgsqlDataSource>()).CreateCommand
+                "DELETE FROM blocks WHERE local_actor IS NULL AND actor IS NOT DISTINCT FROM @actor AND domain IS NOT DISTINCT FROM @domain"
+
+        delete.Parameters.Add(NpgsqlParameter("actor", NpgsqlDbType.Text, Value = (match target with ActorTarget a -> box a | _ -> box DBNull.Value))) |> ignore
+        delete.Parameters.Add(NpgsqlParameter("domain", NpgsqlDbType.Text, Value = (match target with DomainTarget d -> box d | _ -> box DBNull.Value))) |> ignore
+        let! deleted = delete.ExecuteNonQueryAsync()
+
+        if deleted = 0 then
+            return! error ctx 404 "not_found" "No such block"
+        else
+            ctx.SetStatusCode 204
+    }
 
 let private liftForInstance: EndpointHandler =
     fun ctx ->
         task {
             match readQuery ctx with
             | Error message -> return! invalid ctx message
-            | Ok target ->
-                use delete =
-                    (ctx.GetService<NpgsqlDataSource>()).CreateCommand
-                        "DELETE FROM blocks WHERE local_actor IS NULL AND actor IS NOT DISTINCT FROM @actor AND domain IS NOT DISTINCT FROM @domain"
-
-                delete.Parameters.Add(NpgsqlParameter("actor", NpgsqlDbType.Text, Value = (match target with ActorTarget a -> box a | _ -> box DBNull.Value))) |> ignore
-                delete.Parameters.Add(NpgsqlParameter("domain", NpgsqlDbType.Text, Value = (match target with DomainTarget d -> box d | _ -> box DBNull.Value))) |> ignore
-                let! deleted = delete.ExecuteNonQueryAsync()
-
-                if deleted = 0 then
-                    return! error ctx 404 "not_found" "No such block"
-                else
-                    ctx.SetStatusCode 204
+            | Ok named ->
+                match! resolve ctx true named with
+                | Error failure -> return! failed ctx failure
+                | Ok resolved -> return! liftInstanceBlock resolved.Target ctx
         }
 
 let endpoints: Endpoint list =
