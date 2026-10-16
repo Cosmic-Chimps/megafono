@@ -15,7 +15,8 @@ Three pieces, all described in [`specs/001-federation-core/contracts/`](specs/00
 2. **Event receiver.** Your app accepts `POST /megafono/webhooks` (follow requests, accepted follows, failed
    deliveries…), verifies the `Megafono-Signature` header and answers 2xx when it has handled the event.
 3. **Internal API calls.** Your app calls `/internal/*` on Megáfono to publish, approve or reject follow requests,
-   list followers and refresh a profile.
+   list followers, refresh a profile and delete a user everywhere
+   ([`specs/003-actor-deletion/contracts/`](specs/003-actor-deletion/contracts/)).
 
 [`samples/SampleApp`](samples/SampleApp) shows all three in under 100 lines of integration code
 (`samples/SampleApp/Megafono.fs`).
@@ -58,9 +59,10 @@ The stack is F# on .NET 10, Oxpecker, raw Npgsql and Postgres. Tests use xUnit v
 
 ## Status
 
-Feature 001 (federation core) is done: [`specs/001-federation-core`](specs/001-federation-core) holds its spec, plan and
-tasks. Feature 002 (replies and threads) is in progress in [`specs/002-replies-threads`](specs/002-replies-threads).
-[`docs/vision.md`](docs/vision.md) holds the product vision. Expect changes until 002 is done.
+Features 001 (federation core, [`specs/001-federation-core`](specs/001-federation-core)), 002 (replies and threads,
+[`specs/002-replies-threads`](specs/002-replies-threads)) and 003 (actor deletion,
+[`specs/003-actor-deletion`](specs/003-actor-deletion)) are done; each folder holds the spec, plan and tasks.
+[`docs/vision.md`](docs/vision.md) holds the product vision. Blocks are next.
 
 ## Related projects
 

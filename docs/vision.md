@@ -37,7 +37,7 @@ US4 — Interactions come back (P2). As an app developer, I want replies, likes 
 2. Given an activity with an invalid signature, then it is rejected with 401 and never reaches the app.
 US5 — Self-host in minutes (P1). As a self-hoster, I want a compose file that just works.
 1. Given a domain with TLS, when I run the example compose file, then a Mastodon account can follow a test user within 10 minutes of setup.
-US6 — Leaving cleanly (P2). When the app deletes a user, then Megáfono sends Delete for the actor to every known follower server and removes the user's keys and follow records.
+US6 — Leaving cleanly (P2). When the app deletes a user, then Megáfono sends Delete for the actor to every known follower server and removes the user's keys and follow records. Built in specs/003-actor-deletion: DELETE /internal/actors/{id} sends Delete to every server that follows or is followed by the actor, the id and its posts then answer 410 Gone and the id is never reused; keys are erased once the Delete deliveries end.
 Architecture
 Inbound traffic enters only through the gateway, which splits it by path. Outbound deliveries leave Megáfono directly. The app and Megáfono talk over a private port, and each keeps its own database: the app owns users and content, Megáfono owns keys, follow relationships, published object copies and the delivery queue.
 Functional requirements

@@ -157,6 +157,30 @@ them. Edit and delete a reply with `PUT` and `DELETE /internal/objects/{id}`: th
 - A `Group` actor (for example one account per series) is a plain account: it is found, followed and posts like a
   person. Megáfono does not boost its followers' replies, so it is not a Lemmy-style community.
 
+## Deleting a user
+
+When a user deletes their account, the app calls `DELETE /internal/actors/{id}` with the user's immutable id
+(contract in [`specs/003-actor-deletion/contracts/`](../specs/003-actor-deletion/contracts/)). The call does not ask
+the app's actor lookup, so it works before or after the app removes the user. It answers `202` with the number of
+servers told, the same answer on every repeat, or `404` when Megáfono never had an actor for the id (nothing to do).
+
+- Megáfono sends one signed `Delete` of the actor to every server that follows the user, asked to, or is followed by
+  them, one per server (shared inbox), retried for 48 hours like any delivery. Mastodon and GoToSocial then remove
+  the account, its posts and its follows.
+- From that moment the actor id, its collections and its public posts answer `410 Gone`; followers-only posts answer
+  `404`. The id is never served again, even if the app's lookup keeps answering it. The handle is free for a new user
+  with a different id.
+- Queued deliveries and webhooks of the user are cancelled, and no webhook is sent about them afterwards. Calls for
+  the user answer `410 gone`.
+- Megáfono erases at once the follow relationships, the profile and its copies of the posts, and erases the key pair
+  once every `Delete` delivery has ended (housekeeping checks every hour). Only a tombstone (id, handle, type,
+  dates) remains, so the id can never be reused.
+
+**What to tell your users.** A deletion cannot recall what other servers already showed. A server that was down for
+more than 48 hours, or that only received a reply or a mention and has no follow relationship with the user, gets no
+`Delete`; it learns of the deletion when it next fetches the account or a post (`410`). Servers other than Mastodon
+and GoToSocial may keep copies.
+
 ## What followers-only means
 
 Followers-only (`followers`) is a request, not a guarantee. Megáfono sends such a post only to the inboxes of the
