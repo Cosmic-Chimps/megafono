@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-15
 
-**Status**: Draft
+**Status**: Clarified
 
 **Input**: User description: "Per-actor and per-instance blocks, Megáfono feature 004. Source:
 .alta/tasks/2026-10-10-megafono-per-actor-and-per-instance-blocks-before-public-com-583k.md, docs/vision.md
@@ -30,7 +30,7 @@ moderation scope is exactly this: per-user and per-instance blocks.
 
 A **user block** is set by one of the app's users and covers that user only: one remote actor or a whole remote
 domain. An **instance block** is set by the operator for the whole installation and covers every local user: a
-whole remote domain. Either way the blocked side stops reaching the covered users, their posts stop reaching it, and
+whole remote domain, or one remote actor. Either way the blocked side stops reaching the covered users, their posts stop reaching it, and
 the follow relationships between them end in both directions. Separately, when a remote actor blocks one of the
 app's users, Megáfono ends the follows between them and tells the app.
 
@@ -38,6 +38,21 @@ Vision references: FR-031 (block in the internal API), FR-012 (inbound Block), t
 Block (by the user or the instance) removes the follow both ways, stops deliveries, and makes fetches from that actor
 or domain answer 404", FR-042 (the operator CLI, a separate task, will reuse the instance block); constitution
 Principles II (privacy), III (verify before trust) and V (durable, idempotent delivery).
+
+## Clarifications
+
+### Session 2026-10-15
+
+- Q: When a user blocks a remote actor, does Megáfono send a `Block` activity to that actor's server? → A: Yes:
+  one signed `Block` to the actor's own inbox, and `Undo{Block}` when the block is lifted (as Mastodon and
+  GoToSocial do).
+- Q: Do domain blocks (instance and user) also cover subdomains? → A: Yes: a block of spam.example covers
+  spam.example and every host under it; a block of a.spam.example covers only that host and the hosts under it.
+- Q: Which webhooks does the app get when a block ends follows? → A: `follow.removed` for each follow a block ends,
+  in either direction, for user, instance and remote blocks alike; no new event type.
+- Q: Besides domains, can the instance block a single remote actor for every local user? → A: Yes: an instance
+  block names a domain or an actor; an instance actor block, like an instance domain block, sends nothing to the
+  remote server.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -56,7 +71,7 @@ server no longer shows the follows; a later reply from that user never reaches t
 
 1. **Given** bob (remote) and alex follow each other, and carol (remote) has a pending follow request to alex,
    **When** the app blocks bob and then carol for alex, **Then** every one of those relationships, pending or
-   accepted, ends in both directions.
+   accepted, ends in both directions, with one `follow.removed` webhook per ended follow.
 2. **Given** alex blocked bob, **When** bob sends alex a follow request, a reply to one of alex's posts, an edit of an
    earlier reply or any other activity aimed at alex, **Then** Megáfono drops it before it can produce a webhook, and
    the app hears nothing; in particular no `reply.received` is produced.
@@ -71,10 +86,9 @@ server no longer shows the follows; a later reply from that user never reaches t
    block back and nothing happens a second time.
 8. **Given** bob's server is down, **When** the app blocks bob by URL, **Then** the block is recorded and applied
    locally at once; blocking by handle needs bob's server to tell which actor the handle names.
-9. Whether bob's server is told about the block, so that it ends the follows on its side too:
-   [NEEDS CLARIFICATION: does a user block of an actor send a `Block` activity to the remote server, as Mastodon and
-   GoToSocial do (the remote server then ends the follows on its side and learns of the block), or nothing
-   (the block stays private, the remote server may keep showing stale follows)?]
+9. **When** the app blocks bob for alex, **Then** bob's server receives exactly one signed `Block` from alex, so it
+   ends the follows on its side too (it learns of the block; the docs say so); **when** the block is lifted, it
+   receives an `Undo` of that `Block`.
 
 ---
 
@@ -93,7 +107,7 @@ delivered there.
 
 1. **Given** actors of spam.example follow alex and carol, and carol follows one of them, **When** the operator
    blocks spam.example, **Then** every follow relationship, pending or accepted, between a local user and an actor
-   of spam.example ends.
+   of spam.example ends, and each affected user's app receives `follow.removed` for each.
 2. **Given** spam.example is blocked, **When** a request from it reaches Megáfono's inboxes, **Then** it is refused
    as early as possible: before Megáfono contacts spam.example, reads the activity or produces any webhook.
 3. **Given** spam.example is blocked, **Then** no delivery is sent to it: those waiting are cancelled and later ones
@@ -101,9 +115,11 @@ delivered there.
 4. **Given** spam.example is blocked, **When** a request signed by one of its keys fetches any local actor,
    collection or object, **Then** the answer is 404; and Megáfono itself fetches nothing from spam.example.
 5. **Given** spam.example is blocked, **Then** replies from it leave every thread's reply collections.
-6. Whether a block of spam.example also covers its subdomains (a.spam.example):
-   [NEEDS CLARIFICATION: do domain blocks (instance and user) cover subdomains, as Mastodon's do, or only the exact
-   host?]
+6. **Given** spam.example is blocked, **Then** a.spam.example is blocked too, with every rule above; a block of
+   a.spam.example alone leaves spam.example and b.spam.example unaffected.
+7. **Given** one spam account on an otherwise fine server, **When** the operator blocks that actor for the instance,
+   **Then** every rule above applies to that actor for every local user, the rest of its server is unaffected, and
+   nothing is sent to it.
 
 ---
 
@@ -141,7 +157,7 @@ follows end in Megáfono and the app receives the webhooks decided below.
 **Acceptance Scenarios**:
 
 1. **Given** bob and alex follow each other, **When** bob's server sends a verified `Block` of alex signed by bob,
-   **Then** both relationships end and the app is told.
+   **Then** both relationships end and the app receives one `follow.removed` for each (inbound and outbound).
 2. **Given** bob blocked alex, **When** bob's server later sends `Undo` of that `Block`, **Then** it is acknowledged;
    no follow is restored.
 3. **Given** a `Block` that names someone else's actor, or that is not signed by its own actor, **Then** nothing
@@ -191,21 +207,23 @@ no follow was restored.
 - **FR-001** The app can block, for one of its users, a remote actor named by handle or by actor URL, or a remote
   domain; list that user's blocks; and lift one. Blocking is idempotent: a repeat, by handle or URL, answers the
   existing block and changes nothing.
-- **FR-002** The app (on behalf of the operator) can block a remote domain for the whole instance, list the instance
-  blocks and lift one, with the same idempotency.
+- **FR-002** The app (on behalf of the operator) can block a remote domain or a remote actor (by handle or URL) for
+  the whole instance, list the instance blocks and lift one, with the same idempotency.
 - **FR-003** Creating a block ends, in the same durable step, every pending or accepted follow relationship in both
   directions between the covered local users and the blocked actor or the actors of the blocked domain.
-- **FR-004** What the remote side is told: a user block of a domain tells each server concerned that the ended
-  follows are over; an instance block tells the blocked server nothing; for a user block of an actor see User Story
-  1, scenario 9 [NEEDS CLARIFICATION, US1].
-- **FR-005** Domain matching ignores letter case and port; whether subdomains are covered is decided in clarify
-  [NEEDS CLARIFICATION, US2].
+- **FR-004** What the remote side is told: a user block of an actor sends one signed `Block` to that actor, in the
+  same durable step, whenever the actor's inbox is known or can be found, and lifting it sends `Undo{Block}`; a user
+  block of a domain tells each server concerned that the ended follows are over; an instance block tells the blocked
+  server nothing.
+- **FR-005** A domain block (instance or user) covers the domain and every subdomain of it; matching ignores letter
+  case and port, and internationalized names match their ASCII form.
 - **FR-006** Inbound activities from an instance-blocked domain are refused before Megáfono contacts that domain,
-  reads the activity or produces any webhook. Inbound activities from an actor or domain a user blocked are dropped
+  reads the activity or produces any webhook; activities from an instance-blocked actor are refused as soon as the
+  sender is known, before the activity is read. Inbound activities from an actor or domain a user blocked are dropped
   when they are aimed at that user (follow requests, replies and reply edits in the user's threads, anything sent to
   the user's own inbox), before any webhook and without telling the sender; they keep working for other users.
 - **FR-007** No delivery is sent to a blocked target: creating a block cancels the matching waiting deliveries
-  (instance block: every delivery to the domain; user block: that user's deliveries to the actor or domain), and
+  (instance block: every delivery to the domain or to the actor's own inbox; user block: that user's deliveries to the actor or domain), and
   later deliveries to it are never sent. Only what a block itself sends to tell the remote side is let through.
 - **FR-008** A fetch signed by a key of a blocked actor or domain answers 404, never 403, for the actor document, its
   collections, objects, activities and reply collections: an instance block for every local actor, a user block for
@@ -217,11 +235,11 @@ no follow was restored.
   (every post, for an instance block) while the block lasts; no `reply.received` (or any other webhook) is produced for
   their new replies.
 - **FR-011** A verified inbound `Block` whose actor is its signer and whose object is a live local actor ends every
-  pending or accepted follow between the two, in both directions, and the app is told; its `Undo` is acknowledged and
-  restores nothing.
-- **FR-012** The webhooks the app receives when a block (user, instance or remote) ends follows:
-  [NEEDS CLARIFICATION: what webhooks does the app get — `follow.removed` for each ended follow (both directions),
-  a dedicated block event, both, or none for blocks the app itself made?]
+  pending or accepted follow between the two, in both directions, with `follow.removed` webhooks (FR-012); its
+  `Undo` is acknowledged and restores nothing.
+- **FR-012** Every follow that a block ends (user, instance or remote block, either direction) produces one
+  `follow.removed` webhook to the local user concerned, naming the direction and the remote actor, in the same
+  durable step as the change. No other webhook announces a block.
 - **FR-013** A block and every other write for the same local user are serialized: no activity of the user is queued
   for the blocked target after the block takes effect.
 
@@ -241,7 +259,7 @@ no follow was restored.
 - **SC-002** On GoToSocial and on Mastodon, after an instance block of the server's domain, a reply from it never
   reaches the app and its attempts to look up a local actor fail (tested end to end).
 - **SC-003** On GoToSocial and on Mastodon, when a remote user blocks a local user, the follows between them end in
-  Megáfono and the app is told within one minute (tested end to end).
+  Megáfono and the app receives its `follow.removed` webhooks within one minute (tested end to end).
 - **SC-004** In 100% of tested cases, a fetch signed by a blocked actor or domain answers 404, including for public
   posts and for followers-only posts the blocked actor could see before.
 - **SC-005** In 100% of tested cases, nothing is delivered to a blocked target after the block, whoever publishes.
@@ -253,8 +271,6 @@ no follow was restored.
   domains, and senders treat it as final). User blocks answer as if the activity was accepted, so the blocked actor
   is not told by the inbox, and the same shared-inbox activity may concern other users.
 - Blocking by handle resolves the handle first, so it needs the remote server; the URL form never does.
-- The instance call also accepts a single remote actor at no extra cost, since the vision rule names "that actor or
-  domain" for instance blocks too; the operator's usual case remains a domain.
 - What the app already received before a block (earlier replies, webhooks already delivered) stays with the app;
   Megáfono does not recall it.
 - Out of scope: the operator CLI (FR-042, its own task, will call the same code), mute, reports, flags and any
