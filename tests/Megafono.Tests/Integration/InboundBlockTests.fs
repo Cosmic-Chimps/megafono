@@ -8,7 +8,10 @@ open System.Net.Http
 open System.Text.Json
 open System.Text.Json.Nodes
 open System.Threading.Tasks
+open Npgsql
 open Xunit
+open Megafono.Domain
+open Megafono.Infrastructure
 open Megafono.Tests.TestSupport
 open Megafono.Tests.Fixtures
 open Megafono.Tests.Fixtures.Publishing
@@ -257,4 +260,75 @@ type InboundBlockTests(pg: PostgresFixture) =
             Assert.Equal(2, (events rig "follow.removed").Length)
             Assert.Empty(events rig "follow.accepted")
             Assert.Empty rig.Stub.Posts
+        }
+
+    /// Interop found it (specs/004-blocks R-49): GoToSocial sends `Undo{Follow}` and `Block` back to back, and the Block
+    /// was answered 500. Two inbound writes for one actor must take its locks in the same order: the actor row first,
+    /// then the follow rows. An Undo that locked the follow row first and the actor row (for the event sequence) second
+    /// deadlocked with a Block that did the opposite.
+    [<Fact>]
+    member _.``an Undo of a Follow that meets a Block in progress waits for the actor lock, no deadlock``() : Task =
+        task {
+            let! rig = start pg [ "bob" ]
+            use _ = disposeRig rig
+            do! addFollower rig.Db "u-1" rig.Stub "bob" "accepted" None
+            let bob = rig.Stub.ActorId "bob"
+
+            // The first thing a Block does: lock the actor, then (below) its follow rows
+            use! connection = rig.Db.OpenConnectionAsync()
+            use! tx = connection.BeginTransactionAsync()
+            let! live = Outbox.lockLiveActor tx "u-1"
+            Assert.True live
+
+            let undo =
+                $"""{{{context},"id":"{bob}/undo/f1","type":"Undo","actor":"{bob}","object":{{"id":"{bob}/follow/f1","type":"Follow","actor":"{bob}","object":"{ourActor "u-1"}"}}}}"""
+
+            let arrived = send rig "bob" (sharedInbox rig) undo
+            // Long enough for the Undo to have run into the lock (and, with the old order, to hold the follow row)
+            do! Task.Delay 1000
+
+            use find = new NpgsqlCommand("SELECT id FROM follows WHERE local_actor = 'u-1' AND remote_actor = @remote FOR UPDATE", connection, tx)
+            find.Parameters.AddWithValue("remote", bob) |> ignore
+            let! rowId = find.ExecuteScalarAsync()
+            use update = new NpgsqlCommand("UPDATE follows SET status = 'removed' WHERE id = @id", connection, tx)
+            update.Parameters.AddWithValue("id", rowId) |> ignore
+            let! _ = update.ExecuteNonQueryAsync()
+            let body: Events.EventBody = { Type = Events.FollowRemoved; Actor = None; Follow = None; Extra = [] }
+            let! _ = Outbox.enqueueEvent tx TimeProvider.System "u-1" body
+            do! tx.CommitAsync()
+
+            // The Undo goes on once the Block is done, and finds nothing left to undo
+            let! status = arrived
+            Assert.Equal(HttpStatusCode.Accepted, status)
+            let! after = follows rig
+            Assert.Equal<string list>([ $"inbound:u-1:{bob}:removed" ], after)
+        }
+
+    /// Two inbound writes for one actor at once (an Undo and a Follow, two replies in a thread): each takes the actor
+    /// lock and later bumps the actor's event sequence. A shared lock then an update from both is a deadlock; the lock
+    /// has to be the one the update needs, so the writers queue up on it.
+    [<Fact>]
+    member _.``two writers of one actor take turns on its lock, neither deadlocks``() : Task =
+        task {
+            let! rig = start pg [ "bob" ]
+            use _ = disposeRig rig
+
+            let writer () =
+                task {
+                    use! connection = rig.Db.OpenConnectionAsync()
+                    use! tx = connection.BeginTransactionAsync()
+                    let! live = Outbox.lockLiveActor tx "u-1"
+                    Assert.True live
+                    // the work between taking the lock and bumping the sequence, long enough for the other to start
+                    do! Task.Delay 500
+                    let body: Events.EventBody = { Type = Events.FollowRemoved; Actor = None; Follow = None; Extra = [] }
+                    let! id = Outbox.enqueueEvent tx TimeProvider.System "u-1" body
+                    do! tx.CommitAsync()
+                    return id
+                }
+
+            let! ids = Task.WhenAll [| writer (); writer () |]
+            Assert.All(ids, fun id -> Assert.True id.IsSome)
+            let! seqs = Publishing.strings rig.Db "SELECT seq::text FROM app_events WHERE local_actor = 'u-1' ORDER BY seq"
+            Assert.Equal<string list>([ "1"; "2" ], seqs)
         }

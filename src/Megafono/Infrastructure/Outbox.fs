@@ -70,12 +70,17 @@ let enqueueDeliveries (tx: NpgsqlTransaction) (time: TimeProvider) (activityId: 
 let enqueueDeliveriesUnfiltered (tx: NpgsqlTransaction) (time: TimeProvider) (activityId: Guid) (inboxes: string list) : Task<int> =
     insertDeliveries tx time activityId inboxes false
 
-/// Takes a share lock on the live row of a local actor, for the rest of the transaction. False when the actor is
-/// deleted (or unknown): the caller answers 410 and writes nothing. The delete transaction locks the same row
-/// `FOR UPDATE`, so an activity of the actor is never created after its `Delete` (specs/003-actor-deletion R-34).
+/// Locks the live row of a local actor for the rest of the transaction. False when the actor is deleted (or unknown):
+/// the caller answers 410 and writes nothing. The delete transaction locks the same row `FOR UPDATE`, so an activity of
+/// the actor is never created after its `Delete` (specs/003-actor-deletion R-34). The lock is `FOR NO KEY UPDATE`, the
+/// one `enqueueEvent` takes when it bumps the event sequence: a shared lock here would let two writers of the actor
+/// both hold it and both wait for the other's at the bump, a deadlock (found by the interop tests of specs/004-blocks).
+/// Writers of one actor take turns instead; foreign keys to the row (`FOR KEY SHARE`) are not held up.
+///
+/// Lock order for every write: this row first, then the actor's `follows` rows.
 let lockLiveActor (tx: NpgsqlTransaction) (userId: string) : Task<bool> =
     task {
-        use command = new NpgsqlCommand("SELECT 1 FROM local_actors WHERE app_user_id = @user AND deleted_at IS NULL FOR SHARE", tx.Connection, tx)
+        use command = new NpgsqlCommand("SELECT 1 FROM local_actors WHERE app_user_id = @user AND deleted_at IS NULL FOR NO KEY UPDATE", tx.Connection, tx)
         command.Parameters.AddWithValue("user", userId) |> ignore
         let! found = command.ExecuteScalarAsync()
         return not (isNull found)

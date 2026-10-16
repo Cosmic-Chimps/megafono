@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-10-16T05:35:44.5290750Z",
+  "activityType": "Block",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "gotosocial/0.22.2\u002Bgit-fb2bf13 (\u002Bhttps://gts.test)"
+    },
+    {
+      "name": "Accept-Charset",
+      "value": "utf-8"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "zstd,gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/ld\u002Bjson; profile=\u0022https://www.w3.org/ns/activitystreams\u0022"
+    },
+    {
+      "name": "Date",
+      "value": "Fri, 16 Oct 2026 05:35:44 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "294"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=ay3ztJPU3IMpSdBJ7fI4W/G4BaGz/j5a0wUKE4wOd/4="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://gts.test/users/carolducs7/main-key\u0022,algorithm=\u0022hs2019\u0022,headers=\u0022(request-target) host date digest\u0022,signature=\u0022Qwz6hzt7ICLJ4SrQ5SWYJDSnBPLVT5/vUjIaUcoAKEURp2MA8nMWCXF1WpdPyEt0YY5CIMaJ/OyAnF6Ni0EBqa9a6nYPd6XKQxMpWHBVlUTnXRPo25DPxybghvDCDjLZdRs9amDXKUQyeIgPfzc62rbu7HWAm82G5DcsSbY/zvv02JrQ45abWYCY0NzQLON/hMQSlYmpd\u002BX0oP7W5rmhVQiCJYSFe9d4Jq4c\u002BTi6cOWC4sYg7f76DTlRnobhUshte9Wo1/ypm68svbhM0X7d\u002BE4z2z9WBOdmkb9Ni8weaTCsw1t\u002BjuFqhkcZ/yVmOwePxflVgHZrorIpm3WjqN7B8A==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.22.0.4"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6Imh0dHBzOi8vd3d3LnczLm9yZy9ucy9hY3Rpdml0eXN0cmVhbXMiLCJhY3RvciI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvY2Fyb2xkdWNzNyIsImlkIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9jYXJvbGR1Y3M3L2Jsb2Nrcy8wMU01MUtCMkJRODhFVlQxMUtKREpTNEZZVCIsIm9iamVjdCI6Imh0dHBzOi8vbWVnYWZvbm8udGVzdC9hcC9hY3RvcnMvdS1hbGV4YmRwbXVqIiwidG8iOiJodHRwczovL21lZ2Fmb25vLnRlc3QvYXAvYWN0b3JzL3UtYWxleGJkcG11aiIsInR5cGUiOiJCbG9jayJ9",
+  "body": "{\u0022@context\u0022:\u0022https://www.w3.org/ns/activitystreams\u0022,\u0022actor\u0022:\u0022https://gts.test/users/carolducs7\u0022,\u0022id\u0022:\u0022https://gts.test/users/carolducs7/blocks/01M51KB2BQ88EVT11KJDJS4FYT\u0022,\u0022object\u0022:\u0022https://megafono.test/ap/actors/u-alexbdpmuj\u0022,\u0022to\u0022:\u0022https://megafono.test/ap/actors/u-alexbdpmuj\u0022,\u0022type\u0022:\u0022Block\u0022}",
+  "signer": {
+    "actorId": "https://gts.test/users/carolducs7",
+    "keyId": "https://gts.test/users/carolducs7/main-key",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyVHLfzZTj2WEeZJhN9GL\nEAN5PZHVwQndpH3nj1Avr6e4WxzwEuK\u002BI8th4yBjw\u002Bcg0sGB6MxsNg6yTNk2SQE1\nMqqvA1H0u9OohWxXKuNBwzJ5W/jrdulNP4z5FyXp9AFAaN6bFR4M\u002BbGUq1Ilfggo\nuEjEUgvqYuSGTph8pj4n7cZo5urUeU4bPZI1ieH7EZfYeEHViwYh55xUv/zwxdGO\naJtikEYLH\u002B5mMcmVDf16/o4WnRCMqBdNjRIG9qHDkCGRipWJIeD/uJxp2nhlasZi\nXBRoDbmlCZRUdN6eKurzJ4EdM1hD\u002B/jV6LE11YTwxStBQicoo2Llpo8Pc68dZIzq\ngwIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}

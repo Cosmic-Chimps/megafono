@@ -325,7 +325,8 @@ let private loadCaptured (name: string) : Captured =
       ActivityType = root.GetProperty("activityType").GetString() }
 
 let private capturedNames =
-    [ "gts-follow"; "gts-undo"; "gts-accept"; "gts-update"; "mastodon-follow"; "mastodon-undo"; "mastodon-accept"; "mastodon-update" ]
+    [ "gts-follow"; "gts-undo"; "gts-accept"; "gts-update"; "gts-block"; "gts-undo-follow"
+      "mastodon-follow"; "mastodon-undo"; "mastodon-accept"; "mastodon-update"; "mastodon-block"; "mastodon-reject"; "mastodon-undo-follow" ]
 
 type CapturedPayloads() =
     static member Names: TheoryData<string> =

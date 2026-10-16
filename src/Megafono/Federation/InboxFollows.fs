@@ -162,22 +162,42 @@ let handleUndo (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outc
                 do! tx.RollbackAsync()
                 return Ignored "already processed"
             else
-                use find =
-                    new NpgsqlCommand(
-                        """SELECT id, local_actor FROM follows
-                           WHERE direction = 'inbound' AND remote_actor = @remote AND status IN ('pending', 'accepted')
-                             AND (follow_activity_id = @follow OR local_actor = @target)
-                           ORDER BY (follow_activity_id = @follow) DESC LIMIT 1 FOR UPDATE""",
-                        connection,
-                        tx
-                    )
+                // The actor row is locked before the follow row, as every other write for the actor does it: found
+                // without a lock first (it names the actor), then locked in that order. A Block in progress holds the
+                // actor and wants the follow row; taking the follow row first here would deadlock with it.
+                let find (forUpdate: bool) =
+                    task {
+                        use command =
+                            new NpgsqlCommand(
+                                $"""SELECT id, local_actor FROM follows
+                                    WHERE direction = 'inbound' AND remote_actor = @remote AND status IN ('pending', 'accepted')
+                                      AND (follow_activity_id = @follow OR local_actor = @target)
+                                    ORDER BY (follow_activity_id = @follow) DESC LIMIT 1{(if forUpdate then " FOR UPDATE" else "")}""",
+                                connection,
+                                tx
+                            )
 
-                find.Parameters.AddWithValue("remote", signer.Id) |> ignore
-                find.Parameters.AddWithValue("follow", (match followId with Some f -> box f | None -> box DBNull.Value)) |> ignore
-                find.Parameters.AddWithValue("target", (match target with Some t -> box t | None -> box DBNull.Value)) |> ignore
-                use! reader = find.ExecuteReaderAsync()
-                let row = if reader.Read() then Some(reader.GetGuid 0, reader.GetString 1) else None
-                do! reader.CloseAsync()
+                        command.Parameters.AddWithValue("remote", signer.Id) |> ignore
+                        command.Parameters.AddWithValue("follow", (match followId with Some f -> box f | None -> box DBNull.Value)) |> ignore
+                        command.Parameters.AddWithValue("target", (match target with Some t -> box t | None -> box DBNull.Value)) |> ignore
+                        use! reader = command.ExecuteReaderAsync()
+                        return if reader.Read() then Some(reader.GetGuid 0, reader.GetString 1) else None
+                    }
+
+                let! named = find false
+
+                let! row =
+                    task {
+                        match named with
+                        | None -> return None
+                        | Some(_, user) ->
+                            let! live = Outbox.lockLiveActor tx user
+                            // The Block that held the actor may have ended the follow meanwhile: look again under the lock
+                            if live then
+                                return! find true
+                            else
+                                return None
+                    }
 
                 match row with
                 | None ->
@@ -231,22 +251,41 @@ let private handleAnswer (answer: Answer) (env: Env) (signer: RemoteActor) (acti
                 do! tx.RollbackAsync()
                 return Ignored "already processed"
             else
-                use find =
-                    new NpgsqlCommand(
-                        """SELECT id, local_actor, status FROM follows
-                           WHERE direction = 'outbound' AND remote_actor = @remote
-                             AND (follow_activity_id = @follow OR local_actor = @local)
-                           ORDER BY (follow_activity_id = @follow) DESC, created_at DESC LIMIT 1 FOR UPDATE""",
-                        connection,
-                        tx
-                    )
+                // The actor row is locked before the follow row (see `handleUndo`): the row is found without a lock
+                // first, since it names the actor, then looked at again under the actor's lock
+                let find (forUpdate: bool) =
+                    task {
+                        use command =
+                            new NpgsqlCommand(
+                                $"""SELECT id, local_actor, status FROM follows
+                                    WHERE direction = 'outbound' AND remote_actor = @remote
+                                      AND (follow_activity_id = @follow OR local_actor = @local)
+                                    ORDER BY (follow_activity_id = @follow) DESC, created_at DESC LIMIT 1{(if forUpdate then " FOR UPDATE" else "")}""",
+                                connection,
+                                tx
+                            )
 
-                find.Parameters.AddWithValue("remote", signer.Id) |> ignore
-                find.Parameters.AddWithValue("follow", (match followId with Some f -> box f | None -> box DBNull.Value)) |> ignore
-                find.Parameters.AddWithValue("local", (match localUser with Some u -> box u | None -> box DBNull.Value)) |> ignore
-                use! reader = find.ExecuteReaderAsync()
-                let row = if reader.Read() then Some(reader.GetGuid 0, reader.GetString 1, reader.GetString 2) else None
-                do! reader.CloseAsync()
+                        command.Parameters.AddWithValue("remote", signer.Id) |> ignore
+                        command.Parameters.AddWithValue("follow", (match followId with Some f -> box f | None -> box DBNull.Value)) |> ignore
+                        command.Parameters.AddWithValue("local", (match localUser with Some u -> box u | None -> box DBNull.Value)) |> ignore
+                        use! reader = command.ExecuteReaderAsync()
+                        return if reader.Read() then Some(reader.GetGuid 0, reader.GetString 1, reader.GetString 2) else None
+                    }
+
+                let! named = find false
+
+                let! row =
+                    task {
+                        match named with
+                        | None -> return None
+                        | Some(_, user, _) ->
+                            let! live = Outbox.lockLiveActor tx user
+
+                            if live then
+                                return! find true
+                            else
+                                return None
+                    }
 
                 // What the row becomes, if anything: pending -> accepted or rejected, accepted -> rejected (revoked)
                 let transition =
