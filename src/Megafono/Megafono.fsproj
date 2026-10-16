@@ -17,6 +17,7 @@
     <Compile Include="Infrastructure/Health.fs" />
     <Compile Include="Infrastructure/InstanceKey.fs" />
     <Compile Include="Infrastructure/AppClient.fs" />
+    <Compile Include="Infrastructure/Blocks.fs" />
     <Compile Include="Infrastructure/RemoteActors.fs" />
     <Compile Include="Infrastructure/InboundCapture.fs" />
     <Compile Include="Infrastructure/RateLimits.fs" />
@@ -36,6 +37,7 @@
     <Compile Include="Internal/Objects.fs" />
     <Compile Include="Internal/RemoteActors.fs" />
     <Compile Include="Internal/Follows.fs" />
+    <Compile Include="Internal/Blocks.fs" />
     <Compile Include="Workers/Dispatcher.fs" />
     <Compile Include="Workers/Deliveries.fs" />
     <Compile Include="Workers/AppEvents.fs" />

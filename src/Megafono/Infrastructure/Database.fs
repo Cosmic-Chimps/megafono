@@ -140,7 +140,7 @@ let private schema =
         local_actor   text NOT NULL REFERENCES local_actors (app_user_id),
         object        uuid NULL REFERENCES objects (id),
         activity_type text NOT NULL
-            CHECK (activity_type IN ('Create', 'Update', 'Delete', 'Accept', 'Reject', 'Follow', 'Undo')),
+            CHECK (activity_type IN ('Create', 'Update', 'Delete', 'Accept', 'Reject', 'Follow', 'Undo', 'Block')),
         audience      text NOT NULL CHECK (audience IN ('public', 'unlisted', 'followers', 'direct')),
         body          bytea NOT NULL,
         created_at    timestamptz NOT NULL DEFAULT now()
@@ -198,6 +198,35 @@ let private schema =
     -- A deleted actor's keys are cleared once its Delete deliveries end (specs/003-actor-deletion R-32)
     ALTER TABLE local_actors ALTER COLUMN public_key_pem DROP NOT NULL;
     ALTER TABLE local_actors ALTER COLUMN enc_private_key DROP NOT NULL;
+
+    -- Blocks (specs/004-blocks/data-model.md): a user's (local_actor set) or the instance's (NULL) block of one remote
+    -- actor or one domain
+    CREATE TABLE IF NOT EXISTS blocks (
+        id             uuid PRIMARY KEY,
+        local_actor    text NULL REFERENCES local_actors (app_user_id),
+        actor          text NULL,
+        domain         text NULL,
+        block_activity uuid NULL REFERENCES activities (id),
+        created_at     timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT ck_blocks_one_target CHECK ((actor IS NULL) <> (domain IS NULL))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_blocks_target
+        ON blocks ((COALESCE(local_actor, '')), (COALESCE(actor, '')), (COALESCE(domain, '')));
+    CREATE INDEX IF NOT EXISTS ix_blocks_actor ON blocks (actor) WHERE actor IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS ix_blocks_domain ON blocks (domain) WHERE domain IS NOT NULL;
+
+    -- Databases created before blocks lack 'Block' in the activity types: replace the check once
+    DO $$
+    BEGIN
+        IF EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'activities'::regclass AND conname = 'activities_activity_type_check'
+                     AND pg_get_constraintdef(oid) NOT LIKE '%''Block''%') THEN
+            ALTER TABLE activities DROP CONSTRAINT activities_activity_type_check;
+            ALTER TABLE activities ADD CONSTRAINT activities_activity_type_check
+                CHECK (activity_type IN ('Create', 'Update', 'Delete', 'Accept', 'Reject', 'Follow', 'Undo', 'Block'));
+        END IF;
+    END $$;
     """
 
 // Arbitrary constant; serializes concurrent starts (two replicas, or tests) so CREATE ... IF NOT EXISTS cannot race

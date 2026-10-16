@@ -34,6 +34,8 @@ type RemoteError =
     /// Reached the server but the document breaks a rule
     | Invalid of string
     | Unreachable of string
+    /// An instance block covers the host: nothing is fetched from it (specs/004-blocks FR-010)
+    | Blocked
 
 type Env =
     { DataSource: NpgsqlDataSource
@@ -266,18 +268,24 @@ let private mapFetchError (error: SafeHttp.FetchError) : RemoteError =
 /// GET signed with the instance actor; 2xx bodies only
 let private fetchDocument (env: Env) (accept: string option) (url: Uri) : Task<Result<SafeHttp.FetchResponse, RemoteError>> =
     task {
-        let! instance = env.Instance.Get()
+        // Before any connection: an instance-blocked domain is never contacted
+        let! blocked = Blocks.instanceBlocksHost env.DataSource (authority url)
 
-        let! result =
-            match accept with
-            | Some a -> SafeHttp.signedGetAccepting a env.Http instance.KeyId instance.PrivateKey url
-            | None -> SafeHttp.signedGet env.Http instance.KeyId instance.PrivateKey url
+        if blocked then
+            return Error Blocked
+        else
+            let! instance = env.Instance.Get()
 
-        match result with
-        | Error e -> return Error(mapFetchError e)
-        | Ok response when response.Status = 404 || response.Status = 410 -> return Error NotFound
-        | Ok response when response.Status < 200 || response.Status > 299 -> return Error(Unreachable $"HTTP {response.Status}")
-        | Ok response -> return Ok response
+            let! result =
+                match accept with
+                | Some a -> SafeHttp.signedGetAccepting a env.Http instance.KeyId instance.PrivateKey url
+                | None -> SafeHttp.signedGet env.Http instance.KeyId instance.PrivateKey url
+
+            match result with
+            | Error e -> return Error(mapFetchError e)
+            | Ok response when response.Status = 404 || response.Status = 410 -> return Error NotFound
+            | Ok response when response.Status < 200 || response.Status > 299 -> return Error(Unreachable $"HTTP {response.Status}")
+            | Ok response -> return Ok response
     }
 
 let private withJson (response: SafeHttp.FetchResponse) (f: JsonElement -> Task<Result<'a, RemoteError>>) : Task<Result<'a, RemoteError>> =

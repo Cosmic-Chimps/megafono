@@ -124,7 +124,7 @@ let private answer (kind: Answer) (appUserId: string) (followIdText: string) : E
 // ---- follow and unfollow a remote actor ------------------------------------------------------------------
 
 /// `Some true` for a known user, `Some false` for a deleted one, None for one the app does not know
-let private localState (ctx: HttpContext) (appUserId: string) : Task<bool option> =
+let localState (ctx: HttpContext) (appUserId: string) : Task<bool option> =
     task {
         match! ctx.GetService<AppClient.AppClient>().ById appUserId with
         | AppClient.Found _
@@ -184,8 +184,13 @@ let private follow (appUserId: string) : EndpointHandler =
                         use! connection = ctx.GetService<NpgsqlDataSource>().OpenConnectionAsync()
                         use! tx = connection.BeginTransactionAsync()
                         let! proceed = guardLive ctx tx appUserId
+                        // A block by the user or the instance, read after the user's row is locked (R-46)
+                        let! blocked = if proceed then Blocks.isBlockedBy tx appUserId remote.Id remote.Host else Task.FromResult false
                         match proceed with
                         | false -> ()
+                        | true when blocked ->
+                            do! tx.RollbackAsync()
+                            return! error ctx 409 "blocked" "The user or the instance blocks that actor"
                         | true ->
                             let activityGuid = Guid.NewGuid()
                             let followIri = Ids.activityId domain activityGuid

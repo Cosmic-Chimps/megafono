@@ -583,3 +583,32 @@ let reject (activityId: string) (localActorId: string) (followed: FollowRef) : J
 /// Undo of a Follow by the local actor
 let undoFollow (activityId: string) (localActorId: string) (followed: FollowRef) : JsonNode =
     followActivity "Undo" activityId localActorId (followNode followed)
+
+// ======================================================================================================
+// Block traffic (specs/004-blocks R-40): Block and Undo{Block}
+// ======================================================================================================
+
+/// The ids that identify a Block
+type BlockRef =
+    { Id: string
+      /// Who blocks (the local actor)
+      Actor: string
+      /// Who is blocked
+      Object: string }
+
+/// Block of the remote actor `targetId` by the local actor `localActorId`, addressed to the blocked actor
+let block (activityId: string) (localActorId: string) (targetId: string) : JsonNode =
+    let doc = followActivity "Block" activityId localActorId (str targetId)
+    doc["to"] <- JsonArray(str targetId)
+    doc
+
+/// Undo of a Block by the local actor, with the full Block embedded under the id it was sent with
+let undoBlock (activityId: string) (localActorId: string) (blocked: BlockRef) : JsonNode =
+    let node = JsonObject()
+    node["id"] <- str blocked.Id
+    node["type"] <- str "Block"
+    node["actor"] <- str blocked.Actor
+    node["object"] <- str blocked.Object
+    let doc = followActivity "Undo" activityId localActorId node
+    doc["to"] <- JsonArray(str blocked.Object)
+    doc

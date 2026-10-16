@@ -20,13 +20,14 @@ let actorView (actor: RemoteActor) =
        profileUrl = actor.ProfileUrl |> Option.toObj |}
 
 /// The answer for a failed resolution: 400 for an address we refuse to dial, 404 when it cannot be resolved,
-/// 502 when the remote server did not answer
+/// 502 when the remote server did not answer, 409 when an instance block covers its domain
 let resolutionError (ctx: HttpContext) (failure: RemoteError) : Task =
     match failure with
     | UnsafeTarget reason -> error ctx 400 "invalid_request" $"That address is refused: {reason}"
     | NotFound
     | Invalid _ -> error ctx 404 "not_found" "The remote actor could not be found"
     | Unreachable _ -> error ctx 502 "remote_unreachable" "The remote server did not answer"
+    | Blocked -> error ctx 409 "blocked" "That server is blocked"
 
 let private lookup: EndpointHandler =
     fun ctx ->

@@ -9,7 +9,7 @@ open Megafono.Tests.TestSupport
 open Megafono.Tests.Fixtures.PostgresFixture
 
 let private expectedTables =
-    [ "activities"; "app_events"; "deliveries"; "follows"; "instance_actor"; "local_actors"; "objects"
+    [ "activities"; "app_events"; "blocks"; "deliveries"; "follows"; "instance_actor"; "local_actors"; "objects"
       "processed_activities"; "remote_actors"; "remote_hosts"; "replies" ]
 
 let private scalar (dataSource: NpgsqlDataSource) (sql: string) =

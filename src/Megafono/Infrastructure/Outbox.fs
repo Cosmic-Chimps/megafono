@@ -22,10 +22,7 @@ let private notify (tx: NpgsqlTransaction) (channel: string) =
 /// The host key a delivery is limited by: lowercase host, plus the port when it is not the default
 let hostOf (inbox: string) : string = Uri(inbox).Authority.ToLowerInvariant()
 
-/// One `deliveries` row per distinct inbox, due now, with the 48 h deadline. Rows that already exist for the
-/// same (activity, inbox) are left alone, so a retried caller creates no second delivery. Returns the number
-/// of new rows.
-let enqueueDeliveries (tx: NpgsqlTransaction) (time: TimeProvider) (activityId: Guid) (inboxes: string list) : Task<int> =
+let private insertDeliveries (tx: NpgsqlTransaction) (time: TimeProvider) (activityId: Guid) (inboxes: string list) (filtered: bool) : Task<int> =
     task {
         let distinct = inboxes |> List.distinct |> Array.ofList
 
@@ -34,12 +31,20 @@ let enqueueDeliveries (tx: NpgsqlTransaction) (time: TimeProvider) (activityId: 
         else
             let now = time.GetUtcNow()
 
+            // The inboxes a block covers for the activity's author are left out (R-45 step 2)
+            let covered =
+                if filtered then
+                    "WHERE NOT " + Blocks.deliveryCoveredSql "(SELECT a.local_actor FROM activities a WHERE a.id = @activity)" "i.inbox" "i.host"
+                else
+                    ""
+
             use command =
                 new NpgsqlCommand(
-                    """INSERT INTO deliveries (id, activity, inbox_url, host, status, attempts, next_attempt_at, deadline_at, created_at)
-                       SELECT gen_random_uuid(), @activity, i.inbox, i.host, 'pending', 0, @now, @deadline, @now
-                       FROM unnest(@inboxes, @hosts) AS i(inbox, host)
-                       ON CONFLICT (activity, inbox_url) DO NOTHING""",
+                    $"""INSERT INTO deliveries (id, activity, inbox_url, host, status, attempts, next_attempt_at, deadline_at, created_at)
+                        SELECT gen_random_uuid(), @activity, i.inbox, i.host, 'pending', 0, @now, @deadline, @now
+                        FROM unnest(@inboxes, @hosts) AS i(inbox, host)
+                        {covered}
+                        ON CONFLICT (activity, inbox_url) DO NOTHING""",
                     tx.Connection,
                     tx
                 )
@@ -53,6 +58,17 @@ let enqueueDeliveries (tx: NpgsqlTransaction) (time: TimeProvider) (activityId: 
             do! notify tx deliveriesChannel
             return inserted
     }
+
+/// One `deliveries` row per distinct inbox, due now, with the 48 h deadline, leaving out the inboxes that a block
+/// covers for the activity's author (instance blocks and the author's own: a domain block by host, an actor block
+/// only for that actor's own inbox). Rows that already exist for the same (activity, inbox) are left alone, so a
+/// retried caller creates no second delivery. The activity row must exist. Returns the number of new rows.
+let enqueueDeliveries (tx: NpgsqlTransaction) (time: TimeProvider) (activityId: Guid) (inboxes: string list) : Task<int> =
+    insertDeliveries tx time activityId inboxes true
+
+/// `enqueueDeliveries` without the block filter, for the block's own `Block`, `Reject` and `Undo` (R-45)
+let enqueueDeliveriesUnfiltered (tx: NpgsqlTransaction) (time: TimeProvider) (activityId: Guid) (inboxes: string list) : Task<int> =
+    insertDeliveries tx time activityId inboxes false
 
 /// Takes a share lock on the live row of a local actor, for the rest of the transaction. False when the actor is
 /// deleted (or unknown): the caller answers 410 and writes nothing. The delete transaction locks the same row
