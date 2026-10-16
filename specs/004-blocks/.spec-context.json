@@ -2,8 +2,8 @@
   "workflow": "speckit",
   "specName": "Blocks",
   "branch": "alta/salty-petra-nx7w",
-  "currentStep": "plan",
-  "status": "planned",
+  "currentStep": "tasks",
+  "status": "ready-to-implement",
   "history": [
     {
       "step": "specify",
@@ -18,6 +18,13 @@
       "kind": "complete",
       "by": "extension",
       "at": "2026-10-16T02:23:13.827Z"
+    },
+    {
+      "step": "tasks",
+      "substep": null,
+      "kind": "complete",
+      "by": "extension",
+      "at": "2026-10-16T03:25:38.813Z"
     }
   ]
 }
