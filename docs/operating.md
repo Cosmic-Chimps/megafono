@@ -181,6 +181,53 @@ more than 48 hours, or that only received a reply or a mention and has no follow
 `Delete`; it learns of the deletion when it next fetches the account or a post (`410`). Servers other than Mastodon
 and GoToSocial may keep copies.
 
+## Blocks
+
+Two kinds of block, both through the internal API (contract in
+[`specs/004-blocks/contracts/`](../specs/004-blocks/contracts/)):
+
+- **A user block** covers one of your users: `POST /internal/actors/{id}/blocks` with `{"actor": "..."}` or
+  `{"domain": "spam.example"}`. List with `GET`, lift with `DELETE …/blocks?actor=` or `?domain=`.
+- **An instance block** covers every user: `POST /internal/blocks` with `{"domain": "..."}` (the usual case) or
+  `{"actor": "..."}`. List with `GET /internal/blocks`, lift with `DELETE /internal/blocks?domain=` or `?actor=`.
+
+`actor` is the remote actor's URL (as webhooks and follower lists give it) or its handle (`@bob@spam.example`). A
+handle needs the remote server to answer once, to find the actor; a URL never does, so block by URL when the server is
+down. A domain block also covers every subdomain (`spam.example` covers `a.spam.example`). Every call is idempotent: a
+repeat answers the existing block (`200`) and does nothing more.
+
+What a block does, at once and in one step:
+
+- Every follow between the covered users and the blocked side ends, in both directions, pending or accepted. Your app
+  gets one `follow.removed` webhook per ended follow (`follow.direction` says whose follow it was). Lifting a block
+  restores none of them.
+- Deliveries to the blocked side are cancelled and none are sent afterwards.
+- Anything the blocked side sends is dropped before it can become a webhook: follow requests, replies (no
+  `reply.received`), edits. For an instance block, its servers get `403` before Megáfono fetches a key or reads the
+  request; for a user block, Megáfono answers as if it accepted the activity, so the blocked actor is not told.
+- Fetches signed by the blocked side answer `404`, even for public posts, and the blocked side's replies disappear
+  from your users' reply collections (they come back if you lift the block). Megáfono itself fetches nothing from an
+  instance-blocked domain, and following or looking up a blocked actor answers `409 blocked`.
+
+What the other side is told:
+
+- **A user block of an actor** sends one signed `Block` to that actor, as Mastodon and GoToSocial do; their servers end
+  the follows on their side too. The blocked actor's server learns of the block. Lifting it sends `Undo` of the
+  `Block`.
+- **A user block of a domain** sends a `Reject` of each ended follow from that domain and an `Undo` of each follow of
+  your user's there, so those servers drop the follows too. No `Block` is sent.
+- **An instance block** sends nothing. The blocked servers may keep showing old follows on their side; they simply
+  stop reaching anyone here.
+
+When a remote user blocks one of your users, their server sends a `Block`: Megáfono ends the follows between them and
+your app gets the `follow.removed` webhooks. Megáfono keeps no record of it; the blocker's server refuses new follows
+while its block lasts.
+
+**Limits to tell your users.** Most servers (Mastodon and GoToSocial included) sign their fetches with a server-wide
+key, not the user's own, so a user block of one actor cannot catch those fetches: only a block of the whole domain
+does. Unsigned fetches of public posts cannot be attributed to anyone and are still answered. And a block stops what
+comes next: what a server already received, it keeps.
+
 ## What followers-only means
 
 Followers-only (`followers`) is a request, not a guarantee. Megáfono sends such a post only to the inboxes of the

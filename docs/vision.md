@@ -50,7 +50,7 @@ Identity and discovery
 Inbound
 • FR-010 Verify draft-cavage HTTP Signatures (rsa-sha256 and hs2019) on every inbox POST: (request-target), host, date (±12 hours), digest. Reject with 401 otherwise.
 • FR-011 Fetch and cache remote actors and keys; on verification failure, refetch the key once (key rotation).
-• FR-012 Handle Follow, Undo Follow, Accept, Reject, Create (Note, Article and app types), Like, Undo Like, Delete, Update (actor), Block. Unknown types are acknowledged with 202 and dropped.
+• FR-012 Handle Follow, Undo Follow, Accept, Reject, Create (Note, Article and app types), Like, Undo Like, Delete, Update (actor), Block. Unknown types are acknowledged with 202 and dropped. An inbound Block (built in specs/004-blocks) ends the follows between the blocker and the local user, with follow.removed webhooks.
 • FR-013 Deduplicate inbound activities by id for 7 days.
 • FR-014 Accept the body as raw bytes and verify the digest before parsing JSON.
 Outbound
@@ -61,7 +61,7 @@ Outbound
 • FR-024 Limit concurrency per remote host (default 2) and globally (default 32).
 App integration
 • FR-030 Actor lookup: call the app's GET /megafono/actors?handle={handle} or GET /megafono/actors/{id} (immutable id); 404 means the user does not exist.
-• FR-031 Internal API for publish, follow approval, follow and unfollow, block and actor deletion (see App contract).
+• FR-031 Internal API for publish, follow approval, follow and unfollow, block and actor deletion (see App contract). Blocks are built in specs/004-blocks: per user (an actor by URL or handle, or a domain) and per instance (a domain or an actor), domains covering their subdomains.
 • FR-032 Webhooks for every inbound event, signed with HMAC-SHA256 over the body and a timestamp, retried like deliveries.
 • FR-033 The internal API listens on a separate port that the reverse proxy never routes to, and requires a shared bearer token.
 Operations
@@ -95,7 +95,7 @@ Unfollow
 GET /internal/actors/{user}/followers and /following
 Lists with mutual and status
 POST /internal/actors/{user}/blocks
-Block an actor or a whole domain
+Block an actor or a whole domain (also GET and DELETE; POST/GET/DELETE /internal/blocks for the instance, specs/004-blocks)
 PUT /internal/actors/{user}
 Profile changed: send Update to followers
 DELETE /internal/actors/{user}
@@ -162,7 +162,7 @@ Rules:
 • "Friends" is the mutuals audience: both actors follow each other and both follows were approved. Megáfono computes it at publish time and freezes the recipient list on the object.
 • Non-public objects answer 404, never 403, to unauthorized fetches, so their existence is not revealed.
 • An actor's locked flag comes from the app. Locked actors set manuallyApprovesFollowers: true, and every Follow waits for the app's decision.
-• A Block (by the user or the instance) removes the follow both ways, stops deliveries, and makes fetches from that actor or domain answer 404.
+• A Block (by the user or the instance) removes the follow both ways, stops deliveries, and makes fetches from that actor or domain answer 404 (built in specs/004-blocks; a user block of an actor also sends Block to its server, instance blocks send nothing, and the blocked side's replies leave the reply collections).
 • Known limit, stated in the docs: once delivered, a remote server can show a post to anyone. Followers-only on the fediverse is a request, not a guarantee.
 Deployment
 The reference setup is three containers and Postgres. YARP is the default front door, but any reverse proxy (Caddy, nginx, Traefik) works if it follows the rules below; the repo ships tested configs for YARP and Caddy.

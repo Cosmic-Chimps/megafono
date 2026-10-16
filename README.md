@@ -15,8 +15,9 @@ Three pieces, all described in [`specs/001-federation-core/contracts/`](specs/00
 2. **Event receiver.** Your app accepts `POST /megafono/webhooks` (follow requests, accepted follows, failed
    deliveries…), verifies the `Megafono-Signature` header and answers 2xx when it has handled the event.
 3. **Internal API calls.** Your app calls `/internal/*` on Megáfono to publish, approve or reject follow requests,
-   list followers, refresh a profile and delete a user everywhere
-   ([`specs/003-actor-deletion/contracts/`](specs/003-actor-deletion/contracts/)).
+   list followers, refresh a profile, delete a user everywhere
+   ([`specs/003-actor-deletion/contracts/`](specs/003-actor-deletion/contracts/)) and block remote accounts or whole
+   servers, per user or for the instance ([`specs/004-blocks/contracts/`](specs/004-blocks/contracts/)).
 
 [`samples/SampleApp`](samples/SampleApp) shows all three in under 100 lines of integration code
 (`samples/SampleApp/Megafono.fs`).
@@ -27,6 +28,13 @@ Posts can be conversations. A reply from Mastodon or GoToSocial to a post your a
 `reply.received` (edits as `reply.updated`, deletions as `object.deleted`), and your app publishes a reply with
 `inReplyTo`. A reply your app removes stays on other servers, and replies that never mention one of your actors never
 reach Megáfono. [`docs/operating.md`](docs/operating.md#replies-and-threads) has the details and the limits.
+
+## Blocks
+
+A user can block a remote account or a whole server, and the operator can block a server (or one account) for the
+whole instance. Follows end both ways, nothing more is delivered to the blocked side, what it sends is dropped before
+it reaches your app, and its signed fetches answer 404. A user block of an account tells that account's server with a
+`Block`, as Mastodon and GoToSocial do. [`docs/operating.md`](docs/operating.md#blocks) has the details and the limits.
 
 ## Quick start
 
