@@ -4,6 +4,7 @@ module Megafono.Tests.Integration.GatewayTests
 open System
 open System.Collections.Concurrent
 open System.IO
+open System.Net
 open System.Net.Http
 open System.Security.Cryptography
 open System.Threading.Tasks
@@ -18,6 +19,8 @@ open Xunit
 open Megafono.Infrastructure
 open Megafono.Infrastructure.HttpSignatures
 open Megafono.Tests.TestSupport
+open Megafono.Tests.Fixtures
+open Megafono.Tests.Fixtures.PostgresFixture
 
 /// What a stub upstream saw
 type Seen =
@@ -71,7 +74,8 @@ type Rig =
       Gateway: WebApplication
       Client: HttpClient }
 
-let private withRig (test: Rig -> Task) : Task =
+/// `extra` goes on top of the routing settings: the gateway's own settings such as `Gateway:TrustedProxies`
+let private withRigWith (extra: (string * string) list) (test: Rig -> Task) : Task =
     task {
         let! megafono = startStub "megafono"
         let! app = startStub "app"
@@ -79,9 +83,10 @@ let private withRig (test: Rig -> Task) : Task =
         let gateway =
             Megafono.Gateway.Program.buildGateway
                 [||]
-                [ "urls", "http://127.0.0.1:0"
-                  "ReverseProxy:Clusters:megafono:Destinations:primary:Address", megafono.Address
-                  "ReverseProxy:Clusters:app:Destinations:primary:Address", app.Address ]
+                ([ "urls", "http://127.0.0.1:0"
+                   "ReverseProxy:Clusters:megafono:Destinations:primary:Address", megafono.Address
+                   "ReverseProxy:Clusters:app:Destinations:primary:Address", app.Address ]
+                 @ extra)
 
         do! gateway.StartAsync()
 
@@ -98,6 +103,8 @@ let private withRig (test: Rig -> Task) : Task =
             (app :> IAsyncDisposable).DisposeAsync().AsTask().Wait()
     }
     :> Task
+
+let private withRig (test: Rig -> Task) : Task = withRigWith [] test
 
 let private send (client: HttpClient) (httpMethod: string) (target: string) (host: string) (body: byte[] option) =
     task {
@@ -210,3 +217,160 @@ let ``FR-005 a draft-cavage signed request still verifies at Megafono through th
 
             Assert.Equal(Ok(), draftCavage.Verify (FakeTime now) key received)
         })
+
+/// What the Megáfono stub saw for one GET that carries the given `X-Forwarded-For`, through a gateway with `extra`
+let private forwardedSeen (extra: (string * string) list) (forwardedFor: string) : Task<(string * string) list> =
+    let mutable headers = []
+
+    task {
+        do!
+            withRigWith extra (fun rig ->
+                task {
+                    use request = new HttpRequestMessage(HttpMethod.Get, "/ap/actors/1")
+                    request.Headers.Host <- "megafono.test"
+                    request.Headers.TryAddWithoutValidation("X-Forwarded-For", forwardedFor) |> ignore
+                    request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https") |> ignore
+                    let! _ = rig.Client.SendAsync request
+                    headers <- rig.Megafono.Seen[0].Headers
+                })
+
+        return headers
+    }
+
+let private header (name: string) (headers: (string * string) list) =
+    headers |> List.filter (fun (k, _) -> k = name) |> List.map snd |> String.concat "|"
+
+[<Fact>]
+let ``FR-063 without Gateway:TrustedProxies a client-sent X-Forwarded-For and -Proto are replaced`` () =
+    task {
+        let! headers = forwardedSeen [] "203.0.113.5"
+        Assert.Equal("127.0.0.1", header "X-Forwarded-For" headers)
+        Assert.Equal("http", header "X-Forwarded-Proto" headers)
+    }
+
+[<Fact>]
+let ``FR-063 a trusted proxy's X-Forwarded-For and -Proto reach the upstream, the Host stays`` () =
+    task {
+        let! headers = forwardedSeen [ "Gateway:TrustedProxies", "127.0.0.1" ] "203.0.113.5"
+        Assert.Equal("203.0.113.5", header "X-Forwarded-For" headers)
+        Assert.Equal("https", header "X-Forwarded-Proto" headers)
+        Assert.Equal("megafono.test", header "X-Forwarded-Host" headers)
+        Assert.Equal("megafono.test", header "Host" headers)
+    }
+
+[<Fact>]
+let ``FR-063 behind a trusted proxy the right-most untrusted entry is the client`` () =
+    task {
+        let! headers = forwardedSeen [ "Gateway:TrustedProxies", "127.0.0.1" ] "198.51.100.77, 203.0.113.5"
+        Assert.Equal("203.0.113.5", header "X-Forwarded-For" headers)
+    }
+
+[<Fact>]
+let ``FR-063 a chain of trusted proxies is walked`` () =
+    task {
+        let! headers = forwardedSeen [ "Gateway:TrustedProxies", "127.0.0.1, 10.0.0.0/8" ] "198.51.100.77, 203.0.113.5, 10.1.2.3"
+        Assert.Equal("203.0.113.5", header "X-Forwarded-For" headers)
+    }
+
+[<Fact>]
+let ``FR-063 a trusted proxy that is not the peer is ignored`` () =
+    task {
+        for trusted in [ "10.99.0.1"; "10.99.0.0/16" ] do
+            let! headers = forwardedSeen [ "Gateway:TrustedProxies", trusted ] "203.0.113.5"
+            Assert.Equal("127.0.0.1", header "X-Forwarded-For" headers)
+            Assert.Equal("http", header "X-Forwarded-Proto" headers)
+    }
+
+[<Fact>]
+let ``FR-063 Gateway:TrustedProxies is also accepted indexed`` () =
+    task {
+        let! headers =
+            forwardedSeen [ "Gateway:TrustedProxies:0", "10.99.0.1"; "Gateway:TrustedProxies:1", "127.0.0.1" ] "203.0.113.5"
+
+        Assert.Equal("203.0.113.5", header "X-Forwarded-For" headers)
+    }
+
+[<Fact>]
+let ``FR-063 a Gateway:TrustedProxies entry that is not an address or range stops the gateway`` () =
+    let build (value: string) =
+        Megafono.Gateway.Program.buildGateway [||] [ "urls", "http://127.0.0.1:0"; "Gateway:TrustedProxies", value ]
+        |> ignore
+
+    let error = Assert.Throws<Exception>(fun () -> build "127.0.0.1, not-an-ip")
+    Assert.Contains("not-an-ip", error.Message)
+    Assert.Contains("Gateway:TrustedProxies", error.Message)
+    Assert.Throws<Exception>(fun () -> build "10.0.0.0/99") |> ignore
+
+type GatewayRateLimitTests(pg: PostgresFixture) =
+
+    /// Megáfono (3 requests per address) behind the gateway; the HttpClient plays the TLS proxy at 127.0.0.1.
+    /// Returns the status of an unsigned POST /inbox claiming `client` through `X-Forwarded-For`, per call
+    let run (gatewayExtra: (string * string) list) (test: (string -> Task<HttpStatusCode>) -> Task) : Task =
+        task {
+            let! cs = pg.CreateDatabase()
+            let! app = FakeApp.start MegafonoHost.token MegafonoHost.webhookSecret
+
+            let! host =
+                MegafonoHost.start
+                    { MegafonoHost.settings cs app.Url (FakeTime()) with
+                        Extra = [ "Megafono:RateLimit:PerAddress", "3"; "Megafono:TrustedProxies", "127.0.0.1" ] }
+
+            use _ = MegafonoHost.disposer host
+
+            let gateway =
+                Megafono.Gateway.Program.buildGateway
+                    [||]
+                    ([ "urls", "http://127.0.0.1:0"
+                       "ReverseProxy:Clusters:megafono:Destinations:primary:Address", host.FederationUrl
+                       "ReverseProxy:Clusters:app:Destinations:primary:Address", app.Url ]
+                     @ gatewayExtra)
+
+            do! gateway.StartAsync()
+
+            let address =
+                gateway.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>().Addresses |> Seq.head
+
+            use client = new HttpClient(BaseAddress = Uri address)
+
+            let send (clientAddress: string) =
+                task {
+                    use request = new HttpRequestMessage(HttpMethod.Post, "/inbox", Content = new ByteArrayContent(Text.Encoding.UTF8.GetBytes "{}"))
+                    request.Headers.Host <- "megafono.test"
+                    request.Headers.TryAddWithoutValidation("X-Forwarded-For", clientAddress) |> ignore
+                    request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https") |> ignore
+                    let! response = client.SendAsync request
+                    return response.StatusCode
+                }
+
+            try
+                do! test send
+            finally
+                gateway.DisposeAsync().AsTask().Wait()
+                (app :> IAsyncDisposable).DisposeAsync().AsTask().Wait()
+        }
+
+    [<Fact>]
+    member _.``FR-016 R-12 through a gateway with Gateway:TrustedProxies each client has its own bucket``() : Task =
+        run [ "Gateway:TrustedProxies", "127.0.0.1" ] (fun send ->
+            task {
+                for _ in 1..3 do
+                    let! s = send "203.0.113.5"
+                    Assert.Equal(HttpStatusCode.Unauthorized, s)
+
+                let! limited = send "203.0.113.5"
+                let! other = send "203.0.113.6"
+                Assert.Equal(HttpStatusCode.TooManyRequests, limited)
+                Assert.Equal(HttpStatusCode.Unauthorized, other)
+            })
+
+    [<Fact>]
+    member _.``FR-016 R-12 through a gateway without Gateway:TrustedProxies all clients share the proxy's bucket``() : Task =
+        run [] (fun send ->
+            task {
+                for _ in 1..3 do
+                    let! s = send "203.0.113.5"
+                    Assert.Equal(HttpStatusCode.Unauthorized, s)
+
+                let! other = send "203.0.113.6"
+                Assert.Equal(HttpStatusCode.TooManyRequests, other)
+            })
