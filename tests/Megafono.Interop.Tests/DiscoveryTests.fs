@@ -91,8 +91,8 @@ let private discoverDashed (server: IFediServer) (front: IContainer) (net: Feder
         megafono.FakeApp.AddUser { FakeApp.user userId handle with Name = "Anime Fan"; ProfileUrl = $"https://megafono.test/u/{handle}" }
         use! viewer = server.CreateUser "viewer"
 
-        let! found = viewer.SearchAccount($"{handle}@megafono.test", true)
-        let account = Assert.IsType<Account>(found.Value)
+        // Polled: under the load of the other interop tests the server's first lookup can come back empty
+        let! account = pollFor "the dashed handle to resolve" (fun () -> viewer.SearchAccount($"{handle}@megafono.test", true))
         Assert.Equal(handle, account.Username)
         Assert.Equal($"{handle}@megafono.test", account.Acct)
         Assert.Equal("Anime Fan", account.DisplayName)
@@ -109,7 +109,10 @@ let private discoverDashed (server: IFediServer) (front: IContainer) (net: Feder
         let accepted (e: FakeApp.ReceivedWebhook) =
             e.Type = "follow.accepted" && e.Json.["user"].["id"].GetValue<string>() = userId
 
-        Assert.Contains(megafono.FakeApp.Received, accepted)
+        // The webhook and the Accept leave the same transaction through two workers: the server can show the follow
+        // before the webhook reaches the app, so wait for it as well
+        let! _ = pollFor "follow.accepted for the dashed handle" (fun () -> task { return megafono.FakeApp.Received |> List.tryFind accepted })
+        ()
     }
 
 type DiscoveryTests(net: FederationNetwork, pg: PostgresFixture) =
