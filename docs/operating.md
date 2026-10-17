@@ -76,14 +76,16 @@ a JSON file) plus the connection string. A bad value stops startup with every pr
 | `Megafono__Delivery__Global` | no | `32` | Concurrent deliveries overall (at least 1). |
 | `Megafono__RateLimit__PerAddress` | no | `600` | Inbound requests per source address per window (at least 1). |
 | `Megafono__RateLimit__PerHost` | no | `600` | Inbound requests per signing host per window (at least 1). |
-| `Megafono__TrustedProxies` | no | none | Comma-separated addresses of proxies whose `X-Forwarded-*` headers are trusted (also as `Megafono__TrustedProxies__0`, `__1`…). Set it to the gateway's address (the compose file fixes it at `172.30.0.10`). Without it, every request counts as coming from the gateway and the per-address rate limit applies to the whole fediverse at once. |
+| `Megafono__TrustedProxies` | no | none | Comma-separated addresses or CIDR ranges of proxies whose `X-Forwarded-For` is trusted (also as `Megafono__TrustedProxies__0`, `__1`…). Set it to the gateway's address (the compose file fixes it at `172.30.0.10`), or to its network's range when the address is not fixed ([behind a TLS proxy](#behind-a-tls-proxy-caravana)). Without it, every request counts as coming from the gateway and the per-address rate limit applies to the whole fediverse at once. |
 | `Megafono__Software__Name` | no | `megafono` | Software name in NodeInfo; lowercase letters, digits and `-`. |
 | `Megafono__Software__Version` | no | `0.1.0` | Software version in NodeInfo. |
 | `Megafono__Federation__AllowPrivateAddresses` | no | `false` | **Tests only.** Lets outbound requests reach private addresses and plain http. Refused when `ASPNETCORE_ENVIRONMENT` is `Production`. |
 
 The gateway's own settings are the standard ASP.NET ones: `Kestrel__Certificates__Default__Path` and `__KeyPath`
 (PEM; with them it listens on 443), and `ReverseProxy__Clusters__{megafono|app}__Destinations__primary__Address`
-for the two upstreams. The sample app uses `MEGAFONO__URL`, `MEGAFONO__TOKEN`, `MEGAFONO__WEBHOOKSECRET`,
+for the two upstreams. One is its own: `Gateway__TrustedProxies` (none by default), the addresses or CIDR ranges of a
+TLS proxy in front of the gateway whose `X-Forwarded-For` and `X-Forwarded-Proto` it believes (also as
+`Gateway__TrustedProxies__0`, `__1`…; see [behind a TLS proxy](#behind-a-tls-proxy-caravana)). The sample app uses `MEGAFONO__URL`, `MEGAFONO__TOKEN`, `MEGAFONO__WEBHOOKSECRET`,
 `APP__DOMAIN` and `SAMPLE__ADMINPASSWORD` (required outside Development).
 
 ## The master key
@@ -113,6 +115,31 @@ Traefik) must too:
 5. Forward `X-Forwarded-Proto` and `X-Forwarded-For`.
 6. **Never route the internal port (8081).** It is the app's control surface (publish, approve, block) behind one
    bearer token. Keep it on a network only the app and Megáfono share, and never publish it.
+
+## Behind a TLS proxy (Caravana)
+
+On a platform where a shared proxy terminates TLS and routes by host name only (Traefik on Caravana), the gateway
+still owns the domain: the proxy sends the whole domain to the gateway, and the gateway splits the paths as above.
+Run it without a certificate (it then listens on plain http, port 8080 in the image) and point the proxy at it.
+
+The chain is client → proxy → gateway → Megáfono, and every hop sees only the previous one's address. The gateway
+**replaces** `X-Forwarded-For` and `X-Forwarded-Proto` with what its own connection shows (YARP's default), so
+without more settings Megáfono sees every client as the proxy's address and `http`, and the per-address rate limit
+(FR-016) puts the whole fediverse in one bucket. Two settings fix it:
+
+| Where | Setting | Value |
+|---|---|---|
+| gateway | `Gateway__TrustedProxies` | The address the proxy connects from, as the gateway sees it. On Caravana, Traefik connects from `10.99.0.1`. |
+| Megáfono | `Megafono__TrustedProxies` | The gateway's address. Container addresses change on every deploy, so give the CIDR range of the network the gateway runs on (the one the platform assigns container addresses from). |
+
+With `Gateway__TrustedProxies` set, the gateway takes the client's address from the proxy's `X-Forwarded-For` (the
+right-most entry that is not itself a trusted proxy: what a client writes to its left is ignored) and the scheme from
+its `X-Forwarded-Proto`, then forwards `X-Forwarded-For: <client>` and `X-Forwarded-Proto: https`. Megáfono, trusting
+the gateway, counts each client in its own bucket. Headers from any other peer are ignored, as before. The `Host`
+header is not taken from the proxy: it must reach the gateway unchanged, which Traefik does by default.
+
+Trusting a whole range in Megáfono means any container in it that can reach the federation port can choose its own
+rate-limit bucket. Keep that range to the platform's container network, never `0.0.0.0/0`.
 
 ## Profile links
 
