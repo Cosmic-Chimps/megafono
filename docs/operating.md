@@ -58,6 +58,14 @@ the internal API. Use a long random token (`openssl rand -base64 32`), keep it o
 Megáfono creates its own schema at startup and answers `GET /health` (on the internal port) with `200` when the
 database is reachable and `503` when it is not.
 
+## A local fediverse for development
+
+To try real federation on your machine (follow from GoToSocial or Mastodon, approve, publish, reply, block, delete), run
+`deploy/dev-fediverse/setup.sh`. It starts Megáfono, the gateway, the sample app, GoToSocial and optionally Mastodon
+behind one Caddy on `app.test`, `gts.test` and `mastodon.test`, with its own local CA. It is for development only: it
+runs Megáfono in `Development` with private addresses allowed and publishes the internal API on `127.0.0.1:8081`. See
+[`deploy/dev-fediverse/README.md`](../deploy/dev-fediverse/README.md), which also says how to point your own app at it.
+
 ## Settings
 
 Megáfono reads `Megafono__…` environment variables (double underscore for a nested key; `Megafono:App:Token` in

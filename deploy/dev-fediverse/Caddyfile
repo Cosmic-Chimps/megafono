@@ -1,0 +1,26 @@
+{
+	# Caddy's own CA signs every site; nothing here touches a trust store (setup.sh exports the root for you)
+	local_certs
+	skip_install_trust
+}
+
+# Caddy keeps the original Host and sets X-Forwarded-For and X-Forwarded-Proto by default. Both matter: signatures
+# cover Host, and Mastodon needs X-Forwarded-Proto https. No header rewriting and no compression on app.test, so
+# the bytes Megáfono sees are the bytes the remote server signed.
+
+app.test {
+	reverse_proxy gateway:8080
+}
+
+gts.test {
+	reverse_proxy gotosocial:8080
+}
+
+mastodon.test {
+	handle /api/v1/streaming* {
+		reverse_proxy mastodon-streaming:4000
+	}
+	handle {
+		reverse_proxy mastodon-web:3000
+	}
+}

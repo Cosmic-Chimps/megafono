@@ -1,0 +1,15 @@
+# Uses the published images instead of building them (the sample app is never published, so it still builds):
+#   docker compose -f compose.yaml -f compose.published.yaml up -d
+# MEGAFONO_VERSION picks the tag (default latest). The packages may be private until they are made public:
+# docker login ghcr.io first if the pull is refused.
+
+services:
+  megafono:
+    image: ghcr.io/cosmic-chimps/megafono:${MEGAFONO_VERSION:-latest}
+    build: !reset null
+    pull_policy: always
+
+  gateway:
+    image: ghcr.io/cosmic-chimps/megafono-gateway:${MEGAFONO_VERSION:-latest}
+    build: !reset null
+    pull_policy: always
