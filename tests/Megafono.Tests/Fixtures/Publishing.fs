@@ -192,7 +192,21 @@ let createActivityId (rig: Rig) (objectId: string) : Task<string> =
 
 
 
-let disposeRig (rig: Rig) : IDisposable = MegafonoHost.disposer rig.Host
+/// Stops Megáfono, the stub remote server and the fake app, and closes the data source, at the end of the test's scope.
+/// Every Kestrel host a test leaves running keeps its configuration file watchers (dozens of descriptors each): left
+/// alone they pile up over a few hundred tests until the process stalls.
+let disposeRig (rig: Rig) : IDisposable =
+    let stop (target: obj) =
+        match target with
+        | :? IAsyncDisposable as d -> d.DisposeAsync().AsTask().GetAwaiter().GetResult()
+        | _ -> ()
+
+    { new IDisposable with
+        member _.Dispose() =
+            stop rig.Host
+            stop rig.Stub
+            stop rig.App
+            rig.Db.Dispose() }
 
 /// The first column of every row, as text
 let strings (db: NpgsqlDataSource) (sql: string) : Task<string list> =

@@ -182,19 +182,43 @@ let private dispatchCreate (env: Env) (signer: RemoteActor) (activity: JsonNode)
         | _ -> return Ignored "the Create is not the signer's own"
     }
 
-/// `Update` of a note: nothing is fetched unless the note is a reply we recorded from the signer
+/// `Update` of a note: nothing is fetched unless the note is a reply we recorded from the signer or a post we passed on;
+/// then it is read once, must have the id the activity names, and each path that applies runs on it (R-54)
 let private dispatchUpdate (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
     task {
         match str activity "id", idOf activity["actor"], idOf activity["object"] with
         | Some updateId, Some actorId, Some noteId when actorId = signer.Id && isOnSignerHost signer updateId ->
-            // Before anything is fetched or locked: is this a reply of the signer's that we recorded?
-            match! InboxReplies.lookupReply env signer noteId with
-            | None -> return Ignored "not a live reply recorded from the signer"
-            | Some earlier ->
+            // Before anything is fetched or locked: a reply of the signer's that we recorded, or a post we passed on?
+            let! reply = InboxReplies.lookupReply env signer noteId
+            let! isPost = InboxPosts.lookupPost env signer noteId
+
+            if reply.IsNone && not isPost then
+                return Ignored "not a live reply or post recorded from the signer"
+            else
                 match! InboxNotes.noteOf env signer activity["object"] with
-                | Some note when str note "id" = Some noteId -> return! InboxReplies.updateReply env signer activity note earlier
-                | _ -> return Ignored "the edited reply could not be read from the signer"
+                | Some note when str note "id" = Some noteId ->
+                    let! replyOutcome =
+                        match reply with
+                        | Some earlier -> InboxReplies.updateReply env signer activity note earlier
+                        | None -> Task.FromResult(Ignored "not a reply we recorded")
+
+                    let! postOutcome =
+                        if isPost then InboxPosts.updatePost env signer activity note else Task.FromResult(Ignored "not a post we passed on")
+
+                    return combine replyOutcome postOutcome
+                | _ -> return Ignored "the edited note could not be read from the signer"
         | _ -> return Ignored "the Update is not the signer's own"
+    }
+
+/// `Delete`: no fetch; the reply path and the feed path each look for what the signer wrote under that id
+let private dispatchDelete (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
+    task {
+        match str activity "id", idOf activity["actor"], idOf activity["object"] with
+        | Some deleteId, Some actorId, Some _ when actorId = signer.Id && isOnSignerHost signer deleteId ->
+            let! reply = InboxReplies.handleDelete env signer activity
+            let! post = InboxPosts.deletePost env signer activity
+            return combine reply post
+        | _ -> return Ignored "the Delete is not the signer's own"
     }
 
 let private dispatch (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
@@ -206,7 +230,7 @@ let private dispatch (env: Env) (signer: RemoteActor) (activity: JsonNode) : Tas
     // An edited Note is a post's Update; anything else is a profile update
     | Some "Update" when InboxNotes.isNoteUpdate activity -> dispatchUpdate env signer activity
     | Some "Update" -> InboxActors.handleUpdate env signer activity
-    | Some "Delete" -> InboxReplies.handleDelete env signer activity
+    | Some "Delete" -> dispatchDelete env signer activity
     | Some "Accept" -> InboxFollows.handleAccept env signer activity
     | Some "Reject" -> InboxFollows.handleReject env signer activity
     // Everything else is not ours

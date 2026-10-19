@@ -86,12 +86,12 @@ in between (quickstart.md §1).
 
 ### Tests for User Story 2
 
-- [ ] T014 [P] [US2] `tests/Megafono.Tests/Integration/InboundPostsTests.fs` (US2 part): an `Update{Note}` of bob's post → `post.updated` for alex and carol with the new content, `updated` set, the original `audience` and `published` (FR-005); the same activity id with two different `updated` times → two events per user; the same edit twice → one (R-55); alex's follow `removed`, then an edit → only carol, then a `Delete` (IRI, and in another test a `Tombstone`) → both alex and carol get one `post.deleted` with `object.id` (FR-006, clarified Q4); a later `Update` or a repeated `Delete` → nothing; an `Update`/`Delete` of a post never passed on, or signed by carl for bob's post → nothing and the stub saw no fetch for the unknown `Update` (FR-005, R-54); an `Update` whose re-read object has another id → nothing
+- [X] T014 [P] [US2] `tests/Megafono.Tests/Integration/InboundPostsTests.fs` (US2 part): an `Update{Note}` of bob's post → `post.updated` for alex and carol with the new content, `updated` set, the original `audience` and `published` (FR-005); the same activity id with two different `updated` times → two events per user; the same edit twice → one (R-55); alex's follow `removed`, then an edit → only carol, then a `Delete` (IRI, and in another test a `Tombstone`) → both alex and carol get one `post.deleted` with `object.id` (FR-006, clarified Q4); a later `Update` or a repeated `Delete` → nothing; an `Update`/`Delete` of a post never passed on, or signed by carl for bob's post → nothing and the stub saw no fetch for the unknown `Update` (FR-005, R-54); an `Update` whose re-read object has another id → nothing
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] `src/Megafono/Federation/InboxPosts.fs`: `lookupPost env postId signer` (live rows exist, no lock), `updatePost env signer activity note` (lock row users sorted; marker `post|{updateId}|{updated}` via `InboxCommon.markProcessed`; rows' `updated_at`; `post.updated` with stored audience/published to users with `qualifying … mustFollow=true`) and `deletePost env signer activity` (lock sorted; all live rows → `deleted`; `post.deleted` to users with `qualifying … mustFollow=false`) per plan.md (R-55, R-56, R-57)
-- [ ] T016 [US2] `src/Megafono/Federation/Inbox.fs`: `Update{Note}` dispatch looks up the reply and the feed rows before any fetch, reads the object once when either exists (id must match), runs `updateReply` and/or `updatePost`; `Delete` runs `InboxReplies.handleDelete` and `InboxPosts.deletePost`; outcomes combined
+- [X] T015 [US2] `src/Megafono/Federation/InboxPosts.fs`: `lookupPost env postId signer` (live rows exist, no lock), `updatePost env signer activity note` (lock row users sorted; marker `post|{updateId}|{updated}` via `InboxCommon.markProcessed`; rows' `updated_at`; `post.updated` with stored audience/published to users with `qualifying … mustFollow=true`) and `deletePost env signer activity` (lock sorted; all live rows → `deleted`; `post.deleted` to users with `qualifying … mustFollow=false`) per plan.md (R-55, R-56, R-57)
+- [X] T016 [US2] `src/Megafono/Federation/Inbox.fs`: `Update{Note}` dispatch looks up the reply and the feed rows before any fetch, reads the object once when either exists (id must match), runs `updateReply` and/or `updatePost`; `Delete` runs `InboxReplies.handleDelete` and `InboxPosts.deletePost`; outcomes combined
 
 **Checkpoint**: US1 and US2 together: the feed is complete for ordinary posts.
 
@@ -107,12 +107,12 @@ user, and a reply by bob to alex's published post with carol also following bob.
 
 ### Tests for User Story 3
 
-- [ ] T017 [P] [US3] `tests/Megafono.Tests/Integration/InboundPostsTests.fs` (US3 part): alex blocks bob through `POST /internal/actors/u-1/blocks` (follow ends) → bob's next post reaches carol only; a block row seeded next to alex's still-accepted follow (actor block, and in another case a domain block) → nothing for alex on post, edit or delete, carol as usual, and alex's row still turns `deleted` on the Delete (R-56); an instance block of bob's domain → 403 and no event (FR-009); alex deleted through `DELETE /internal/actors/u-1` after following bob → nothing for alex, carol as usual; bob replies to alex's published post (alex and carol follow bob) → alex gets `reply.received` only and no `feed_posts` row, carol gets `post.received`; bob's edit and delete of it → alex `reply.updated`/`object.deleted`, carol `post.updated`/`post.deleted` (FR-003, R-53); a reply by bob to a deleted post of alex's (`Gone`) → an ordinary feed post for alex and carol
-- [ ] T018 [P] [US3] A concurrency test in `tests/Megafono.Tests/Integration/InboundPostsTests.fs`: two posts from two followed authors with overlapping local followers sent at the same time (and one alongside an instance block of a third domain) complete without a deadlock error and with every expected event (R-57)
+- [X] T017 [P] [US3] `tests/Megafono.Tests/Integration/InboundPostsTests.fs` (US3 part): alex blocks bob through `POST /internal/actors/u-1/blocks` (follow ends) → bob's next post reaches carol only; a block row seeded next to alex's still-accepted follow (actor block, and in another case a domain block) → nothing for alex on post, edit or delete, carol as usual, and alex's row still turns `deleted` on the Delete (R-56); an instance block of bob's domain → 403 and no event (FR-009); alex deleted through `DELETE /internal/actors/u-1` after following bob → nothing for alex, carol as usual; bob replies to alex's published post (alex and carol follow bob) → alex gets `reply.received` only and no `feed_posts` row, carol gets `post.received`; bob's edit and delete of it → alex `reply.updated`/`object.deleted`, carol `post.updated`/`post.deleted` (FR-003, R-53); a reply by bob to a deleted post of alex's (`Gone`) → an ordinary feed post for alex and carol
+- [X] T018 [P] [US3] A concurrency test in `tests/Megafono.Tests/Integration/InboundPostsTests.fs`: two posts from two followed authors with overlapping local followers sent at the same time (and one alongside an instance block of a third domain) complete without a deadlock error and with every expected event (R-57)
 
 ### Implementation for User Story 3
 
-- [ ] T019 [US3] `src/Megafono/Federation/InboxPosts.fs` `createPost`: leave out the root author when `Threads.resolveParent tx domain inReplyTo` gives `Resolved` (R-53); confirm the block filter and the deleted-user path from T008/T011/T015 make T017 and T018 pass; fix the lock order if T018 shows a deadlock
+- [X] T019 [US3] `src/Megafono/Federation/InboxPosts.fs` `createPost`: leave out the root author when `Threads.resolveParent tx domain inReplyTo` gives `Resolved` (R-53); confirm the block filter and the deleted-user path from T008/T011/T015 make T017 and T018 pass; fix the lock order if T018 shows a deadlock
 
 **Checkpoint**: all P1 stories pass; privacy tests of SC-004 green.
 
@@ -122,7 +122,7 @@ user, and a reply by bob to alex's published post with carol also following bob.
 
 **Goal**: `Announce` from a followed account is acknowledged and dropped (R-59).
 
-- [ ] T020 [P] [US4] Test in `tests/Megafono.Tests/Integration/InboundPostsTests.fs`: an `Announce` signed by bob (of his own post and of a third party's) → 202, no event, nothing fetched, no `feed_posts` row (FR-012). No code change is expected; if the test fails, keep `Announce` unhandled in `src/Megafono/Federation/Inbox.fs`
+- [X] T020 [P] [US4] Test in `tests/Megafono.Tests/Integration/InboundPostsTests.fs`: an `Announce` signed by bob (of his own post and of a third party's) → 202, no event, nothing fetched, no `feed_posts` row (FR-012). No code change is expected; if the test fails, keep `Announce` unhandled in `src/Megafono/Federation/Inbox.fs`
 
 ---
 
