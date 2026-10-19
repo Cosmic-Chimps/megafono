@@ -1,0 +1,30 @@
+{
+  "workflow": "speckit",
+  "specName": "Posts from followed accounts (the app's feed)",
+  "branch": "alta/silent-olive-bf5b",
+  "currentStep": "tasks",
+  "status": "ready-to-implement",
+  "history": [
+    {
+      "step": "specify",
+      "substep": null,
+      "kind": "start",
+      "by": "extension",
+      "at": "2026-10-19T03:55:59.799Z"
+    },
+    {
+      "step": "plan",
+      "substep": null,
+      "kind": "complete",
+      "by": "extension",
+      "at": "2026-10-19T04:19:58.047Z"
+    },
+    {
+      "step": "tasks",
+      "substep": null,
+      "kind": "complete",
+      "by": "extension",
+      "at": "2026-10-19T15:06:03.412Z"
+    }
+  ]
+}
