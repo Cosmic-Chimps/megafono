@@ -157,14 +157,49 @@ let private envOf (ctx: HttpContext) : Env =
       Remote = ctx.GetService<RemoteActors.Env>()
       Log = ctx.GetService<ILoggerFactory>().CreateLogger "Megafono.Inbox" }
 
+/// `Handled` when either path handled the activity, else `Ignored` with both reasons (R-54); a refusal wins
+let private combine (first: Outcome) (second: Outcome) : Outcome =
+    match first, second with
+    | Refused code, _
+    | _, Refused code -> Refused code
+    | Handled, _
+    | _, Handled -> Handled
+    | Ignored a, Ignored b -> Ignored $"{a}; {b}"
+
+/// `Create` of a note: the activity must be the signer's own; the note is read once and the paths that apply run on it
+let private dispatchCreate (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
+    task {
+        match str activity "id", idOf activity["actor"] with
+        | Some createId, Some actorId when actorId = signer.Id && isOnSignerHost signer createId ->
+            match! InboxNotes.noteOf env signer activity["object"] with
+            | None -> return Ignored "no note attributed to the signer"
+            | Some note -> return! InboxReplies.createReply env signer activity note
+        | _ -> return Ignored "the Create is not the signer's own"
+    }
+
+/// `Update` of a note: nothing is fetched unless the note is a reply we recorded from the signer
+let private dispatchUpdate (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
+    task {
+        match str activity "id", idOf activity["actor"], idOf activity["object"] with
+        | Some updateId, Some actorId, Some noteId when actorId = signer.Id && isOnSignerHost signer updateId ->
+            // Before anything is fetched or locked: is this a reply of the signer's that we recorded?
+            match! InboxReplies.lookupReply env signer noteId with
+            | None -> return Ignored "not a live reply recorded from the signer"
+            | Some earlier ->
+                match! InboxNotes.noteOf env signer activity["object"] with
+                | Some note when str note "id" = Some noteId -> return! InboxReplies.updateReply env signer activity note earlier
+                | _ -> return Ignored "the edited reply could not be read from the signer"
+        | _ -> return Ignored "the Update is not the signer's own"
+    }
+
 let private dispatch (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
     match str activity "type" with
     | Some "Follow" -> InboxFollows.handleFollow env signer activity
     | Some "Undo" -> InboxFollows.handleUndo env signer activity
     | Some "Block" -> InboxBlocks.handleBlock env signer activity
-    | Some "Create" -> InboxReplies.handleCreate env signer activity
-    // An edited Note is a reply's Update; anything else is a profile update
-    | Some "Update" when InboxReplies.isNoteUpdate activity -> InboxReplies.handleUpdate env signer activity
+    | Some "Create" -> dispatchCreate env signer activity
+    // An edited Note is a post's Update; anything else is a profile update
+    | Some "Update" when InboxNotes.isNoteUpdate activity -> dispatchUpdate env signer activity
     | Some "Update" -> InboxActors.handleUpdate env signer activity
     | Some "Delete" -> InboxReplies.handleDelete env signer activity
     | Some "Accept" -> InboxFollows.handleAccept env signer activity

@@ -146,7 +146,7 @@ type HostTests(pg: PostgresFixture) =
             Assert.Equal(firstKey, secondKey)
             Assert.Equal("https://megafono.test/ap/actor#main-key", snd firstKey)
             Assert.Equal(1L, rows)
-            Assert.Equal(12L, tables)
+            Assert.Equal(14L, tables)
         }
 
     [<Fact>]

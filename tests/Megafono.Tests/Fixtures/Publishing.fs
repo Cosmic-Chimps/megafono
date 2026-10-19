@@ -92,6 +92,31 @@ let addFollower
         ()
     }
 
+/// An outbound follow of `name` on `stub` by `localUser`, with that stub's real public key, so posts signed by it
+/// verify. `status` is pending, accepted, rejected or removed.
+let addFollowing (db: NpgsqlDataSource) (localUser: string) (stub: StubRemote.StubRemote) (name: string) (status: string) : Task =
+    task {
+        use command =
+            db.CreateCommand
+                """INSERT INTO remote_actors (id, host, handle, actor_type, inbox, key_id, public_key_pem)
+                   VALUES (@id, @host, @handle, 'Person', @inbox, @keyid, @pem) ON CONFLICT (id) DO NOTHING;
+                   INSERT INTO follows (id, direction, local_actor, remote_actor, follow_activity_id, status)
+                   VALUES (gen_random_uuid(), 'outbound', @local, @id, @follow, @status)
+                   ON CONFLICT (direction, local_actor, remote_actor) DO UPDATE SET status = @status"""
+
+        command.Parameters.AddWithValue("id", stub.ActorId name) |> ignore
+        command.Parameters.AddWithValue("host", stub.Authority.ToLowerInvariant()) |> ignore
+        command.Parameters.AddWithValue("handle", $"{name}@{stub.Authority}") |> ignore
+        command.Parameters.AddWithValue("inbox", stub.InboxUrl name) |> ignore
+        command.Parameters.AddWithValue("keyid", stub.KeyId name) |> ignore
+        command.Parameters.AddWithValue("pem", stub.PublicKeyPem) |> ignore
+        command.Parameters.AddWithValue("local", localUser) |> ignore
+        command.Parameters.AddWithValue("follow", $"https://megafono.test/ap/activities/{Guid.NewGuid()}") |> ignore
+        command.Parameters.AddWithValue("status", status) |> ignore
+        let! _ = command.ExecuteNonQueryAsync()
+        ()
+    }
+
 let setFollowStatus (db: NpgsqlDataSource) (localUser: string) (stub: StubRemote.StubRemote) (name: string) (status: string) : Task =
     Db.execute db $"UPDATE follows SET status = '{status}' WHERE local_actor = '{localUser}' AND remote_actor = '{stub.ActorId name}'"
 

@@ -205,3 +205,99 @@ let ``002 app-contract object.deleted has only the id and the thread`` () =
     Assert.Equal(2, (nodeAt json "object").AsObject().Count)
     Assert.Equal("@bob@mastodon.social", get json "actor.handle")
     Assert.Null json["extensions"]
+
+// ---- posts from followed accounts (feature 005, T005, contracts/app-contract.md) ----------------------------
+
+let private post: Events.PostObject =
+    { Id = "https://mastodon.social/users/bob/statuses/1200"
+      Url = Some "https://mastodon.social/@bob/1200"
+      Type = "Note"
+      Content = "<p>Started Frieren S2</p>"
+      Summary = Some "Spoilers: S2 E1"
+      Sensitive = true
+      Language = Some "en"
+      Published = DateTimeOffset(2026, 10, 18, 17, 59, 58, TimeSpan.Zero)
+      Updated = None
+      Audience = "followers"
+      InReplyTo = None
+      Attachments = [ { Type = "Image"; MediaType = Some "image/png"; Url = "https://files.mastodon.social/b.png"; Name = Some "alt text" } ] }
+
+[<Fact>]
+let ``005 app-contract post.received carries every documented field, inReplyTo null, no parent or thread`` () =
+    let json = envelopeOf (Events.postBody Events.PostReceived bob post None)
+    Assert.Equal("post.received", get json "type")
+    Assert.Equal("series-52991", get json "user.id")
+    Assert.Equal("https://mastodon.social/users/bob", get json "actor.id")
+    Assert.Equal("@bob@mastodon.social", get json "actor.handle")
+    Assert.Equal("https://mastodon.social/users/bob/statuses/1200", get json "object.id")
+    Assert.Equal("https://mastodon.social/@bob/1200", get json "object.url")
+    Assert.Equal("Note", get json "object.type")
+    Assert.Equal("<p>Started Frieren S2</p>", get json "object.content")
+    Assert.Equal("Spoilers: S2 E1", get json "object.summary")
+    Assert.True(boolAt json "object.sensitive")
+    Assert.Equal("en", get json "object.language")
+    Assert.Equal("2026-10-18T17:59:58Z", get json "object.published")
+    Assert.Null(nodeAt json "object.updated")
+    Assert.True(json["object"].AsObject().ContainsKey "updated")
+    Assert.Equal("followers", get json "object.audience")
+    Assert.Null(nodeAt json "object.inReplyTo")
+    Assert.True(json["object"].AsObject().ContainsKey "inReplyTo")
+    Assert.False(json["object"].AsObject().ContainsKey "parent")
+    Assert.False(json["object"].AsObject().ContainsKey "thread")
+    Assert.Equal("Image", get json "object.attachment.0.type")
+    Assert.Equal("image/png", get json "object.attachment.0.mediaType")
+    Assert.Equal("https://files.mastodon.social/b.png", get json "object.attachment.0.url")
+    Assert.Equal("alt text", get json "object.attachment.0.name")
+    Assert.True(json.AsObject().ContainsKey "extensions")
+    Assert.Null json["extensions"]
+
+[<Fact>]
+let ``005 app-contract post.received passes inReplyTo on and null fields stay null`` () =
+    let answer = { post with InReplyTo = Some "https://other.example/users/carol/statuses/9"; Summary = None; Sensitive = false; Language = None; Url = None; Attachments = [] }
+    let json = envelopeOf (Events.postBody Events.PostReceived bob answer None)
+    Assert.Equal("https://other.example/users/carol/statuses/9", get json "object.inReplyTo")
+    Assert.Null(nodeAt json "object.summary")
+    Assert.False(boolAt json "object.sensitive")
+    Assert.Null(nodeAt json "object.language")
+    Assert.Null(nodeAt json "object.url")
+    Assert.Equal(0, (nodeAt json "object.attachment").AsArray().Count)
+
+[<Fact>]
+let ``005 app-contract post.updated sets object.updated`` () =
+    let updated = { post with Updated = Some(DateTimeOffset(2026, 10, 18, 18, 5, 0, TimeSpan.Zero)) }
+    let json = envelopeOf (Events.postBody Events.PostUpdated bob updated None)
+    Assert.Equal("post.updated", get json "type")
+    Assert.Equal("2026-10-18T18:05:00Z", get json "object.updated")
+    Assert.Equal("followers", get json "object.audience")
+
+[<Fact>]
+let ``005 app-contract extensions of the post replace the null`` () =
+    let data = JsonObject()
+    data["watch"] <- JsonNode.Parse """{"episode":1}"""
+    let extensions = JsonObject()
+    extensions["namespace"] <- JsonValue.Create "https://app.example/ns#"
+    extensions["prefix"] <- JsonValue.Create "app"
+    extensions["data"] <- data
+    let json = envelopeOf (Events.postBody Events.PostReceived bob post (Some(extensions :> JsonNode)))
+    Assert.Equal("https://app.example/ns#", get json "extensions.namespace")
+    Assert.Equal("app", get json "extensions.prefix")
+    Assert.Equal(1, intAt json "extensions.data.watch.episode")
+
+[<Fact>]
+let ``005 app-contract post.deleted has only the id`` () =
+    let json = envelopeOf (Events.postDeletedBody bob post.Id)
+    Assert.Equal("post.deleted", get json "type")
+    Assert.Equal(post.Id, get json "object.id")
+    Assert.Equal(1, (nodeAt json "object").AsObject().Count)
+    Assert.Equal("@bob@mastodon.social", get json "actor.handle")
+    Assert.Null json["extensions"]
+
+[<Fact>]
+let ``005 SC-005 reply.received keeps its exact JSON`` () =
+    // field order included (the app may compare the raw body); both sides go through the serializer, which escapes `<`
+    let json = Events.envelope "evt_R" (DateTimeOffset(2026, 10, 12, 18, 0, 0, TimeSpan.Zero)) 812L "series-52991" "frieren" (Events.replyBody Events.ReplyReceived bob reply None)
+
+    let expected =
+        """{"id":"evt_R","version":1,"type":"reply.received","occurredAt":"2026-10-12T18:00:00Z","seq":812,"user":{"id":"series-52991","handle":"frieren"},"actor":{"id":"https://mastodon.social/users/bob","handle":"@bob@mastodon.social","name":"Bob","iconUrl":"https://files.mastodon.social/bob.png","profileUrl":"https://mastodon.social/@bob"},"object":{"id":"https://mastodon.social/users/bob/statuses/1131","url":"https://mastodon.social/@bob/1131","type":"Note","content":"<p>that ending!</p>","summary":"Spoilers: S2 E5","sensitive":true,"language":"en","published":"2026-10-12T17:59:58Z","updated":null,"audience":"public","inReplyTo":"https://frunchy.example/ap/objects/6f1c0000-0000-4000-8000-000000000001","parent":{"local":true,"objectId":"6f1c0000-0000-4000-8000-000000000001","userId":"series-52991"},"thread":{"objectId":"6f1c0000-0000-4000-8000-000000000001","id":"https://frunchy.example/ap/objects/6f1c0000-0000-4000-8000-000000000001"},"attachment":[{"type":"Image","mediaType":"image/png","url":"https://files.mastodon.social/a.png","name":"alt text"}]},"extensions":null}"""
+
+    Assert.Equal(JsonNode.Parse(expected).ToJsonString(), JsonNode.Parse(json).ToJsonString())
