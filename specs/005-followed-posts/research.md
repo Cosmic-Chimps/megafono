@@ -132,4 +132,35 @@ Numbering continues after 004 (R-40 to R-50). Decisions taken in `/speckit-clari
   delivered to their personal inboxes or the shared inbox. `Update{Note}`: Mastodon a new activity id per edit with
   `updated` set, GoToSocial a reused `…#Update`-style id with `updated` set (as 002 observed for replies). `Delete`:
   Mastodon a `Tombstone` object, GoToSocial the IRI.
-- **Observed**: _filled in by the interop task, with captured payloads added to `tests/Megafono.Tests/Fixtures/payloads`._
+- **Observed** (2026-10-19, `tests/Megafono.Interop.Tests/FeedTests.fs` on GoToSocial 0.22.2 and Mastodon 4.7.3; both
+  runs green; the captured requests are `gts-post-*.json` and `mastodon-post-*.json` in
+  `tests/Megafono.Tests/Fixtures/payloads`, replayed by `CapturedPostsTests`). Everything in **Expected** held, with
+  these details:
+  - **Inbox**: every `Create`, `Update` and `Delete` of the followed account's posts, and a direct post too, arrived at
+    the shared `/inbox` on both servers (never a personal inbox), signed by the author's key. Only Mastodon's `Accept`
+    of the follow went to the follower's personal inbox (`/ap/actors/{id}/inbox`); GoToSocial's `Accept` went to
+    `/inbox`. The Note was embedded in every `Create` and `Update`, attributed to the signer.
+  - **Addressing**: public: `to` = Public, `cc` = the author's followers collection (both). Followers-only: GoToSocial
+    `to` = followers collection, no `cc`; Mastodon `to` = `[followers]`, `cc` = `[]`; both put the same on the Note.
+    Direct (a mention of the followed local user): `to` = the mentioned local actor's id (`https://{domain}/ap/actors/{id}`),
+    `cc` absent (GoToSocial) or `[]` (Mastodon), on the activity and the Note: `Audience.fromAddressing` gives `direct`
+    and the addressed follower alone gets it. GoToSocial writes `to` as a single string, Mastodon as arrays (002 saw the
+    same).
+  - **Update**: Mastodon sends a new activity id per edit (`…/statuses/{id}#updates/{unix time}`) and the Note has
+    `updated` (`2026-10-19T18:24:02Z`); GoToSocial reuses `…/statuses/{id}/activity#Update` for every edit, with `updated`
+    on the Note (the second the edit was made, here equal to `published`'s second): the `post|{updateId}|{updated}`
+    marker of R-55 is what tells two GoToSocial edits apart. Both keep the audience addressing on the Update.
+  - **Delete**: GoToSocial `…/statuses/{id}/activity#Delete`, `object` the bare IRI, addressed like the post it deletes
+    (`to` = followers for a followers-only post). Mastodon `…/statuses/{id}#delete`, `object` a
+    `Tombstone` `{id, type}`, and `to` = Public even for a followers-only post: the feed path therefore never uses a
+    Delete's addressing, only the object id and the signer (as R-56 does).
+  - **Follow**: GoToSocial holds a remote follower's request until the account approves it (new accounts are locked by
+    default: the test approves through `POST /api/v1/follow_requests/{id}/authorize`); Mastodon accepted at once.
+    `follow.accepted` followed within one poll of the approval.
+  - **Timing**: every `post.received`, `post.updated` and `post.deleted` reached the app within 0.5 s (one poll tick) of
+    the remote client call, public, followers-only, edit, deletion and direct alike, on both servers (SC-001: 30 s).
+  - **Blocks**: after the local user blocked the account, both servers still delivered the account's next public post
+    to `/inbox` (Megáfono answered 202, no event): a user block ends the follow in Megáfono and sends `Block`, but
+    nothing makes the remote server stop addressing us at once, so the follower filtering in `FeedPosts.qualifying` is
+    what keeps the app quiet (SC-002).
+  - **Nothing contradicted** Expected; no production change was needed.

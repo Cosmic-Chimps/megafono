@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-10-19T18:23:08.3847970Z",
+  "activityType": "Delete",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "gotosocial/0.22.2\u002Bgit-fb2bf13 (\u002Bhttps://gts.test)"
+    },
+    {
+      "name": "Accept-Charset",
+      "value": "utf-8"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "zstd,gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/ld\u002Bjson; profile=\u0022https://www.w3.org/ns/activitystreams\u0022"
+    },
+    {
+      "name": "Date",
+      "value": "Mon, 19 Oct 2026 18:23:08 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "364"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=0dlsyiiPWwMsCrLllsTQQmJaAc3xWk\u002BY\u002BKr4of4UA58="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://gts.test/users/bobfolxc/main-key\u0022,algorithm=\u0022hs2019\u0022,headers=\u0022(request-target) host date digest\u0022,signature=\u0022mAoQN76EThCeToaFvUiZXvioCmu0uHcqQasW2tPQSuyFvzs7uYUECFtqxdrGKyMt2heEvuRjnxl9ucLkkWmwvY5k34lNR\u002BejYPbJLpLT1sYL8r3CLNolH2bPqd/Qj11qCZxGuvFVTfWhF66zo9HotYqL5hKZe1pqlm468/yte2/WQXIBzfQmz81du89SLP\u002B7EvxcoOg\u002Bv\u002BL1IWLrtxcnNucbAgD/CydhFOXPJpGXZ2/D57RSQ60mmFosRG8sJku98atVrAsYOnLvXafoycyJ3WcKhmWjfhJOjNbik0pDrXHTwUBDn18wnxz3XtysYQEQeyf2TWO\u002BunLg\u002B2WT/azZHg==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.24.0.3"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6Imh0dHBzOi8vd3d3LnczLm9yZy9ucy9hY3Rpdml0eXN0cmVhbXMiLCJhY3RvciI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMiLCJpZCI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMvc3RhdHVzZXMvMDFNNUFQRUIySlkxUjlYMlpDSDQyUVpZM0cvYWN0aXZpdHkjRGVsZXRlIiwib2JqZWN0IjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2Jmb2x4Yy9zdGF0dXNlcy8wMU01QVBFQjJKWTFSOVgyWkNINDJRWlkzRyIsInB1Ymxpc2hlZCI6IjIwMjYtMTAtMTlUMTg6MjM6MDdaIiwidG8iOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2JvYmZvbHhjL2ZvbGxvd2VycyIsInR5cGUiOiJEZWxldGUifQ==",
+  "body": "{\u0022@context\u0022:\u0022https://www.w3.org/ns/activitystreams\u0022,\u0022actor\u0022:\u0022https://gts.test/users/bobfolxc\u0022,\u0022id\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB2JY1R9X2ZCH42QZY3G/activity#Delete\u0022,\u0022object\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB2JY1R9X2ZCH42QZY3G\u0022,\u0022published\u0022:\u00222026-10-19T18:23:07Z\u0022,\u0022to\u0022:\u0022https://gts.test/users/bobfolxc/followers\u0022,\u0022type\u0022:\u0022Delete\u0022}",
+  "signer": {
+    "actorId": "https://gts.test/users/bobfolxc",
+    "keyId": "https://gts.test/users/bobfolxc/main-key",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyj\u002BDzrh84bNopRDLQ3aL\nM9aPFkbx3rXCuHs3JLQxQxRSjWSXYLKmIFRQFDHukkQSYbl1ixVKbzAwUazBRL6t\nqliijD3zhQDRUl7dhDtCCz3lkP/E5agqV0c2R8Js2Xf2GUk7MLZxHEDU8vPzYvpg\n6eFG5FXPLdWPeEfDghWHAe4leyqAVlt/9ahbla3jvLlENISAUc56OEEbjxQ7IS3a\nrvdg\u002Bnbdkuz4rDo9J8xf1TD862AapH\u002BsKdwQ3K8pCVW6ZClEuHEDcjhCmDnU04Up\nmamKUb8C5NfMYQONjhRGMpy\u002B0LNSkwIIo70F/AI0wtHo7FGbnBOVhALgUcljU0PA\nnwIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}
