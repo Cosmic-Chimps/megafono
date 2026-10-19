@@ -118,6 +118,29 @@ let language (note: JsonObject) : string option =
     | :? JsonObject as map -> map |> Seq.tryHead |> Option.map (fun entry -> entry.Key)
     | _ -> None
 
+/// The fields a reply and a feed post read from a note the same way: sanitized content, the content warning as text,
+/// URLs and attachments (plain `http` only when private addresses are allowed, as in tests)
+type NoteFields =
+    { NoteId: string
+      NoteUrl: string option
+      NoteType: string
+      Content: string
+      Summary: string option
+      Sensitive: bool
+      Language: string option
+      Attachments: Events.ReplyAttachment list }
+
+/// Reads the shared fields of a note that has an `id` and a `type` (`noteOf` only returns such notes)
+let fieldsOf (allowHttp: bool) (note: JsonObject) : NoteFields =
+    { NoteId = (str note "id").Value
+      NoteUrl = urlOf allowHttp note["url"]
+      NoteType = (str note "type").Value
+      Content = Sanitizer.sanitizeHtml (defaultArg (str note "content") "")
+      Summary = str note "summary" |> Option.map Sanitizer.toText |> Option.filter (fun s -> s <> "")
+      Sensitive = flag note "sensitive"
+      Language = language note
+      Attachments = attachments allowHttp note }
+
 /// The ids a note is addressed to in `to` or `cc`; a field the note lacks is read from the activity
 let private addressed (activity: JsonNode) (note: JsonObject) (name: string) : string list =
     if isNull note[name] then iris activity[name] else iris note[name]

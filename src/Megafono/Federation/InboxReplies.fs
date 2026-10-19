@@ -46,22 +46,22 @@ let private replyObject
     (published: DateTimeOffset)
     (updated: DateTimeOffset option)
     : Events.ReplyObject =
-    let allowHttp = env.Remote.AllowPrivateAddresses
+    let fields = fieldsOf env.Remote.AllowPrivateAddresses note
 
-    { Id = (str note "id").Value
-      Url = urlOf allowHttp note["url"]
-      Type = (str note "type").Value
-      Content = Sanitizer.sanitizeHtml (defaultArg (str note "content") "")
-      Summary = str note "summary" |> Option.map Sanitizer.toText |> Option.filter (fun s -> s <> "")
-      Sensitive = flag note "sensitive"
-      Language = language note
+    { Id = fields.NoteId
+      Url = fields.NoteUrl
+      Type = fields.NoteType
+      Content = fields.Content
+      Summary = fields.Summary
+      Sensitive = fields.Sensitive
+      Language = fields.Language
       Published = published
       Updated = updated
       Audience = audience
       InReplyTo = (idOf note["inReplyTo"]).Value
       Parent = parent
       Thread = threadRef env.Domain root
-      Attachments = attachments allowHttp note }
+      Attachments = fields.Attachments }
 
 /// True when the instance or the author of the thread's root blocks the signer, or the local author of the reply's
 /// parent does (FR-006): a block of either keeps the signer out of what they said

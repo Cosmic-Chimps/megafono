@@ -173,7 +173,12 @@ let private dispatchCreate (env: Env) (signer: RemoteActor) (activity: JsonNode)
         | Some createId, Some actorId when actorId = signer.Id && isOnSignerHost signer createId ->
             match! InboxNotes.noteOf env signer activity["object"] with
             | None -> return Ignored "no note attributed to the signer"
-            | Some note -> return! InboxReplies.createReply env signer activity note
+            | Some note ->
+                // Two independent paths on the one note, each in its own transaction (R-54): the reply into one of the
+                // app's threads, and the post for the users who follow the author
+                let! reply = InboxReplies.createReply env signer activity note
+                let! post = InboxPosts.createPost env signer activity note
+                return combine reply post
         | _ -> return Ignored "the Create is not the signer's own"
     }
 
