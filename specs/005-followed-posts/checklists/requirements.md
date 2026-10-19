@@ -39,6 +39,7 @@
   events for a reply into its thread, other followers get feed events (FR-003); edits go only to users who still
   follow, deletions to everyone who was told about the post (FR-005, FR-006, Assumptions); a direct post goes only to
   addressed followers (FR-002).
-- The draft `research.md`, `data-model.md` and `contracts/` in this directory predate this spec and contradict it in
-  places (both reply and feed events for one user, edits to unfollowed users, direct posts skipped); `/speckit-plan`
-  regenerates them.
+- Clarified 2026-10-18 (four answers in the spec's Clarifications): one event per following user, replies to third
+  parties included, boosts dropped, deletions but not edits after an unfollow. The plan, research, data model and
+  contracts were regenerated from the clarified spec; the feature is implemented and verified (spec status
+  Implemented, tasks T001–T025 done, interop green on GoToSocial 0.22.2 and Mastodon 4.7.3).

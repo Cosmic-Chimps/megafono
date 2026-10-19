@@ -87,8 +87,8 @@ The stack is F# on .NET 10, Oxpecker, raw Npgsql and Postgres. Tests use xUnit v
 
 Features 001 (federation core, [`specs/001-federation-core`](specs/001-federation-core)), 002 (replies and threads,
 [`specs/002-replies-threads`](specs/002-replies-threads)), 003 (actor deletion,
-[`specs/003-actor-deletion`](specs/003-actor-deletion)) and 004 (blocks, [`specs/004-blocks`](specs/004-blocks)) are
-done; each folder holds the spec, plan and tasks. [`docs/vision.md`](docs/vision.md) holds the product vision.
+[`specs/003-actor-deletion`](specs/003-actor-deletion)), 004 (blocks, [`specs/004-blocks`](specs/004-blocks)) and 005
+(posts from followed accounts, [`specs/005-followed-posts`](specs/005-followed-posts)) are done; each folder holds the spec, plan and tasks. [`docs/vision.md`](docs/vision.md) holds the product vision.
 
 ## License
 

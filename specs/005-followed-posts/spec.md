@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-18
 
-**Status**: Draft
+**Status**: Implemented
 
 **Input**: User description: "Inbound posts from followed accounts as webhooks (the app's feed), Megáfono feature 005.
 Source: .alta/tasks/2026-10-10-megafono-inbound-posts-from-followed-accounts-as-webhooks-fe-m6zz.md; builds on 001
