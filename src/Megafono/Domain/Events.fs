@@ -16,6 +16,9 @@ type EventType =
     | ReplyReceived
     | ReplyUpdated
     | ObjectDeleted
+    | PostReceived
+    | PostUpdated
+    | PostDeleted
 
 let typeName (eventType: EventType) : string =
     match eventType with
@@ -28,6 +31,9 @@ let typeName (eventType: EventType) : string =
     | ReplyReceived -> "reply.received"
     | ReplyUpdated -> "reply.updated"
     | ObjectDeleted -> "object.deleted"
+    | PostReceived -> "post.received"
+    | PostUpdated -> "post.updated"
+    | PostDeleted -> "post.deleted"
 
 /// The remote actor an event is about; `Name` is plain text
 type ActorSummary =
@@ -178,20 +184,68 @@ let private threadNode (thread: ThreadRef) : JsonNode =
     node["id"] <- JsonValue.Create thread.Id
     node
 
+/// The note fields `reply.received` and `post.received` share, up to `inReplyTo`; the attachments and what is
+/// specific to each event follow in the caller, so a reply's JSON keeps its field order
+let private noteFields
+    (id: string)
+    (url: string option)
+    (noteType: string)
+    (content: string)
+    (summary: string option)
+    (sensitive: bool)
+    (language: string option)
+    (published: DateTimeOffset)
+    (updated: DateTimeOffset option)
+    (audience: string)
+    (inReplyTo: JsonNode)
+    : JsonObject =
+    let o = JsonObject()
+    o["id"] <- JsonValue.Create id
+    o["url"] <- optionalString url
+    o["type"] <- JsonValue.Create noteType
+    o["content"] <- JsonValue.Create content
+    o["summary"] <- optionalString summary
+    o["sensitive"] <- JsonValue.Create sensitive
+    o["language"] <- optionalString language
+    o["published"] <- iso published
+    o["updated"] <- (match updated with Some u -> iso u | None -> null)
+    o["audience"] <- JsonValue.Create audience
+    o["inReplyTo"] <- inReplyTo
+    o
+
+let private attachmentsNode (attachments: ReplyAttachment list) : JsonNode =
+    let nodes = JsonArray()
+
+    for a in attachments do
+        let node = JsonObject()
+        node["type"] <- JsonValue.Create a.Type
+        node["mediaType"] <- optionalString a.MediaType
+        node["url"] <- JsonValue.Create a.Url
+        node["name"] <- optionalString a.Name
+        nodes.Add node
+
+    nodes
+
+/// The `object` and `extensions` fields of an event; `extensions` stays out (and so null in the envelope) when absent
+let private withExtensions (o: JsonObject) (extensions: JsonNode option) : (string * JsonNode) list =
+    let extra = [ "object", (o :> JsonNode) ]
+    match extensions with Some e -> extra @ [ "extensions", e ] | None -> extra
+
 /// `reply.received` and `reply.updated`; `extensions` (the app's namespace, data under its prefix) is null when absent
 let replyBody (eventType: EventType) (actor: ActorSummary) (reply: ReplyObject) (extensions: JsonNode option) : EventBody =
-    let o = JsonObject()
-    o["id"] <- JsonValue.Create reply.Id
-    o["url"] <- optionalString reply.Url
-    o["type"] <- JsonValue.Create reply.Type
-    o["content"] <- JsonValue.Create reply.Content
-    o["summary"] <- optionalString reply.Summary
-    o["sensitive"] <- JsonValue.Create reply.Sensitive
-    o["language"] <- optionalString reply.Language
-    o["published"] <- iso reply.Published
-    o["updated"] <- (match reply.Updated with Some u -> iso u | None -> null)
-    o["audience"] <- JsonValue.Create reply.Audience
-    o["inReplyTo"] <- JsonValue.Create reply.InReplyTo
+    let o =
+        noteFields
+            reply.Id
+            reply.Url
+            reply.Type
+            reply.Content
+            reply.Summary
+            reply.Sensitive
+            reply.Language
+            reply.Published
+            reply.Updated
+            reply.Audience
+            (JsonValue.Create reply.InReplyTo)
 
     let parent = JsonObject()
     parent["local"] <- JsonValue.Create reply.Parent.Local
@@ -199,25 +253,12 @@ let replyBody (eventType: EventType) (actor: ActorSummary) (reply: ReplyObject) 
     parent["userId"] <- optionalString reply.Parent.UserId
     o["parent"] <- parent
     o["thread"] <- threadNode reply.Thread
-
-    let attachments = JsonArray()
-
-    for a in reply.Attachments do
-        let node = JsonObject()
-        node["type"] <- JsonValue.Create a.Type
-        node["mediaType"] <- optionalString a.MediaType
-        node["url"] <- JsonValue.Create a.Url
-        node["name"] <- optionalString a.Name
-        attachments.Add node
-
-    o["attachment"] <- attachments
-
-    let extra = [ "object", (o :> JsonNode) ]
+    o["attachment"] <- attachmentsNode reply.Attachments
 
     { Type = eventType
       Actor = Some actor
       Follow = None
-      Extra = match extensions with Some e -> extra @ [ "extensions", e ] | None -> extra }
+      Extra = withExtensions o extensions }
 
 /// `object.deleted` for a reply: only its id and thread
 let deletedBody (actor: ActorSummary) (replyId: string) (thread: ThreadRef) : EventBody =
@@ -225,3 +266,54 @@ let deletedBody (actor: ActorSummary) (replyId: string) (thread: ThreadRef) : Ev
     o["id"] <- JsonValue.Create replyId
     o["thread"] <- threadNode thread
     { Type = ObjectDeleted; Actor = Some actor; Follow = None; Extra = [ "object", (o :> JsonNode) ] }
+
+// ---- posts from followed accounts (feature 005, contracts/app-contract.md) ---------------------------------
+
+/// A post of a followed account as the app sees it. `Content` is already sanitized HTML, `Summary` plain text.
+/// Unlike a reply it has no `parent` or `thread`: those describe the app's own threads.
+type PostObject =
+    { Id: string
+      Url: string option
+      /// `Note` or `Article`
+      Type: string
+      Content: string
+      Summary: string option
+      Sensitive: bool
+      Language: string option
+      Published: DateTimeOffset
+      /// Set on `post.updated`
+      Updated: DateTimeOffset option
+      /// `public`, `unlisted`, `followers` or `direct`
+      Audience: string
+      /// The post this one answers, on any server
+      InReplyTo: string option
+      Attachments: ReplyAttachment list }
+
+/// `post.received` and `post.updated`; `extensions` is null when absent
+let postBody (eventType: EventType) (actor: ActorSummary) (post: PostObject) (extensions: JsonNode option) : EventBody =
+    let o =
+        noteFields
+            post.Id
+            post.Url
+            post.Type
+            post.Content
+            post.Summary
+            post.Sensitive
+            post.Language
+            post.Published
+            post.Updated
+            post.Audience
+            (optionalString post.InReplyTo)
+
+    o["attachment"] <- attachmentsNode post.Attachments
+
+    { Type = eventType
+      Actor = Some actor
+      Follow = None
+      Extra = withExtensions o extensions }
+
+/// `post.deleted`: only the post's id
+let postDeletedBody (actor: ActorSummary) (postId: string) : EventBody =
+    let o = JsonObject()
+    o["id"] <- JsonValue.Create postId
+    { Type = PostDeleted; Actor = Some actor; Follow = None; Extra = [ "object", (o :> JsonNode) ] }

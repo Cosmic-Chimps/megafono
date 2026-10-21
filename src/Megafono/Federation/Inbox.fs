@@ -157,16 +157,80 @@ let private envOf (ctx: HttpContext) : Env =
       Remote = ctx.GetService<RemoteActors.Env>()
       Log = ctx.GetService<ILoggerFactory>().CreateLogger "Megafono.Inbox" }
 
+/// `Handled` when either path handled the activity, else `Ignored` with both reasons (R-54); a refusal wins
+let private combine (first: Outcome) (second: Outcome) : Outcome =
+    match first, second with
+    | Refused code, _
+    | _, Refused code -> Refused code
+    | Handled, _
+    | _, Handled -> Handled
+    | Ignored a, Ignored b -> Ignored $"{a}; {b}"
+
+/// `Create` of a note: the activity must be the signer's own; the note is read once and the paths that apply run on it
+let private dispatchCreate (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
+    task {
+        match str activity "id", idOf activity["actor"] with
+        | Some createId, Some actorId when actorId = signer.Id && isOnSignerHost signer createId ->
+            match! InboxNotes.noteOf env signer activity["object"] with
+            | None -> return Ignored "no note attributed to the signer"
+            | Some note ->
+                // Two independent paths on the one note, each in its own transaction (R-54): the reply into one of the
+                // app's threads, and the post for the users who follow the author
+                let! reply = InboxReplies.createReply env signer activity note
+                let! post = InboxPosts.createPost env signer activity note
+                return combine reply post
+        | _ -> return Ignored "the Create is not the signer's own"
+    }
+
+/// `Update` of a note: nothing is fetched unless the note is a reply we recorded from the signer or a post we passed on;
+/// then it is read once, must have the id the activity names, and each path that applies runs on it (R-54)
+let private dispatchUpdate (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
+    task {
+        match str activity "id", idOf activity["actor"], idOf activity["object"] with
+        | Some updateId, Some actorId, Some noteId when actorId = signer.Id && isOnSignerHost signer updateId ->
+            // Before anything is fetched or locked: a reply of the signer's that we recorded, or a post we passed on?
+            let! reply = InboxReplies.lookupReply env signer noteId
+            let! isPost = InboxPosts.lookupPost env signer noteId
+
+            if reply.IsNone && not isPost then
+                return Ignored "not a live reply or post recorded from the signer"
+            else
+                match! InboxNotes.noteOf env signer activity["object"] with
+                | Some note when str note "id" = Some noteId ->
+                    let! replyOutcome =
+                        match reply with
+                        | Some earlier -> InboxReplies.updateReply env signer activity note earlier
+                        | None -> Task.FromResult(Ignored "not a reply we recorded")
+
+                    let! postOutcome =
+                        if isPost then InboxPosts.updatePost env signer activity note else Task.FromResult(Ignored "not a post we passed on")
+
+                    return combine replyOutcome postOutcome
+                | _ -> return Ignored "the edited note could not be read from the signer"
+        | _ -> return Ignored "the Update is not the signer's own"
+    }
+
+/// `Delete`: no fetch; the reply path and the feed path each look for what the signer wrote under that id
+let private dispatchDelete (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
+    task {
+        match str activity "id", idOf activity["actor"], idOf activity["object"] with
+        | Some deleteId, Some actorId, Some _ when actorId = signer.Id && isOnSignerHost signer deleteId ->
+            let! reply = InboxReplies.handleDelete env signer activity
+            let! post = InboxPosts.deletePost env signer activity
+            return combine reply post
+        | _ -> return Ignored "the Delete is not the signer's own"
+    }
+
 let private dispatch (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
     match str activity "type" with
     | Some "Follow" -> InboxFollows.handleFollow env signer activity
     | Some "Undo" -> InboxFollows.handleUndo env signer activity
     | Some "Block" -> InboxBlocks.handleBlock env signer activity
-    | Some "Create" -> InboxReplies.handleCreate env signer activity
-    // An edited Note is a reply's Update; anything else is a profile update
-    | Some "Update" when InboxReplies.isNoteUpdate activity -> InboxReplies.handleUpdate env signer activity
+    | Some "Create" -> dispatchCreate env signer activity
+    // An edited Note is a post's Update; anything else is a profile update
+    | Some "Update" when InboxNotes.isNoteUpdate activity -> dispatchUpdate env signer activity
     | Some "Update" -> InboxActors.handleUpdate env signer activity
-    | Some "Delete" -> InboxReplies.handleDelete env signer activity
+    | Some "Delete" -> dispatchDelete env signer activity
     | Some "Accept" -> InboxFollows.handleAccept env signer activity
     | Some "Reject" -> InboxFollows.handleReject env signer activity
     // Everything else is not ours

@@ -196,6 +196,51 @@ them. Edit and delete a reply with `PUT` and `DELETE /internal/objects/{id}`: th
 - A `Group` actor (for example one account per series) is a plain account: it is found, followed and posts like a
   person. Megáfono does not boost its followers' replies, so it is not a Lemmy-style community.
 
+## Posts from followed accounts (a feed)
+
+When one of your users follows a remote account (`POST /internal/actors/{id}/following` with
+`{"target": "@someone@example.social"}`) and that account accepts, its server sends Megáfono the account's posts.
+Megáfono passes them on as webhooks so your app can build the user's feed. The wire shapes are in
+[`specs/005-followed-posts/contracts/`](../specs/005-followed-posts/contracts/).
+
+**What the app receives.** One event per user, in that user's stream: when several of your users follow the same
+account, each gets their own event with the same post.
+
+- `post.received` when a followed account publishes a Note or Article: the post's id, `url`, sanitized `content`,
+  `summary` (the content warning, as text) and `sensitive`, `language`, `published`, attachments as URLs, the
+  `audience` (`public`, `unlisted`, `followers` or `direct`), `inReplyTo` (the post it answers, on any server, or
+  `null`) and the verified author. Replies to other people's posts are included; filter on `inReplyTo` if your feed
+  should not show them.
+- `post.updated`, the same payload with `updated` set, when the author edits it. It goes only to users who still
+  follow the author; `audience` and `published` stay those the post arrived with.
+- `post.deleted` with the post's id when the author deletes it. It goes to every user who received the post, even
+  after they unfollowed, so your app can remove it.
+
+Who gets a post: your users with an **accepted** follow of its author (pending, rejected or removed follows get
+nothing), minus users who block the author or its server and deleted users. A `direct` post goes only to followers it
+is addressed to. Which inbox the post arrived on does not matter: a server sends a post once to Megáfono's shared inbox
+for all your users, and Megáfono works out the recipients from the follows. A post arriving twice, or under another
+activity id, still reaches each user once; GoToSocial's reuse of one activity id for every edit of a post is handled.
+
+When a followed account replies to a post of your app, the author of that thread gets the usual `reply.received`
+(and `reply.updated`, `object.deleted`), not `post.*`; your other users who follow the account get `post.received`.
+No user gets both for one post.
+
+Data your app attached to its own posts (`extensions`) comes back under `extensions` when a followed account's post
+carries data under the same namespace (another instance of your app, say), matched by the full namespace whatever
+prefix it uses. Megáfono knows your namespaces from your publishes and updates: until you publish once with
+`extensions`, feed posts arrive with `extensions: null`.
+
+Megáfono keeps no copy of a post, only which of your users received it (to route edits and deletions), and offers no
+timeline query: your app stores what it shows, from the webhooks.
+
+**What is not passed on.**
+
+- Boosts (`Announce`): acknowledged and dropped. Your users see a followed account's own posts only.
+- Posts published before the follow was accepted: Megáfono does not fetch an account's past posts.
+- Direct posts and mentions from accounts the user does not follow, polls and other types than Note and Article, and
+  a followed account's own deletion.
+
 ## Deleting a user
 
 When a user deletes their account, the app calls `DELETE /internal/actors/{id}` with the user's immutable id
@@ -242,7 +287,7 @@ What a block does, at once and in one step:
   restores none of them.
 - Deliveries to the blocked side are cancelled and none are sent afterwards.
 - Anything the blocked side sends is dropped before it can become a webhook: follow requests, replies (no
-  `reply.received`), edits. For an instance block, its servers get `403` before Megáfono fetches a key or reads the
+  `reply.received`), posts (no `post.received`, `post.updated` or `post.deleted`), edits. For an instance block, its servers get `403` before Megáfono fetches a key or reads the
   request; for a user block, Megáfono answers as if it accepted the activity, so the blocked actor is not told.
 - Fetches signed by the blocked side answer `404`, even for public posts, and the blocked side's replies disappear
   from your users' reply collections (they come back if you lift the block). Megáfono itself fetches nothing from an

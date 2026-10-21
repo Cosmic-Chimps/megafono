@@ -29,6 +29,13 @@ Posts can be conversations. A reply from Mastodon or GoToSocial to a post your a
 `inReplyTo`. A reply your app removes stays on other servers, and replies that never mention one of your actors never
 reach Megáfono. [`docs/operating.md`](docs/operating.md#replies-and-threads) has the details and the limits.
 
+## Following and a feed
+
+When your users follow remote accounts, the posts of those accounts reach your app as `post.received` (edits as
+`post.updated`, deletions as `post.deleted`), one event per following user, so your app can build a feed. Megáfono
+keeps no copy and offers no timeline query; boosts and past posts are not passed on.
+[`docs/operating.md`](docs/operating.md#posts-from-followed-accounts-a-feed) has the details and the limits.
+
 ## Blocks
 
 A user can block a remote account or a whole server, and the operator can block a server (or one account) for the
@@ -80,8 +87,8 @@ The stack is F# on .NET 10, Oxpecker, raw Npgsql and Postgres. Tests use xUnit v
 
 Features 001 (federation core, [`specs/001-federation-core`](specs/001-federation-core)), 002 (replies and threads,
 [`specs/002-replies-threads`](specs/002-replies-threads)), 003 (actor deletion,
-[`specs/003-actor-deletion`](specs/003-actor-deletion)) and 004 (blocks, [`specs/004-blocks`](specs/004-blocks)) are
-done; each folder holds the spec, plan and tasks. [`docs/vision.md`](docs/vision.md) holds the product vision.
+[`specs/003-actor-deletion`](specs/003-actor-deletion)), 004 (blocks, [`specs/004-blocks`](specs/004-blocks)) and 005
+(posts from followed accounts, [`specs/005-followed-posts`](specs/005-followed-posts)) are done; each folder holds the spec, plan and tasks. [`docs/vision.md`](docs/vision.md) holds the product vision.
 
 ## License
 

@@ -403,6 +403,11 @@ let private publish (appUserId: string) : EndpointHandler =
                                     ()
                                 | None -> ()
 
+                                // The app's own namespaces, so a followed account's posts using one are recognized (R-58)
+                                match parsed.Extensions with
+                                | Some extensions -> do! FeedPosts.recordNamespace tx extensions.Namespace
+                                | None -> ()
+
                                 do! storeActivity tx time actor.AppUserId objectGuid activityGuid "Create" audience activity plan.PersonalInboxes
                                 do! tx.CommitAsync()
                                 ctx.SetStatusCode 201
@@ -570,6 +575,10 @@ let private update (objectId: string) : EndpointHandler =
                             command.Parameters.AddWithValue("now", now.UtcDateTime) |> ignore
                             command.Parameters.AddWithValue("id", objectGuid) |> ignore
                             let! _ = command.ExecuteNonQueryAsync()
+                            match parsed.Extensions with
+                            | Some extensions -> do! FeedPosts.recordNamespace tx extensions.Namespace
+                            | None -> ()
+
                             do! storeActivity tx time stored.AppUserId objectGuid activityGuid "Update" stored.Audience activity plan.PersonalInboxes
                             do! tx.CommitAsync()
                             return! ctx.WriteJson(publishResponse options.Domain objectGuid stored.ThreadRoot)

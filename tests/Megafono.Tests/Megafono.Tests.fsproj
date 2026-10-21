@@ -57,7 +57,10 @@
     <Compile Include="Integration/InboundReplyChangesTests.fs" />
     <Compile Include="Integration/CapturedRepliesTests.fs" />
     <Compile Include="Integration/CapturedBlocksTests.fs" />
+    <Compile Include="Integration/CapturedPostsTests.fs" />
     <Compile Include="Integration/OutboundRepliesTests.fs" />
+    <Compile Include="Integration/FeedPostsTests.fs" />
+    <Compile Include="Integration/InboundPostsTests.fs" />
     <Compile Include="SmokeTests.fs" />
     <Compile Include="Integration/GatewayTests.fs" />
     <Compile Include="Integration/SampleAppTests.fs" />

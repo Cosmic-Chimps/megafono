@@ -1,0 +1,63 @@
+{
+  "capturedAt": "2026-10-19T18:24:03.4432930Z",
+  "activityType": "Delete",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "Mastodon/4.7.3 (http.rb/5.3.1; \u002Bhttps://mastodon.test/)"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/activity\u002Bjson"
+    },
+    {
+      "name": "Date",
+      "value": "Mon, 19 Oct 2026 18:24:03 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "543"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=Vk3r\u002BwffrRQfH\u002Bkutfa3GeuYD4ma6BANAK1Qq6ESCpA="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://mastodon.test/ap/users/117468970235069272#rsa-236046807ccedf70\u0022,algorithm=\u0022rsa-sha256\u0022,headers=\u0022host date content-type digest (request-target)\u0022,signature=\u0022PniGt/FlmHvM1Rn2yagH6FDmYCXCCgMkY00BtPeG8gzNfZj2Bl6tq7HI6B/2GRTe7Zrugy4ZAvVDbTWk24Rrj3euudwRfz821mRlRyh8g\u002BtFe\u002BPMFolO5g0PK19p70vNlImluX7RDTIV9HGeJN0pRIjaVkMjKmxzxC948YwbWya2l4LYtRhttA6NAtjLNYfuyiur7YEBUOV2SJRkB1WV1MMucUVBHEAlyfCV5w\u002Bg9c7sGM6OcBAR94wIOt1HVr8ICFcfe8fW9Vaz/agMjVYimOI4U63jd/aJJb7/Pu\u002BDAaPfONuDfbYa/BT6V2pc3JGRzOzfqvk176z9sRK4J\u002BvJ9A==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.24.0.7"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6WyJodHRwczovL3d3dy53My5vcmcvbnMvYWN0aXZpdHlzdHJlYW1zIix7Im9zdGF0dXMiOiJodHRwOi8vb3N0YXR1cy5vcmcjIiwiYXRvbVVyaSI6Im9zdGF0dXM6YXRvbVVyaSJ9XSwiaWQiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDY4OTcwMjM1MDY5MjcyL3N0YXR1c2VzLzExNzQ2ODk3MDQ3ODc5ODg5MCNkZWxldGUiLCJ0eXBlIjoiRGVsZXRlIiwiYWN0b3IiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDY4OTcwMjM1MDY5MjcyIiwidG8iOlsiaHR0cHM6Ly93d3cudzMub3JnL25zL2FjdGl2aXR5c3RyZWFtcyNQdWJsaWMiXSwib2JqZWN0Ijp7ImlkIjoiaHR0cHM6Ly9tYXN0b2Rvbi50ZXN0L2FwL3VzZXJzLzExNzQ2ODk3MDIzNTA2OTI3Mi9zdGF0dXNlcy8xMTc0Njg5NzA0Nzg3OTg4OTAiLCJ0eXBlIjoiVG9tYnN0b25lIiwiYXRvbVVyaSI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC9hcC91c2Vycy8xMTc0Njg5NzAyMzUwNjkyNzIvc3RhdHVzZXMvMTE3NDY4OTcwNDc4Nzk4ODkwIn19",
+  "body": "{\u0022@context\u0022:[\u0022https://www.w3.org/ns/activitystreams\u0022,{\u0022ostatus\u0022:\u0022http://ostatus.org#\u0022,\u0022atomUri\u0022:\u0022ostatus:atomUri\u0022}],\u0022id\u0022:\u0022https://mastodon.test/ap/users/117468970235069272/statuses/117468970478798890#delete\u0022,\u0022type\u0022:\u0022Delete\u0022,\u0022actor\u0022:\u0022https://mastodon.test/ap/users/117468970235069272\u0022,\u0022to\u0022:[\u0022https://www.w3.org/ns/activitystreams#Public\u0022],\u0022object\u0022:{\u0022id\u0022:\u0022https://mastodon.test/ap/users/117468970235069272/statuses/117468970478798890\u0022,\u0022type\u0022:\u0022Tombstone\u0022,\u0022atomUri\u0022:\u0022https://mastodon.test/ap/users/117468970235069272/statuses/117468970478798890\u0022}}",
+  "signer": {
+    "actorId": "https://mastodon.test/ap/users/117468970235069272",
+    "keyId": "https://mastodon.test/ap/users/117468970235069272#rsa-236046807ccedf70",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAljb699IeBDrqs2E2qQeL\neRS/0Q7Ay3EfXpT7BH3AYCwOWoR\u002BSqG0wc84J9bl/hbPJnZwZafatW4OvjHMQS6m\n0m6rOzgzQLs4w4CIVELIeuPrtnEx87kuPHJvAHkF4jvVLEhEkv23FNLliuoQvgCd\nMroEOqDD0bCXJHFAmw8zb1H0jcTkMVQoXBK8Ew/LJrDxtgmnC6THBjNlno1WQb84\nBjT\u002BNgxUmAKTYHUeBtdxi\u002BciNbgv9zmR5QBfrJ26Lc96kv98LfHCH\u002B11y7c0QRE3\nWCu1MaPItOVp7LxgLH1mo0dmWRyPTZB49bHnZnkxNFTTwKwbQBjYq0ZQwtOsAVtg\nfQIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}

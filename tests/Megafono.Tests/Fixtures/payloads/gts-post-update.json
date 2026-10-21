@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-10-19T18:23:07.8726130Z",
+  "activityType": "Update",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "gotosocial/0.22.2\u002Bgit-fb2bf13 (\u002Bhttps://gts.test)"
+    },
+    {
+      "name": "Accept-Charset",
+      "value": "utf-8"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "zstd,gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/ld\u002Bjson; profile=\u0022https://www.w3.org/ns/activitystreams\u0022"
+    },
+    {
+      "name": "Date",
+      "value": "Mon, 19 Oct 2026 18:23:07 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "1696"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=KFIpM\u002BxoO5IjaH5hf\u002BH2DLBqC8/KCT/QqwtzJMPYwuQ="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://gts.test/users/bobfolxc/main-key\u0022,algorithm=\u0022hs2019\u0022,headers=\u0022(request-target) host date digest\u0022,signature=\u0022R5psqkAKk0lGxOzTBJghQBvcpwvZiD0\u002BI7gK11rOnV0yD9KpdY7usee59LpkSJvAZ8Uw3yRoOSs/smNLQMp8cRa2bRQFfeoogfNnXTHih6qfSwrjQ8IhFeBGC4hUAva7TimOfcHy\u002BisK8pufNiMjyV/44hRe0OI37uPdD\u002BBe8B5KoLRjXQbWDNoIhgmiE\u002B2OXwAN4TrQjFWy54mYyomZZbJs8XoKtt3LwoeQdjRZQBoste25TmoR1e7yvvkaYEkWLV53rtoV/LP/chdYHcaAJ0Ftic7ULuAyCQTUZ06fdx6mty76V\u002BFhS1B4W83AktUIee5SUDaBzeQ4wFOr4g0K0A==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.24.0.3"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6WyJodHRwczovL2dvdG9zb2NpYWwub3JnL25zIiwiaHR0cHM6Ly93d3cudzMub3JnL25zL2FjdGl2aXR5c3RyZWFtcyJdLCJhY3RvciI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMiLCJjYyI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMvZm9sbG93ZXJzIiwiaWQiOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2JvYmZvbHhjL3N0YXR1c2VzLzAxTTVBUEVCMjBKN1dWV1RUSlM2NTBFRFgzL2FjdGl2aXR5I1VwZGF0ZSIsIm9iamVjdCI6eyJhdHRyaWJ1dGVkVG8iOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2JvYmZvbHhjIiwiY2MiOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2JvYmZvbHhjL2ZvbGxvd2VycyIsImNvbnRlbnQiOiJcdTAwM2NwXHUwMDNlZWRpdGVkczV2NDQgc3RpbGwgRnJpZXJlbiBTMlx1MDAzYy9wXHUwMDNlIiwiY29udGVudE1hcCI6eyJlbiI6Ilx1MDAzY3BcdTAwM2VlZGl0ZWRzNXY0NCBzdGlsbCBGcmllcmVuIFMyXHUwMDNjL3BcdTAwM2UifSwiaWQiOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2JvYmZvbHhjL3N0YXR1c2VzLzAxTTVBUEVCMjBKN1dWV1RUSlM2NTBFRFgzIiwiaW50ZXJhY3Rpb25Qb2xpY3kiOnsiY2FuQW5ub3VuY2UiOnsiYXV0b21hdGljQXBwcm92YWwiOlsiaHR0cHM6Ly93d3cudzMub3JnL25zL2FjdGl2aXR5c3RyZWFtcyNQdWJsaWMiXX0sImNhbkxpa2UiOnsiYXV0b21hdGljQXBwcm92YWwiOlsiaHR0cHM6Ly93d3cudzMub3JnL25zL2FjdGl2aXR5c3RyZWFtcyNQdWJsaWMiXX0sImNhblF1b3RlIjp7ImF1dG9tYXRpY0FwcHJvdmFsIjpbImh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMiXX0sImNhblJlcGx5Ijp7ImF1dG9tYXRpY0FwcHJvdmFsIjpbImh0dHBzOi8vd3d3LnczLm9yZy9ucy9hY3Rpdml0eXN0cmVhbXMjUHVibGljIl19fSwicHVibGlzaGVkIjoiMjAyNi0xMC0xOVQxODoyMzowN1oiLCJyZXBsaWVzIjp7ImZpcnN0Ijp7ImlkIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2Jmb2x4Yy9zdGF0dXNlcy8wMU01QVBFQjIwSjdXVldUVEpTNjUwRURYMy9yZXBsaWVzP3BhZ2U9dHJ1ZSIsIm5leHQiOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2JvYmZvbHhjL3N0YXR1c2VzLzAxTTVBUEVCMjBKN1dWV1RUSlM2NTBFRFgzL3JlcGxpZXM/cGFnZT10cnVlXHUwMDI2b25seV9vdGhlcl9hY2NvdW50cz1mYWxzZSIsInBhcnRPZiI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMvc3RhdHVzZXMvMDFNNUFQRUIyMEo3V1ZXVFRKUzY1MEVEWDMvcmVwbGllcyIsInR5cGUiOiJDb2xsZWN0aW9uUGFnZSJ9LCJpZCI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMvc3RhdHVzZXMvMDFNNUFQRUIyMEo3V1ZXVFRKUzY1MEVEWDMvcmVwbGllcyIsInR5cGUiOiJDb2xsZWN0aW9uIn0sInRvIjoiaHR0cHM6Ly93d3cudzMub3JnL25zL2FjdGl2aXR5c3RyZWFtcyNQdWJsaWMiLCJ0eXBlIjoiTm90ZSIsInVwZGF0ZWQiOiIyMDI2LTEwLTE5VDE4OjIzOjA3WiIsInVybCI6Imh0dHBzOi8vZ3RzLnRlc3QvQGJvYmZvbHhjL3N0YXR1c2VzLzAxTTVBUEVCMjBKN1dWV1RUSlM2NTBFRFgzIn0sInB1Ymxpc2hlZCI6IjIwMjYtMTAtMTlUMTg6MjM6MDdaIiwidG8iOiJodHRwczovL3d3dy53My5vcmcvbnMvYWN0aXZpdHlzdHJlYW1zI1B1YmxpYyIsInR5cGUiOiJVcGRhdGUifQ==",
+  "body": "{\u0022@context\u0022:[\u0022https://gotosocial.org/ns\u0022,\u0022https://www.w3.org/ns/activitystreams\u0022],\u0022actor\u0022:\u0022https://gts.test/users/bobfolxc\u0022,\u0022cc\u0022:\u0022https://gts.test/users/bobfolxc/followers\u0022,\u0022id\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB20J7WVWTTJS650EDX3/activity#Update\u0022,\u0022object\u0022:{\u0022attributedTo\u0022:\u0022https://gts.test/users/bobfolxc\u0022,\u0022cc\u0022:\u0022https://gts.test/users/bobfolxc/followers\u0022,\u0022content\u0022:\u0022\\u003cp\\u003eediteds5v44 still Frieren S2\\u003c/p\\u003e\u0022,\u0022contentMap\u0022:{\u0022en\u0022:\u0022\\u003cp\\u003eediteds5v44 still Frieren S2\\u003c/p\\u003e\u0022},\u0022id\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB20J7WVWTTJS650EDX3\u0022,\u0022interactionPolicy\u0022:{\u0022canAnnounce\u0022:{\u0022automaticApproval\u0022:[\u0022https://www.w3.org/ns/activitystreams#Public\u0022]},\u0022canLike\u0022:{\u0022automaticApproval\u0022:[\u0022https://www.w3.org/ns/activitystreams#Public\u0022]},\u0022canQuote\u0022:{\u0022automaticApproval\u0022:[\u0022https://gts.test/users/bobfolxc\u0022]},\u0022canReply\u0022:{\u0022automaticApproval\u0022:[\u0022https://www.w3.org/ns/activitystreams#Public\u0022]}},\u0022published\u0022:\u00222026-10-19T18:23:07Z\u0022,\u0022replies\u0022:{\u0022first\u0022:{\u0022id\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB20J7WVWTTJS650EDX3/replies?page=true\u0022,\u0022next\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB20J7WVWTTJS650EDX3/replies?page=true\\u0026only_other_accounts=false\u0022,\u0022partOf\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB20J7WVWTTJS650EDX3/replies\u0022,\u0022type\u0022:\u0022CollectionPage\u0022},\u0022id\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB20J7WVWTTJS650EDX3/replies\u0022,\u0022type\u0022:\u0022Collection\u0022},\u0022to\u0022:\u0022https://www.w3.org/ns/activitystreams#Public\u0022,\u0022type\u0022:\u0022Note\u0022,\u0022updated\u0022:\u00222026-10-19T18:23:07Z\u0022,\u0022url\u0022:\u0022https://gts.test/@bobfolxc/statuses/01M5APEB20J7WVWTTJS650EDX3\u0022},\u0022published\u0022:\u00222026-10-19T18:23:07Z\u0022,\u0022to\u0022:\u0022https://www.w3.org/ns/activitystreams#Public\u0022,\u0022type\u0022:\u0022Update\u0022}",
+  "signer": {
+    "actorId": "https://gts.test/users/bobfolxc",
+    "keyId": "https://gts.test/users/bobfolxc/main-key",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyj\u002BDzrh84bNopRDLQ3aL\nM9aPFkbx3rXCuHs3JLQxQxRSjWSXYLKmIFRQFDHukkQSYbl1ixVKbzAwUazBRL6t\nqliijD3zhQDRUl7dhDtCCz3lkP/E5agqV0c2R8Js2Xf2GUk7MLZxHEDU8vPzYvpg\n6eFG5FXPLdWPeEfDghWHAe4leyqAVlt/9ahbla3jvLlENISAUc56OEEbjxQ7IS3a\nrvdg\u002Bnbdkuz4rDo9J8xf1TD862AapH\u002BsKdwQ3K8pCVW6ZClEuHEDcjhCmDnU04Up\nmamKUb8C5NfMYQONjhRGMpy\u002B0LNSkwIIo70F/AI0wtHo7FGbnBOVhALgUcljU0PA\nnwIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}
