@@ -30,6 +30,7 @@ let private start (pg: PostgresFixture) : Task<World> =
 
         app.AddUser { FakeApp.user "u-2" "bot" with Type = "Service" }
         app.AddUser { FakeApp.user "u-3" "club" with Type = "Group"; Summary = None }
+        app.AddUser { FakeApp.user "u-4" "quiet" with Discoverable = Some false; Indexable = Some false }
         let! host = MegafonoHost.start (MegafonoHost.settings cs app.Url (FakeTime()))
         return { App = app; Host = host; Db = NpgsqlDataSource.Create cs }
     }
@@ -89,6 +90,18 @@ type ActorTests(pg: PostgresFixture) =
             Assert.Equal($"{id}#main-key", (prop key "id").GetString())
             Assert.Equal(id, (prop key "owner").GetString())
             Assert.StartsWith("-----BEGIN PUBLIC KEY-----", (prop key "publicKeyPem").GetString())
+        }
+
+    [<Fact>]
+    member _.``discoverable and indexable come from the app's lookup``() : Task =
+        task {
+            let! w = start pg
+            use _ = MegafonoHost.disposer w.Host
+            let client = w.Host.FederationClient()
+            let! _, quiet = getJson client "/ap/actors/u-4"
+            use quietJson = JsonDocument.Parse quiet
+            Assert.False((prop quietJson.RootElement "discoverable").GetBoolean())
+            Assert.False((prop quietJson.RootElement "indexable").GetBoolean())
         }
 
     [<Fact>]

@@ -25,7 +25,11 @@ type FakeUser =
       IconUrl: string option
       ProfileUrl: string
       Type: string
-      Locked: bool }
+      Locked: bool
+      /// Sent only when set, so the default tests keep the old shape (absent means true)
+      Discoverable: bool option
+      /// Sent only when set (absent means false)
+      Indexable: bool option }
 
 let user (id: string) (handle: string) : FakeUser =
     { Id = id
@@ -35,7 +39,9 @@ let user (id: string) (handle: string) : FakeUser =
       IconUrl = None
       ProfileUrl = $"https://app.example/u/{handle}"
       Type = "Person"
-      Locked = false }
+      Locked = false
+      Discoverable = None
+      Indexable = None }
 
 type Mode =
     | Normal
@@ -87,6 +93,8 @@ type FakeApp(token: string, webhookSecret: string) =
         node["profileUrl"] <- JsonValue.Create u.ProfileUrl
         node["type"] <- JsonValue.Create u.Type
         node["locked"] <- JsonValue.Create u.Locked
+        u.Discoverable |> Option.iter (fun v -> node["discoverable"] <- JsonValue.Create v)
+        u.Indexable |> Option.iter (fun v -> node["indexable"] <- JsonValue.Create v)
         node.ToJsonString()
 
     let handleLookup (ctx: HttpContext) : Task =

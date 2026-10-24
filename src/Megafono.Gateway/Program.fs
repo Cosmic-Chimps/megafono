@@ -5,9 +5,11 @@
 /// `ReverseProxy` section of appsettings.json.
 module Megafono.Gateway.Program
 
+open System
 open System.Net
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Hosting
+open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.HttpOverrides
 open Microsoft.AspNetCore.Server.Kestrel.Core
 open Microsoft.Extensions.Configuration
@@ -79,6 +81,9 @@ let buildGateway (args: string[]) (overrides: (string * string) list) : WebAppli
 
     let app = builder.Build()
     if not proxies.IsEmpty then app.UseForwardedHeaders() |> ignore
+    // The gateway's own health check for the platform in front of it: answered here, never proxied, so it says the
+    // gateway is up whatever state the app or Megáfono are in. `/health` stays the app's, through the catch-all.
+    app.MapGet("/healthz", Func<IResult>(fun () -> Results.Text("ok", "text/plain"))) |> ignore
     app.MapReverseProxy() |> ignore
     app
 

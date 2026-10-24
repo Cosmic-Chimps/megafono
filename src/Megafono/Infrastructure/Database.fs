@@ -47,6 +47,10 @@ let private schema =
         END IF;
     END $$;
 
+    -- App-controlled directory and search flags (the app's actor lookup); older rows keep what was hardcoded before
+    ALTER TABLE local_actors ADD COLUMN IF NOT EXISTS discoverable boolean NOT NULL DEFAULT true;
+    ALTER TABLE local_actors ADD COLUMN IF NOT EXISTS indexable boolean NOT NULL DEFAULT false;
+
     CREATE UNIQUE INDEX IF NOT EXISTS ux_local_actors_handle
         ON local_actors (handle) WHERE deleted_at IS NULL;
 

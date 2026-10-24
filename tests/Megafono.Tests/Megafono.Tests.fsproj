@@ -18,6 +18,7 @@
     <Compile Include="Unit/AudienceTests.fs" />
     <Compile Include="Unit/RepliesBuildersTests.fs" />
     <Compile Include="Unit/ActorDeletionBuildersTests.fs" />
+    <Compile Include="Unit/ActorBuildersTests.fs" />
     <Compile Include="Unit/BlocksTests.fs" />
     <Compile Include="Unit/BlockBuildersTests.fs" />
     <Compile Include="Unit/BackoffTests.fs" />

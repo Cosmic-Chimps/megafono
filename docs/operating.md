@@ -145,10 +145,24 @@ header is not taken from the proxy: it must reach the gateway unchanged, which T
 Trusting a whole range in Megáfono means any container in it that can reach the federation port can choose its own
 rate-limit bucket. Keep that range to the platform's container network, never `0.0.0.0/0`.
 
+For the platform's HTTP health check, use `GET /healthz` on port 8080: the gateway answers `200` with the body `ok`
+itself and never proxies it, so it says the gateway is up and nothing about the app or Megáfono. Any other path,
+`/health` included, is proxied as before (`/health` belongs to the app).
+
 ## Profile links
 
 The app's profile pages must live on the same domain as Megáfono (as in the reference deployment, where the
 gateway serves both). Mastodon ignores an actor's profile link on another host and links to the actor id instead.
+
+## Directories and search (`discoverable`, `indexable`)
+
+The app's actor lookup may send two optional booleans per user. `discoverable` (default `true`) says whether the user
+may appear in profile directories and follow suggestions (on Mastodon: the "suggest account to others" and
+directory settings); `indexable` (default `false`) says whether the user's public posts may be found by full-text
+search. Both are requests: other servers may ignore them, as with followers-only (see "What followers-only means"). They
+do not hide the actor: its document (name, summary, icon, `url`) and WebFinger stay public whatever the values, so an
+app with private profiles should send a minimal profile (a neutral name and summary, no icon) for those users. A
+change in either value is sent to followers as an `Update` of the actor when the app calls `PUT /internal/actors/{id}`.
 
 ## Replies and threads
 

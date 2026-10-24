@@ -115,7 +115,42 @@ let private discoverDashed (server: IFediServer) (front: IContainer) (net: Feder
         ()
     }
 
+/// The app's `discoverable` reaches the server through the actor document: a user the app marks private is stored as
+/// not discoverable, and one it says nothing about keeps the default (true)
+let private discoverableFlag (server: IFediServer) (net: FederationNetwork) (pg: PostgresFixture) : Task =
+    task {
+        use! megafono = MegafonoInterop.start net pg []
+        let quiet = uniqueName "quiet"
+        let plain = uniqueName "plain"
+
+        megafono.FakeApp.AddUser
+            { FakeApp.user $"u-{quiet}" quiet with
+                Name = "Quiet Alex"
+                ProfileUrl = $"https://megafono.test/u/{quiet}"
+                Discoverable = Some false
+                Indexable = Some false }
+
+        megafono.FakeApp.AddUser { FakeApp.user $"u-{plain}" plain with Name = "Plain Alex"; ProfileUrl = $"https://megafono.test/u/{plain}" }
+        use! viewer = server.CreateUser "viewer"
+
+        let! quietAccount = pollFor "the quiet user to resolve" (fun () -> viewer.SearchAccount($"{quiet}@megafono.test", true))
+        Assert.Equal("Quiet Alex", quietAccount.DisplayName)
+        Assert.True(quietAccount.Discoverable.HasValue, "the server does not report `discoverable`")
+        Assert.False quietAccount.Discoverable.Value
+
+        let! plainAccount = pollFor "the plain user to resolve" (fun () -> viewer.SearchAccount($"{plain}@megafono.test", true))
+        Assert.True(plainAccount.Discoverable.HasValue, "the server does not report `discoverable`")
+        Assert.True plainAccount.Discoverable.Value
+    }
+
 type DiscoveryTests(net: FederationNetwork, pg: PostgresFixture) =
+
+    [<Fact>]
+    member _.``GoToSocial stores discoverable as the app's lookup says`` () =
+        task {
+            let! gts = net.GoToSocial()
+            do! discoverableFlag gts net pg
+        }
 
     [<Fact>]
     member _.``US1 GoToSocial finds Alex with the name, note and avatar of the fake app`` () =
@@ -140,6 +175,13 @@ type DiscoveryTests(net: FederationNetwork, pg: PostgresFixture) =
 
 [<Trait("Suite", "mastodon")>]
 type MastodonDiscoveryTests(net: FederationNetwork, pg: PostgresFixture) =
+
+    [<Fact>]
+    member _.``Mastodon stores discoverable as the app's lookup says`` () =
+        task {
+            let! mastodon = net.Mastodon()
+            do! discoverableFlag mastodon net pg
+        }
 
     [<Fact>]
     member _.``US1 Mastodon finds Alex with the name, note and avatar of the fake app`` () =

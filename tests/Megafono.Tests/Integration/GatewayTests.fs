@@ -150,6 +150,24 @@ let ``FR-063 Megafono routes reach Megafono and everything else reaches the app`
         })
 
 [<Fact>]
+let ``/healthz answers ok at the gateway without reaching an upstream, and /health still goes to the app`` () =
+    withRig (fun rig ->
+        task {
+            use! response = rig.Client.GetAsync "/healthz"
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode)
+            Assert.Equal("text/plain", response.Content.Headers.ContentType.MediaType)
+            let! text = response.Content.ReadAsStringAsync()
+            Assert.Equal("ok", text)
+            Assert.Empty rig.App.Seen
+            Assert.Empty rig.Megafono.Seen
+
+            let! who = send rig.Client "GET" "/health" "megafono.test" None
+            Assert.Equal("app", who)
+            Assert.Equal("/health", rig.App.Seen[0].Target)
+            Assert.Empty rig.Megafono.Seen
+        })
+
+[<Fact>]
 let ``FR-063 the original Host reaches the upstream unchanged`` () =
     withRig (fun rig ->
         task {

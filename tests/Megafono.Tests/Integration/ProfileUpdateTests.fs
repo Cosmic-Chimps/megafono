@@ -163,6 +163,60 @@ type ProfileUpdateTests(pg: PostgresFixture) =
         }
 
     [<Fact>]
+    member _.``discoverable and indexable are served as the app says, and changing them sends one Update``() : Task =
+        task {
+            let! w = start pg
+            use _ = MegafonoHost.disposer w.Host
+            do! follower w w.One "bob" false "accepted"
+
+            let withFlags discoverable indexable =
+                w.App.AddUser
+                    { FakeApp.user "u-1" "alex" with
+                        ProfileUrl = "https://app.example/u/alex"
+                        Discoverable = Some discoverable
+                        Indexable = Some indexable }
+
+            let served () =
+                task {
+                    let! response = w.Host.FederationClient().GetAsync "/ap/actors/u-1"
+                    let! text = response.Content.ReadAsStringAsync()
+                    use json = JsonDocument.Parse text
+                    return json.RootElement.GetProperty("discoverable").GetBoolean(), json.RootElement.GetProperty("indexable").GetBoolean()
+                }
+
+            let changed (body: string) =
+                use result = JsonDocument.Parse body
+                result.RootElement.GetProperty("changed").GetBoolean()
+
+            // The user was stored with the defaults by `start`; the app now makes it private
+            withFlags false false
+            let! _, first = put w "u-1"
+            Assert.True(changed first)
+            let! flags = served ()
+            Assert.Equal((false, false), flags)
+
+            // The same values again: nothing changes, nothing is sent
+            let! _, second = put w "u-1"
+            Assert.False(changed second)
+
+            do! waitUntil "the Update" (TimeSpan.FromSeconds 20.0) (fun () -> w.One.Posts.Length = 1)
+            use update = JsonDocument.Parse (List.exactlyOne w.One.Posts).Body
+            let actor = update.RootElement.GetProperty("object")
+            Assert.False(actor.GetProperty("discoverable").GetBoolean())
+            Assert.False(actor.GetProperty("indexable").GetBoolean())
+
+            // Each flag alone is a change
+            withFlags true false
+            let! _, third = put w "u-1"
+            Assert.True(changed third)
+            withFlags true true
+            let! _, fourth = put w "u-1"
+            Assert.True(changed fourth)
+            let! flags = served ()
+            Assert.Equal((true, true), flags)
+        }
+
+    [<Fact>]
     member _.``contract an unknown user is 404, an app that is down is 503, and the bearer is required``() : Task =
         task {
             let! w = start pg

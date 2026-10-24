@@ -20,7 +20,9 @@ let profileOf (actor: LocalActor) : ActivityStreams.ActorProfile =
       IconUrl = actor.IconUrl
       ProfileUrl = actor.ProfileUrl
       PublicKeyPem = actor.PublicKeyPem
-      Published = actor.CreatedAt }
+      Published = actor.CreatedAt
+      Discoverable = actor.Discoverable
+      Indexable = actor.Indexable }
 
 /// What an actor id stands for
 type ActorState =

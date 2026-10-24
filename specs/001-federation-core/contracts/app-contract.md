@@ -42,6 +42,8 @@ GET /megafono/actors/{id}
 | `profileUrl` | yes | the human profile page; becomes the actor's `url` |
 | `type` | no | `Person` (default), `Service`, `Group` |
 | `locked` | yes | `true` = every follow waits for approval |
+| `discoverable` | no (added 2026-10-24, optional) | `true` (default when absent or `null`) = other servers may list the actor in profile directories and suggestions; `false` asks them not to. Any other JSON type is rejected like a bad `locked`. A request, not enforcement |
+| `indexable` | no (added 2026-10-24, optional) | `false` (default when absent or `null`) = public posts are not meant for full-text search on other servers; `true` allows it. Any other JSON type is rejected like a bad `locked`. A request, not enforcement |
 
 **404**: the user does not exist. Any other status or a timeout (5 s) counts as "app unavailable":
 Megáfono uses the last known profile for up to 24 hours, then answers 404 itself.

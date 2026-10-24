@@ -371,3 +371,45 @@ type AppClientTests(pg: PostgresFixture) =
               """{"id":"u1","handle":"a","name":"A","profileUrl":"https://a.example","locked":false,"iconUrl":"nope"}"""
               """{"id":"u1","handle":"a","name":"A","profileUrl":"https://a.example","locked":false,"summary":5}""" ] do
             Assert.True((parse bad).IsError, bad)
+
+    [<Fact>]
+    member _.``parseProfile reads discoverable and indexable, with true and false when absent or null``() =
+        let parse = AppClient.parseProfile false
+        let body (extra: string) = """{"id":"u1","handle":"a","name":"A","profileUrl":"https://a.example","locked":false""" + extra + "}"
+        let ok (extra: string) = Result.defaultWith (fun e -> failwith e) (parse (body extra))
+
+        let absent = ok ""
+        Assert.True absent.Discoverable
+        Assert.False absent.Indexable
+
+        let nulls = ok ""","discoverable":null,"indexable":null"""
+        Assert.True nulls.Discoverable
+        Assert.False nulls.Indexable
+
+        let on = ok ""","discoverable":true,"indexable":true"""
+        Assert.True on.Discoverable
+        Assert.True on.Indexable
+
+        let off = ok ""","discoverable":false,"indexable":false"""
+        Assert.False off.Discoverable
+        Assert.False off.Indexable
+
+        for bad in [ ""","discoverable":"yes" """; ""","indexable":1"""; ""","discoverable":{}"""; ""","indexable":"false" """ ] do
+            Assert.True((parse (body bad)).IsError, bad)
+
+        Assert.Equal(Error "'discoverable' must be true or false", parse (body ""","discoverable":"yes" """))
+
+    [<Fact>]
+    member _.``a stored profile keeps discoverable and indexable, and an answer without them gets the defaults``() : Task =
+        task {
+            let! s = setup pg true
+            s.App.AddUser { FakeApp.user "u-30" "quiet" with Discoverable = Some false; Indexable = Some false }
+            let! quiet = s.Client.ByHandle "quiet"
+            Assert.False (found quiet).Discoverable
+            Assert.False (found quiet).Indexable
+
+            s.App.AddUser(FakeApp.user "u-31" "plain")
+            let! plain = s.Client.ByHandle "plain"
+            Assert.True (found plain).Discoverable
+            Assert.False (found plain).Indexable
+        }

@@ -23,7 +23,9 @@ type LocalActor =
       ProfileCheckedAt: DateTimeOffset
       PublicKeyPem: string
       EncPrivateKey: byte[]
-      CreatedAt: DateTimeOffset }
+      CreatedAt: DateTimeOffset
+      Discoverable: bool
+      Indexable: bool }
 
 type LookupResult =
     | Found of LocalActor
@@ -45,7 +47,11 @@ type AppProfile =
       IconUrl: string option
       ProfileUrl: string
       Type: string
-      Locked: bool }
+      Locked: bool
+      /// Optional in the answer: absent or null is true
+      Discoverable: bool
+      /// Optional in the answer: absent or null is false
+      Indexable: bool }
 
 /// What the app answered to an explicit profile fetch
 type FetchResult =
@@ -94,6 +100,15 @@ let private optionalString (root: JsonElement) (name: string) : Result<string op
     | true, value when value.ValueKind = JsonValueKind.String -> Ok(Some(value.GetString()))
     | _ -> Error $"'{name}' must be a string"
 
+/// An optional boolean: absent or null takes the default, any other type is an error
+let private optionalBool (root: JsonElement) (name: string) (fallback: bool) : Result<bool, string> =
+    match root.TryGetProperty name with
+    | false, _ -> Ok fallback
+    | true, v when v.ValueKind = JsonValueKind.Null -> Ok fallback
+    | true, v when v.ValueKind = JsonValueKind.True -> Ok true
+    | true, v when v.ValueKind = JsonValueKind.False -> Ok false
+    | _ -> Error $"'{name}' must be true or false"
+
 /// Parses and validates the 200 body of an actor lookup
 let parseProfile (allowHttp: bool) (body: string) : Result<AppProfile, string> =
     try
@@ -124,6 +139,9 @@ let parseProfile (allowHttp: bool) (body: string) : Result<AppProfile, string> =
                     | true, v when v.ValueKind = JsonValueKind.False -> Ok false
                     | _ -> Error "'locked' is required and must be true or false"
 
+                let! discoverable = optionalBool root "discoverable" true
+                let! indexable = optionalBool root "indexable" false
+
                 let! handle =
                     match Ids.normalizeHandle rawHandle with
                     | Some handle -> Ok handle
@@ -146,7 +164,9 @@ let parseProfile (allowHttp: bool) (body: string) : Result<AppProfile, string> =
                       IconUrl = iconUrl
                       ProfileUrl = profileUrl
                       Type = kind
-                      Locked = locked }
+                      Locked = locked
+                      Discoverable = discoverable
+                      Indexable = indexable }
             }
     with :? JsonException as e ->
         Error $"the answer is not valid JSON: {e.Message}"
@@ -154,7 +174,7 @@ let parseProfile (allowHttp: bool) (body: string) : Result<AppProfile, string> =
 // ---- storage ---------------------------------------------------------------------------------------------
 
 let private columns =
-    "app_user_id, handle, actor_type, locked, name, summary, icon_url, profile_url, profile_checked_at, public_key_pem, enc_private_key, created_at"
+    "app_user_id, handle, actor_type, locked, name, summary, icon_url, profile_url, profile_checked_at, public_key_pem, enc_private_key, created_at, discoverable, indexable"
 
 let private readActor (reader: System.Data.Common.DbDataReader) : LocalActor =
     let optional (i: int) = if reader.IsDBNull i then None else Some(reader.GetString i)
@@ -170,7 +190,9 @@ let private readActor (reader: System.Data.Common.DbDataReader) : LocalActor =
       ProfileCheckedAt = reader.GetFieldValue<DateTimeOffset> 8
       PublicKeyPem = reader.GetString 9
       EncPrivateKey = reader.GetFieldValue<byte[]> 10
-      CreatedAt = reader.GetFieldValue<DateTimeOffset> 11 }
+      CreatedAt = reader.GetFieldValue<DateTimeOffset> 11
+      Discoverable = reader.GetBoolean 12
+      Indexable = reader.GetBoolean 13 }
 
 let private querySingle (command: NpgsqlCommand) =
     task {
@@ -211,6 +233,8 @@ let private bindProfile (command: NpgsqlCommand) (profile: AppProfile) (now: Dat
     add "summary" (orNull profile.Summary)
     add "icon" (orNull profile.IconUrl)
     add "profile" profile.ProfileUrl
+    add "discoverable" profile.Discoverable
+    add "indexable" profile.Indexable
     add "now" now.UtcDateTime
 
 /// A command on the data source, or on the caller's transaction when there is one
@@ -226,7 +250,8 @@ let private updateKnown (env: Env) (tx: NpgsqlTransaction option) (profile: AppP
         use command =
             commandFor env tx
                 $"""UPDATE local_actors SET handle = @handle, actor_type = @type, locked = @locked, name = @name, summary = @summary,
-                    icon_url = @icon, profile_url = @profile, profile_checked_at = @now
+                    icon_url = @icon, profile_url = @profile, discoverable = @discoverable, indexable = @indexable,
+                    profile_checked_at = @now
                     WHERE app_user_id = @id AND deleted_at IS NULL RETURNING {columns}"""
 
         bindProfile command profile now
@@ -243,11 +268,13 @@ let private insertNew (env: Env) (tx: NpgsqlTransaction option) (profile: AppPro
         use command =
             commandFor env tx
                 $"""INSERT INTO local_actors (app_user_id, handle, actor_type, locked, name, summary, icon_url, profile_url,
-                        profile_checked_at, public_key_pem, enc_private_key, created_at)
-                    VALUES (@id, @handle, @type, @locked, @name, @summary, @icon, @profile, @now, @pem, @enc, @now)
+                        discoverable, indexable, profile_checked_at, public_key_pem, enc_private_key, created_at)
+                    VALUES (@id, @handle, @type, @locked, @name, @summary, @icon, @profile, @discoverable, @indexable,
+                        @now, @pem, @enc, @now)
                     ON CONFLICT (app_user_id) DO UPDATE SET handle = EXCLUDED.handle, actor_type = EXCLUDED.actor_type,
                         locked = EXCLUDED.locked, name = EXCLUDED.name, summary = EXCLUDED.summary,
                         icon_url = EXCLUDED.icon_url, profile_url = EXCLUDED.profile_url,
+                        discoverable = EXCLUDED.discoverable, indexable = EXCLUDED.indexable,
                         profile_checked_at = EXCLUDED.profile_checked_at
                     WHERE local_actors.deleted_at IS NULL
                     RETURNING {columns}"""
@@ -343,6 +370,8 @@ let private profileDiffers (before: LocalActor) (after: LocalActor) =
     || before.Summary <> after.Summary
     || before.IconUrl <> after.IconUrl
     || before.ProfileUrl <> after.ProfileUrl
+    || before.Discoverable <> after.Discoverable
+    || before.Indexable <> after.Indexable
 
 let private fetch (env: Env) (id: string) : Task<FetchResult> =
     task {

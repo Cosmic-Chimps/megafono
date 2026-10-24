@@ -46,7 +46,10 @@ type ActorProfile =
       IconUrl: string option
       ProfileUrl: string
       PublicKeyPem: string
-      Published: DateTimeOffset }
+      Published: DateTimeOffset
+      /// Requests to other servers, set by the app (directories and suggestions; full-text search of public posts)
+      Discoverable: bool
+      Indexable: bool }
 
 let private publicKey (keyId: string) (owner: string) (pem: string) : JsonNode =
     let key = JsonObject()
@@ -78,8 +81,8 @@ let actor (domain: string) (profile: ActorProfile) : JsonNode =
     doc["endpoints"] <- endpoints
 
     doc["manuallyApprovesFollowers"] <- flag profile.Locked
-    doc["discoverable"] <- flag true
-    doc["indexable"] <- flag false
+    doc["discoverable"] <- flag profile.Discoverable
+    doc["indexable"] <- flag profile.Indexable
     doc["published"] <- str (iso profile.Published)
 
     profile.IconUrl

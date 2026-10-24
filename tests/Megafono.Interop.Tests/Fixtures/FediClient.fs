@@ -22,6 +22,8 @@ type Account =
       Bot: bool
       /// Set by both servers once a remote account is deleted or suspended (absent from other accounts)
       Suspended: bool
+      /// The actor's `discoverable` as the server stored it; null when the server does not say
+      Discoverable: Nullable<bool>
       StatusesCount: int
       FollowersCount: int }
 

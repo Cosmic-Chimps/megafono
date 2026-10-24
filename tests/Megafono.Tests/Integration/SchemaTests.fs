@@ -166,6 +166,28 @@ type SchemaTests(pg: PostgresFixture) =
             })
 
     [<Fact>]
+    member _.``a database made before discoverable and indexable gets both columns with the old hardcoded values``() : Task =
+        withDatabase (fun dataSource _ ->
+            task {
+                do! Database.initializeSchema dataSource
+                do! execute dataSource "ALTER TABLE local_actors DROP COLUMN discoverable"
+                do! execute dataSource "ALTER TABLE local_actors DROP COLUMN indexable"
+
+                do!
+                    execute
+                        dataSource
+                        "INSERT INTO local_actors (app_user_id, handle, name, profile_url, public_key_pem, enc_private_key) VALUES ('old', 'old', 'N', 'https://app/u', 'pem', '\\x00')"
+
+                do! Database.initializeSchema dataSource
+                do! Database.initializeSchema dataSource
+
+                let! discoverable = scalar dataSource "SELECT discoverable FROM local_actors WHERE app_user_id = 'old'"
+                let! indexable = scalar dataSource "SELECT indexable FROM local_actors WHERE app_user_id = 'old'"
+                Assert.True(discoverable :?> bool)
+                Assert.False(indexable :?> bool)
+            })
+
+    [<Fact>]
     member _.``T010 the checks and uniques of the data model hold``() : Task =
         withDatabase (fun dataSource connectionString ->
             task {
