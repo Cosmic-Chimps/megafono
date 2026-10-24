@@ -10,6 +10,8 @@ images. Add to "Unreleased" as you work; a release renames it.
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-24
+
 ### Added
 - Posts from followed accounts (feature 005): when a local user follows a remote account, that
   account's new, edited and deleted Notes and Articles reach the app as `post.received`,
