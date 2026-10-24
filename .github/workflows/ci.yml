@@ -11,9 +11,11 @@ on:
 permissions:
   contents: read
 
+# A newer push to a branch cancels its older run; never on main, where the release workflow runs these
+# tests too (as a called workflow) and must not lose them to a push that lands meanwhile
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build-and-test:
@@ -21,6 +23,27 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
+      # A merge must not move entries into a released CHANGELOG section (a branch made before a release
+      # does, and then the next release finds Unreleased empty). Compare with the commit before this
+      # push, or with a PR's base. The release workflow calls this file too; there the step is skipped.
+      - name: Released changelog sections are unchanged
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          MESSAGE: ${{ github.event.head_commit.message || github.event.pull_request.title }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "No earlier commit to compare with."; exit 0
+          fi
+          case "$MESSAGE" in
+            *"[edit released changelog]"*) echo "A released section may change: the commit or PR says so."; exit 0 ;;
+          esac
+          git fetch -q --depth=1 origin "$BASE"
+          if ! git show "$BASE:CHANGELOG.md" > "$RUNNER_TEMP/base-CHANGELOG.md" 2>/dev/null; then
+            echo "The earlier commit had no CHANGELOG.md."; exit 0
+          fi
+          .github/scripts/changelog.sh released "$RUNNER_TEMP/base-CHANGELOG.md"
 
       - uses: actions/setup-dotnet@v4
         with:

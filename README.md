@@ -51,16 +51,23 @@ it reaches your app, and its signed fetches answer 404. A user block of an accou
 [`docs/operating.md`](docs/operating.md) has the full walk-through, every setting, the master key and the gateway
 routing rules.
 
-## Images
+## Images and releases
 
-Each release tag (`v0.1.0`) publishes two multi-arch (amd64, arm64) images:
+Each release publishes two multi-arch (amd64, arm64) images:
 
 - `ghcr.io/cosmic-chimps/megafono`: the service (8080 federation, 8081 internal API).
 - `ghcr.io/cosmic-chimps/megafono-gateway`: the reference YARP gateway that splits a domain by path between
   Megáfono and the app. Without a certificate it serves plain http on 8080, for running behind a TLS proxy.
 
-Tags: `0.1.0`, `0.1` and `latest` (prereleases such as `v0.2.0-rc.1` get only their own tag). Pin a version in
-production. The workflow is [`.github/workflows/release.yml`](.github/workflows/release.yml).
+Tags: `0.2.0`, `0.2` and `latest` (prereleases such as `0.3.0-rc.1` get only their own tag). Pin a version in
+production.
+
+A release is made from GitHub: Actions › release › Run workflow › branch `main` › version `X.Y.Z` (no `v`). The
+workflow runs the tests, turns the "Unreleased" section of [`CHANGELOG.md`](CHANGELOG.md) into the version's
+section, commits and tags that on `main`, builds and pushes the images, and publishes the GitHub release with
+that section as its notes. It refuses a version whose "Unreleased" section is empty, so every change that matters
+to an operator or an integrating app goes under "Unreleased" as it is made. Pushing a tag `vX.Y.Z` does the same.
+The workflow is [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
 ## Privacy limit
 
