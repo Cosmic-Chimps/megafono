@@ -144,3 +144,37 @@ type UpdateDeleteTests(pg: PostgresFixture) =
             use! unsigned = federationGet rig (objectPath id) []
             Assert.Equal(HttpStatusCode.Gone, unsigned.StatusCode)
         }
+
+    [<Fact>]
+    member _.``005 R-58 a publish or an update with extensions records the namespace once, one without records none``() : Task =
+        task {
+            let! rig = start pg [ "alice" ]
+            use _ = disposeRig rig
+            let namespaces () = Publishing.strings rig.Db "SELECT namespace FROM extension_namespaces ORDER BY 1"
+
+            let withExtensions (ns: string) (prefix: string) =
+                let body = publishBody "public" "<p>v1</p>"
+                body["extensions"] <- JsonNode.Parse $"""{{"namespace":"{ns}","prefix":"{prefix}","data":{{"episode":1}}}}"""
+                body
+
+            // no extensions: nothing recorded
+            let! _ = publish rig "u-1" "public" "<p>plain</p>"
+            let! none = namespaces ()
+            Assert.Empty none
+
+            // a publish with extensions records its namespace; a repeat (another object, another prefix) adds nothing
+            let! created, _ = publishRaw rig "u-1" ((withExtensions "https://app.example/ns#" "app").ToJsonString()) None
+            Assert.Equal(201, created)
+            let! _, _ = publishRaw rig "u-1" ((withExtensions "https://app.example/ns#" "x").ToJsonString()) None
+            let! first = namespaces ()
+            Assert.Equal<string list>([ "https://app.example/ns#" ], first)
+
+            // an update that brings another namespace records it
+            let! id = publish rig "u-1" "public" "<p>v1</p>"
+
+            let update = JsonNode.Parse """{"object":{"type":"Note","content":"<p>v2</p>"},"extensions":{"namespace":"https://other.example/ns#","prefix":"o","data":{"a":1}}}"""
+            let! status, _ = put rig id (update.ToJsonString())
+            Assert.Equal(200, status)
+            let! second = namespaces ()
+            Assert.Equal<string list>([ "https://app.example/ns#"; "https://other.example/ns#" ], second)
+        }

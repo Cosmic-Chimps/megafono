@@ -9,8 +9,8 @@ open Megafono.Tests.TestSupport
 open Megafono.Tests.Fixtures.PostgresFixture
 
 let private expectedTables =
-    [ "activities"; "app_events"; "blocks"; "deliveries"; "follows"; "instance_actor"; "local_actors"; "objects"
-      "processed_activities"; "remote_actors"; "remote_hosts"; "replies" ]
+    [ "activities"; "app_events"; "blocks"; "deliveries"; "extension_namespaces"; "feed_posts"; "follows"; "instance_actor"
+      "local_actors"; "objects"; "processed_activities"; "remote_actors"; "remote_hosts"; "replies" ]
 
 let private scalar (dataSource: NpgsqlDataSource) (sql: string) =
     task {
@@ -384,4 +384,78 @@ type SchemaTests(pg: PostgresFixture) =
                 do! execute dataSource "INSERT INTO activities (id, local_actor, activity_type, audience, body) VALUES (gen_random_uuid(), 'u1', 'Block', 'direct', '\\x7b7d')"
                 let! checks = scalar dataSource "SELECT count(*) FROM pg_constraint WHERE conname = 'activities_activity_type_check'"
                 Assert.Equal(1L, checks :?> int64)
+            })
+
+    [<Fact>]
+    member _.``005 data-model feed_posts: audience and state are checked, one row per post and user, the same post for two users``() : Task =
+        withDatabase (fun dataSource _ ->
+            task {
+                do! Database.initializeSchema dataSource
+
+                let actor id handle =
+                    $"INSERT INTO local_actors (app_user_id, handle, name, profile_url, public_key_pem, enc_private_key) VALUES ('{id}', '{handle}', 'N', 'https://app/u', 'pem', '\\x00')"
+
+                do! execute dataSource (actor "u1" "alex")
+                do! execute dataSource (actor "u2" "bea")
+
+                do!
+                    execute
+                        dataSource
+                        "INSERT INTO remote_actors (id, host, handle, actor_type, inbox, key_id, public_key_pem) VALUES ('https://h/bob', 'h', 'bob@h', 'Person', 'https://h/bob/inbox', 'https://h/bob#main-key', 'pem')"
+
+                let post (user: string) (audience: string) (state: string) =
+                    $"INSERT INTO feed_posts (id, local_actor, remote_actor, audience, state, published_at) VALUES ('https://h/bob/1', '{user}', 'https://h/bob', '{audience}', '{state}', now())"
+
+                // the audience and the state are checked ('mutuals' is not a received audience)
+                do! rejected dataSource checkViolation (post "u1" "mutuals" "live")
+                do! rejected dataSource checkViolation (post "u1" "public" "gone")
+
+                for audience in [ "public"; "unlisted"; "followers"; "direct" ] do
+                    do! execute dataSource "DELETE FROM feed_posts"
+                    do! execute dataSource (post "u1" audience "live")
+
+                // one row per post and user, and the same post may be recorded for two users
+                do! rejected dataSource uniqueViolation (post "u1" "public" "live")
+                do! execute dataSource (post "u2" "public" "live")
+
+                // the user and the author must exist
+                do! rejected dataSource "23503" (post "nobody" "public" "live")
+            })
+
+    [<Fact>]
+    member _.``005 R-58 extension_namespaces is filled once from the stored objects' context, then left alone``() : Task =
+        withDatabase (fun dataSource _ ->
+            task {
+                do! Database.initializeSchema dataSource
+
+                do!
+                    execute
+                        dataSource
+                        "INSERT INTO local_actors (app_user_id, handle, name, profile_url, public_key_pem, enc_private_key) VALUES ('u1', 'alex', 'N', 'https://app/u', 'pem', '\\x00')"
+
+                // an object as Megáfono stores it: its own terms, and the app's namespace under a prefix
+                let context =
+                    """["https://www.w3.org/ns/activitystreams",{"ostatus":"http://ostatus.org#","conversation":"ostatus:conversation","gts":"https://gotosocial.org/ns#","interactionPolicy":{"@id":"gts:interactionPolicy","@type":"@id"},"app":"https://app.example/ns#"}]"""
+
+                let insert (id: string) (document: string) =
+                    $"INSERT INTO objects (id, local_actor, audience, object_type, document) VALUES ('{id}', 'u1', 'public', 'Note', '{document}')"
+
+                do! execute dataSource (insert "6f1c0000-0000-4000-8000-000000000001" $"""{{"@context":{context}}}""")
+                // a context that is a plain string, and an object without one, add nothing
+                do! execute dataSource (insert "6f1c0000-0000-4000-8000-000000000002" """{"@context":"https://www.w3.org/ns/activitystreams"}""")
+                do! execute dataSource (insert "6f1c0000-0000-4000-8000-000000000003" "{}")
+
+                // Back to a database made before this feature, then start again
+                do! execute dataSource "DROP TABLE extension_namespaces"
+                do! Database.initializeSchema dataSource
+
+                let! namespaces = scalar dataSource "SELECT string_agg(namespace, ',' ORDER BY namespace) FROM extension_namespaces"
+                Assert.Equal("https://app.example/ns#", namespaces :?> string)
+
+                // starting again changes nothing, and does not scan the objects a second time
+                do! Database.initializeSchema dataSource
+                do! execute dataSource "DELETE FROM extension_namespaces"
+                do! Database.initializeSchema dataSource
+                let! rows = scalar dataSource "SELECT count(*) FROM extension_namespaces"
+                Assert.Equal(0L, rows :?> int64)
             })

@@ -50,7 +50,7 @@ Identity and discovery
 Inbound
 • FR-010 Verify draft-cavage HTTP Signatures (rsa-sha256 and hs2019) on every inbox POST: (request-target), host, date (±12 hours), digest. Reject with 401 otherwise.
 • FR-011 Fetch and cache remote actors and keys; on verification failure, refetch the key once (key rotation).
-• FR-012 Handle Follow, Undo Follow, Accept, Reject, Create (Note, Article and app types), Like, Undo Like, Delete, Update (actor), Block. Unknown types are acknowledged with 202 and dropped. An inbound Block (built in specs/004-blocks) ends the follows between the blocker and the local user, with follow.removed webhooks.
+• FR-012 Handle Follow, Undo Follow, Accept, Reject, Create (Note, Article and app types), Like, Undo Like, Delete, Update (actor), Block. Unknown types are acknowledged with 202 and dropped. An inbound Block (built in specs/004-blocks) ends the follows between the blocker and the local user, with follow.removed webhooks. A Create, Update or Delete of a Note or Article by an account a local user follows (built in specs/005-followed-posts) becomes post.received, post.updated or post.deleted, one per following user; Announce (boosts) is acknowledged and dropped.
 • FR-013 Deduplicate inbound activities by id for 7 days.
 • FR-014 Accept the body as raw bytes and verify the digest before parsing JSON.
 Outbound
@@ -121,7 +121,7 @@ POST /internal/actors/alex/objects
 }
 Megáfono adds the @context, ids, attributedTo, to/cc, published, and the extension under its prefix. Remote objects carrying the same namespace are passed back to the app in webhooks under extensions.
 Webhook events
-follow.requested, follow.accepted, follow.rejected, follow.removed, reply.received, reply.updated, mention.received, like.received, like.removed, object.deleted, actor.updated, actor.deleted, delivery.failed.
+follow.requested, follow.accepted, follow.rejected, follow.removed, reply.received, reply.updated, post.received, post.updated, post.deleted, mention.received, like.received, like.removed, object.deleted, actor.updated, actor.deleted, delivery.failed.
 {
   "id": "evt_01J…",
   "type": "reply.received",
@@ -214,5 +214,5 @@ Open questions
 [x] Actor URL: a separate /ap/actors/{immutableId} path whose url is the app's profile, no Accept-header routing (specs/001-federation-core, clarified 2026-10-10).
 [x] Keys: one RSA-2048 key pair per actor, plus one instance actor key for fetches not made on behalf of a user (specs/001-federation-core, FR-006 and FR-022).
 [x] Signatures: draft-cavage only in v1, behind a SignatureScheme seam; Mastodon signs draft-cavage first and only falls back to RFC 9421 after a 4xx (specs/001-federation-core, research R-01).
-[x] Inbox query API: not in v1; apps keep what they need from webhooks, which are never dropped (specs/001-federation-core, FR-055). Revisit when replies and mentions arrive (US4 of this vision).
+[x] Inbox query API: not in v1; apps keep what they need from webhooks, which are never dropped (specs/001-federation-core, FR-055). Revisit when replies and mentions arrive (US4 of this vision). Revisited for replies (specs/002-replies-threads) and for posts from followed accounts (specs/005-followed-posts): still events only; the app builds its feed from post.received and keeps what it shows.
 [x] Activity stream table: not in v1; webhooks are the only public channel, so the database schema stays private (specs/001-federation-core).

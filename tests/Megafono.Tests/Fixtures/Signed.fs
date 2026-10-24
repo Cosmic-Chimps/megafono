@@ -83,6 +83,12 @@ let note (stub: StubRemote.StubRemote) (name: string) (suffix: string) (inReplyT
     o["sensitive"] <- JsonValue.Create false
     o
 
+/// A public post of `name` that answers no one (the shape of a feed post): `note` without its `inReplyTo`
+let feedNote (stub: StubRemote.StubRemote) (name: string) (suffix: string) : JsonObject =
+    let o = note stub name suffix ""
+    o.Remove "inReplyTo" |> ignore
+    o
+
 let setAddressing (note: JsonObject) (toList: string list) (ccList: string list) =
     let strings (items: string list) = JsonArray(items |> List.map (fun i -> JsonValue.Create i :> JsonNode) |> Array.ofList)
     note["to"] <- strings toList

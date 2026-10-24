@@ -1,0 +1,63 @@
+{
+  "capturedAt": "2026-10-19T18:24:02.2241630Z",
+  "activityType": "Create",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "Mastodon/4.7.3 (http.rb/5.3.1; \u002Bhttps://mastodon.test/)"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/activity\u002Bjson"
+    },
+    {
+      "name": "Date",
+      "value": "Mon, 19 Oct 2026 18:24:02 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "2914"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=PLscJcT1A1floksbFsu6gNS1kfg4nQ3BzwLmLI/aj6k="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://mastodon.test/ap/users/117468970235069272#rsa-236046807ccedf70\u0022,algorithm=\u0022rsa-sha256\u0022,headers=\u0022host date content-type digest (request-target)\u0022,signature=\u0022JdlyFh7zrJo84Brk70WKghJHj6/2JpKZyO0V5LXAwI2uyDKkSBtLwfYMiVmlRp\u002Bohln9EqPSsK8y5O5HXb7PAedtWqxKK6m0YIv\u002B\u002B0Kkuk2EonFETVNkvhdSGwNByUz4gI0u3vM07Hi4PyRDpHyCk5o0fNVYQPOm5VbE3QoG3dBw2Zj4cik5CM64fULMmBNfGfGZrmUyQGkzroG\u002B\u002BcJJNaVMR9Jwql/HlPu74Jlgt6LR3ytiyTv1Y2Jv8dhluZTPMml2u3ZEoGPMv5GZkxu5rxv\u002B3Nt8gUGyJpi5gOW\u002B8CcMPf3LMO1JQCSq5gSDOksjpgyWVr4n383vORWqhCP5Ew==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.24.0.7"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6WyJodHRwczovL3d3dy53My5vcmcvbnMvYWN0aXZpdHlzdHJlYW1zIix7Im9zdGF0dXMiOiJodHRwOi8vb3N0YXR1cy5vcmcjIiwiYXRvbVVyaSI6Im9zdGF0dXM6YXRvbVVyaSIsImluUmVwbHlUb0F0b21VcmkiOiJvc3RhdHVzOmluUmVwbHlUb0F0b21VcmkiLCJjb252ZXJzYXRpb24iOiJvc3RhdHVzOmNvbnZlcnNhdGlvbiIsInNlbnNpdGl2ZSI6ImFzOnNlbnNpdGl2ZSIsInRvb3QiOiJodHRwOi8vam9pbm1hc3RvZG9uLm9yZy9ucyMiLCJ2b3RlcnNDb3VudCI6InRvb3Q6dm90ZXJzQ291bnQiLCJxdW90ZSI6eyJAaWQiOiJodHRwczovL3czaWQub3JnL2ZlcC8wNDRmI3F1b3RlIiwiQHR5cGUiOiJAaWQifSwicXVvdGVVcmkiOiJodHRwOi8vZmVkaWJpcmQuY29tL25zI3F1b3RlVXJpIiwiX21pc3NrZXlfcXVvdGUiOiJodHRwczovL21pc3NrZXktaHViLm5ldC9ucyNfbWlzc2tleV9xdW90ZSIsInF1b3RlQXV0aG9yaXphdGlvbiI6eyJAaWQiOiJodHRwczovL3czaWQub3JnL2ZlcC8wNDRmI3F1b3RlQXV0aG9yaXphdGlvbiIsIkB0eXBlIjoiQGlkIn0sImd0cyI6Imh0dHBzOi8vZ290b3NvY2lhbC5vcmcvbnMjIiwiaW50ZXJhY3Rpb25Qb2xpY3kiOnsiQGlkIjoiZ3RzOmludGVyYWN0aW9uUG9saWN5IiwiQHR5cGUiOiJAaWQifSwiY2FuRmVhdHVyZSI6eyJAaWQiOiJodHRwczovL3czaWQub3JnL2ZlcC83YWE5I2NhbkZlYXR1cmUiLCJAdHlwZSI6IkBpZCJ9LCJjYW5RdW90ZSI6eyJAaWQiOiJndHM6Y2FuUXVvdGUiLCJAdHlwZSI6IkBpZCJ9LCJhdXRvbWF0aWNBcHByb3ZhbCI6eyJAaWQiOiJndHM6YXV0b21hdGljQXBwcm92YWwiLCJAdHlwZSI6IkBpZCJ9LCJtYW51YWxBcHByb3ZhbCI6eyJAaWQiOiJndHM6bWFudWFsQXBwcm92YWwiLCJAdHlwZSI6IkBpZCJ9fV0sImlkIjoiaHR0cHM6Ly9tYXN0b2Rvbi50ZXN0L2FwL3VzZXJzLzExNzQ2ODk3MDIzNTA2OTI3Mi9zdGF0dXNlcy8xMTc0Njg5NzA0NjI0NjQ5NzkvYWN0aXZpdHkiLCJ0eXBlIjoiQ3JlYXRlIiwiYWN0b3IiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDY4OTcwMjM1MDY5MjcyIiwicHVibGlzaGVkIjoiMjAyNi0xMC0xOVQxODoyNDowMVoiLCJ0byI6WyJodHRwczovL3d3dy53My5vcmcvbnMvYWN0aXZpdHlzdHJlYW1zI1B1YmxpYyJdLCJjYyI6WyJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDY4OTcwMjM1MDY5MjcyL2ZvbGxvd2VycyJdLCJvYmplY3QiOnsiaWQiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDY4OTcwMjM1MDY5MjcyL3N0YXR1c2VzLzExNzQ2ODk3MDQ2MjQ2NDk3OSIsInR5cGUiOiJOb3RlIiwic3VtbWFyeSI6bnVsbCwiaW5SZXBseVRvIjpudWxsLCJwdWJsaXNoZWQiOiIyMDI2LTEwLTE5VDE4OjI0OjAxWiIsInVybCI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC9AYm9iOGlseWcvMTE3NDY4OTcwNDYyNDY0OTc5IiwiYXR0cmlidXRlZFRvIjoiaHR0cHM6Ly9tYXN0b2Rvbi50ZXN0L2FwL3VzZXJzLzExNzQ2ODk3MDIzNTA2OTI3MiIsInRvIjpbImh0dHBzOi8vd3d3LnczLm9yZy9ucy9hY3Rpdml0eXN0cmVhbXMjUHVibGljIl0sImNjIjpbImh0dHBzOi8vbWFzdG9kb24udGVzdC9hcC91c2Vycy8xMTc0Njg5NzAyMzUwNjkyNzIvZm9sbG93ZXJzIl0sInNlbnNpdGl2ZSI6ZmFsc2UsImF0b21VcmkiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDY4OTcwMjM1MDY5MjcyL3N0YXR1c2VzLzExNzQ2ODk3MDQ2MjQ2NDk3OSIsImluUmVwbHlUb0F0b21VcmkiOm51bGwsImNvbnZlcnNhdGlvbiI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC9jb250ZXh0cy8xMTc0Njg5NzAyMzUwNjkyNzItMTE3NDY4OTcwNDYyNDY0OTc5IiwiY29udGV4dCI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC9jb250ZXh0cy8xMTc0Njg5NzAyMzUwNjkyNzItMTE3NDY4OTcwNDYyNDY0OTc5IiwiY29udGVudCI6Ilx1MDAzY3BcdTAwM2VwdWJsaWNyams4YyBTdGFydGVkIEZyaWVyZW4gUzJcdTAwM2MvcFx1MDAzZSIsImNvbnRlbnRNYXAiOnsiZW4iOiJcdTAwM2NwXHUwMDNlcHVibGljcmprOGMgU3RhcnRlZCBGcmllcmVuIFMyXHUwMDNjL3BcdTAwM2UifSwiaW50ZXJhY3Rpb25Qb2xpY3kiOnsiY2FuUXVvdGUiOnsiYXV0b21hdGljQXBwcm92YWwiOlsiaHR0cHM6Ly93d3cudzMub3JnL25zL2FjdGl2aXR5c3RyZWFtcyNQdWJsaWMiXX19LCJhdHRhY2htZW50IjpbXSwidGFnIjpbXSwicmVwbGllcyI6eyJpZCI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC9hcC91c2Vycy8xMTc0Njg5NzAyMzUwNjkyNzIvc3RhdHVzZXMvMTE3NDY4OTcwNDYyNDY0OTc5L3JlcGxpZXMiLCJ0eXBlIjoiQ29sbGVjdGlvbiIsImZpcnN0Ijp7InR5cGUiOiJDb2xsZWN0aW9uUGFnZSIsIm5leHQiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDY4OTcwMjM1MDY5MjcyL3N0YXR1c2VzLzExNzQ2ODk3MDQ2MjQ2NDk3OS9yZXBsaWVzP29ubHlfb3RoZXJfYWNjb3VudHM9dHJ1ZVx1MDAyNnBhZ2U9dHJ1ZSIsInBhcnRPZiI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC9hcC91c2Vycy8xMTc0Njg5NzAyMzUwNjkyNzIvc3RhdHVzZXMvMTE3NDY4OTcwNDYyNDY0OTc5L3JlcGxpZXMiLCJpdGVtcyI6W119fSwibGlrZXMiOnsiaWQiOiJodHRwczovL21hc3RvZG9uLnRlc3QvYXAvdXNlcnMvMTE3NDY4OTcwMjM1MDY5MjcyL3N0YXR1c2VzLzExNzQ2ODk3MDQ2MjQ2NDk3OS9saWtlcyIsInR5cGUiOiJDb2xsZWN0aW9uIiwidG90YWxJdGVtcyI6MH0sInNoYXJlcyI6eyJpZCI6Imh0dHBzOi8vbWFzdG9kb24udGVzdC9hcC91c2Vycy8xMTc0Njg5NzAyMzUwNjkyNzIvc3RhdHVzZXMvMTE3NDY4OTcwNDYyNDY0OTc5L3NoYXJlcyIsInR5cGUiOiJDb2xsZWN0aW9uIiwidG90YWxJdGVtcyI6MH19fQ==",
+  "body": "{\u0022@context\u0022:[\u0022https://www.w3.org/ns/activitystreams\u0022,{\u0022ostatus\u0022:\u0022http://ostatus.org#\u0022,\u0022atomUri\u0022:\u0022ostatus:atomUri\u0022,\u0022inReplyToAtomUri\u0022:\u0022ostatus:inReplyToAtomUri\u0022,\u0022conversation\u0022:\u0022ostatus:conversation\u0022,\u0022sensitive\u0022:\u0022as:sensitive\u0022,\u0022toot\u0022:\u0022http://joinmastodon.org/ns#\u0022,\u0022votersCount\u0022:\u0022toot:votersCount\u0022,\u0022quote\u0022:{\u0022@id\u0022:\u0022https://w3id.org/fep/044f#quote\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022quoteUri\u0022:\u0022http://fedibird.com/ns#quoteUri\u0022,\u0022_misskey_quote\u0022:\u0022https://misskey-hub.net/ns#_misskey_quote\u0022,\u0022quoteAuthorization\u0022:{\u0022@id\u0022:\u0022https://w3id.org/fep/044f#quoteAuthorization\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022gts\u0022:\u0022https://gotosocial.org/ns#\u0022,\u0022interactionPolicy\u0022:{\u0022@id\u0022:\u0022gts:interactionPolicy\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022canFeature\u0022:{\u0022@id\u0022:\u0022https://w3id.org/fep/7aa9#canFeature\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022canQuote\u0022:{\u0022@id\u0022:\u0022gts:canQuote\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022automaticApproval\u0022:{\u0022@id\u0022:\u0022gts:automaticApproval\u0022,\u0022@type\u0022:\u0022@id\u0022},\u0022manualApproval\u0022:{\u0022@id\u0022:\u0022gts:manualApproval\u0022,\u0022@type\u0022:\u0022@id\u0022}}],\u0022id\u0022:\u0022https://mastodon.test/ap/users/117468970235069272/statuses/117468970462464979/activity\u0022,\u0022type\u0022:\u0022Create\u0022,\u0022actor\u0022:\u0022https://mastodon.test/ap/users/117468970235069272\u0022,\u0022published\u0022:\u00222026-10-19T18:24:01Z\u0022,\u0022to\u0022:[\u0022https://www.w3.org/ns/activitystreams#Public\u0022],\u0022cc\u0022:[\u0022https://mastodon.test/ap/users/117468970235069272/followers\u0022],\u0022object\u0022:{\u0022id\u0022:\u0022https://mastodon.test/ap/users/117468970235069272/statuses/117468970462464979\u0022,\u0022type\u0022:\u0022Note\u0022,\u0022summary\u0022:null,\u0022inReplyTo\u0022:null,\u0022published\u0022:\u00222026-10-19T18:24:01Z\u0022,\u0022url\u0022:\u0022https://mastodon.test/@bob8ilyg/117468970462464979\u0022,\u0022attributedTo\u0022:\u0022https://mastodon.test/ap/users/117468970235069272\u0022,\u0022to\u0022:[\u0022https://www.w3.org/ns/activitystreams#Public\u0022],\u0022cc\u0022:[\u0022https://mastodon.test/ap/users/117468970235069272/followers\u0022],\u0022sensitive\u0022:false,\u0022atomUri\u0022:\u0022https://mastodon.test/ap/users/117468970235069272/statuses/117468970462464979\u0022,\u0022inReplyToAtomUri\u0022:null,\u0022conversation\u0022:\u0022https://mastodon.test/contexts/117468970235069272-117468970462464979\u0022,\u0022context\u0022:\u0022https://mastodon.test/contexts/117468970235069272-117468970462464979\u0022,\u0022content\u0022:\u0022\\u003cp\\u003epublicrjk8c Started Frieren S2\\u003c/p\\u003e\u0022,\u0022contentMap\u0022:{\u0022en\u0022:\u0022\\u003cp\\u003epublicrjk8c Started Frieren S2\\u003c/p\\u003e\u0022},\u0022interactionPolicy\u0022:{\u0022canQuote\u0022:{\u0022automaticApproval\u0022:[\u0022https://www.w3.org/ns/activitystreams#Public\u0022]}},\u0022attachment\u0022:[],\u0022tag\u0022:[],\u0022replies\u0022:{\u0022id\u0022:\u0022https://mastodon.test/ap/users/117468970235069272/statuses/117468970462464979/replies\u0022,\u0022type\u0022:\u0022Collection\u0022,\u0022first\u0022:{\u0022type\u0022:\u0022CollectionPage\u0022,\u0022next\u0022:\u0022https://mastodon.test/ap/users/117468970235069272/statuses/117468970462464979/replies?only_other_accounts=true\\u0026page=true\u0022,\u0022partOf\u0022:\u0022https://mastodon.test/ap/users/117468970235069272/statuses/117468970462464979/replies\u0022,\u0022items\u0022:[]}},\u0022likes\u0022:{\u0022id\u0022:\u0022https://mastodon.test/ap/users/117468970235069272/statuses/117468970462464979/likes\u0022,\u0022type\u0022:\u0022Collection\u0022,\u0022totalItems\u0022:0},\u0022shares\u0022:{\u0022id\u0022:\u0022https://mastodon.test/ap/users/117468970235069272/statuses/117468970462464979/shares\u0022,\u0022type\u0022:\u0022Collection\u0022,\u0022totalItems\u0022:0}}}",
+  "signer": {
+    "actorId": "https://mastodon.test/ap/users/117468970235069272",
+    "keyId": "https://mastodon.test/ap/users/117468970235069272#rsa-236046807ccedf70",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAljb699IeBDrqs2E2qQeL\neRS/0Q7Ay3EfXpT7BH3AYCwOWoR\u002BSqG0wc84J9bl/hbPJnZwZafatW4OvjHMQS6m\n0m6rOzgzQLs4w4CIVELIeuPrtnEx87kuPHJvAHkF4jvVLEhEkv23FNLliuoQvgCd\nMroEOqDD0bCXJHFAmw8zb1H0jcTkMVQoXBK8Ew/LJrDxtgmnC6THBjNlno1WQb84\nBjT\u002BNgxUmAKTYHUeBtdxi\u002BciNbgv9zmR5QBfrJ26Lc96kv98LfHCH\u002B11y7c0QRE3\nWCu1MaPItOVp7LxgLH1mo0dmWRyPTZB49bHnZnkxNFTTwKwbQBjYq0ZQwtOsAVtg\nfQIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}

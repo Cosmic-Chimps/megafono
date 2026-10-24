@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-10-19T18:23:07.3701580Z",
+  "activityType": "Create",
+  "method": "POST",
+  "pathAndQuery": "/inbox",
+  "headers": [
+    {
+      "name": "Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "User-Agent",
+      "value": "gotosocial/0.22.2\u002Bgit-fb2bf13 (\u002Bhttps://gts.test)"
+    },
+    {
+      "name": "Accept-Charset",
+      "value": "utf-8"
+    },
+    {
+      "name": "Accept-Encoding",
+      "value": "zstd,gzip"
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/ld\u002Bjson; profile=\u0022https://www.w3.org/ns/activitystreams\u0022"
+    },
+    {
+      "name": "Date",
+      "value": "Mon, 19 Oct 2026 18:23:07 GMT"
+    },
+    {
+      "name": "Via",
+      "value": "1.1 Caddy"
+    },
+    {
+      "name": "Content-Length",
+      "value": "1614"
+    },
+    {
+      "name": "Digest",
+      "value": "SHA-256=fBHNH/i1S6pMyjakj0jVgoqrwYSNO4T8mqgmKNBojmg="
+    },
+    {
+      "name": "Signature",
+      "value": "keyId=\u0022https://gts.test/users/bobfolxc/main-key\u0022,algorithm=\u0022hs2019\u0022,headers=\u0022(request-target) host date digest\u0022,signature=\u0022cg9cSLvbXK0RNNiPofFKg/Ema88pYG1A2DATFhag2XEWf6mk90tg74aOQtAcnFVPKLIjWCgELDlEHVwvq7\u002B\u002BkCWdBUAp8cMuxShYGB\u002BqFvXUuMxOOyizGUbUJ3ncfl8D5KAWmsFZUpkt4/DkqlLMKtSBUCXqSYq6pY1dqigan4CpBWwXrkF6V/zifoR0Wl8uwBYlRDzGldq7tQuqyV96uhbMxmCV14BjS48B9AdyopehjzMNHJnNxoLkEpLSn3RATEy\u002ByFB71DjZnCf9Z0q\u002BXwBqRMz2IxZnU7sPKF2dv6tKTkjh7xRNg4bo/3VRTSHEegfC9lHAIboS9GyUVxfBUQ==\u0022"
+    },
+    {
+      "name": "X-Forwarded-For",
+      "value": "172.24.0.3"
+    },
+    {
+      "name": "X-Forwarded-Host",
+      "value": "megafono.test"
+    },
+    {
+      "name": "X-Forwarded-Proto",
+      "value": "https"
+    }
+  ],
+  "bodyBase64": "eyJAY29udGV4dCI6WyJodHRwczovL2dvdG9zb2NpYWwub3JnL25zIiwiaHR0cHM6Ly93d3cudzMub3JnL25zL2FjdGl2aXR5c3RyZWFtcyJdLCJhY3RvciI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMiLCJpZCI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMvc3RhdHVzZXMvMDFNNUFQRUIySlkxUjlYMlpDSDQyUVpZM0cvYWN0aXZpdHkjQ3JlYXRlIiwib2JqZWN0Ijp7ImF0dHJpYnV0ZWRUbyI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMiLCJjb250ZW50IjoiXHUwMDNjcFx1MDAzZXByaXZhdGVqcnNpbSBvbmx5IGZvciBmb2xsb3dlcnNcdTAwM2MvcFx1MDAzZSIsImNvbnRlbnRNYXAiOnsiZW4iOiJcdTAwM2NwXHUwMDNlcHJpdmF0ZWpyc2ltIG9ubHkgZm9yIGZvbGxvd2Vyc1x1MDAzYy9wXHUwMDNlIn0sImlkIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2Jmb2x4Yy9zdGF0dXNlcy8wMU01QVBFQjJKWTFSOVgyWkNINDJRWlkzRyIsImludGVyYWN0aW9uUG9saWN5Ijp7ImNhbkFubm91bmNlIjp7ImF1dG9tYXRpY0FwcHJvdmFsIjpbImh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMiXX0sImNhbkxpa2UiOnsiYXV0b21hdGljQXBwcm92YWwiOlsiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2Jmb2x4YyIsImh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMvZm9sbG93ZXJzIl19LCJjYW5RdW90ZSI6eyJhdXRvbWF0aWNBcHByb3ZhbCI6WyJodHRwczovL2d0cy50ZXN0L3VzZXJzL2JvYmZvbHhjIl19LCJjYW5SZXBseSI6eyJhdXRvbWF0aWNBcHByb3ZhbCI6WyJodHRwczovL2d0cy50ZXN0L3VzZXJzL2JvYmZvbHhjIiwiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2Jmb2x4Yy9mb2xsb3dlcnMiXX19LCJwdWJsaXNoZWQiOiIyMDI2LTEwLTE5VDE4OjIzOjA3WiIsInJlcGxpZXMiOnsiZmlyc3QiOnsiaWQiOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2JvYmZvbHhjL3N0YXR1c2VzLzAxTTVBUEVCMkpZMVI5WDJaQ0g0MlFaWTNHL3JlcGxpZXM/cGFnZT10cnVlIiwibmV4dCI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMvc3RhdHVzZXMvMDFNNUFQRUIySlkxUjlYMlpDSDQyUVpZM0cvcmVwbGllcz9wYWdlPXRydWVcdTAwMjZvbmx5X290aGVyX2FjY291bnRzPWZhbHNlIiwicGFydE9mIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2Jmb2x4Yy9zdGF0dXNlcy8wMU01QVBFQjJKWTFSOVgyWkNINDJRWlkzRy9yZXBsaWVzIiwidHlwZSI6IkNvbGxlY3Rpb25QYWdlIn0sImlkIjoiaHR0cHM6Ly9ndHMudGVzdC91c2Vycy9ib2Jmb2x4Yy9zdGF0dXNlcy8wMU01QVBFQjJKWTFSOVgyWkNINDJRWlkzRy9yZXBsaWVzIiwidHlwZSI6IkNvbGxlY3Rpb24ifSwidG8iOiJodHRwczovL2d0cy50ZXN0L3VzZXJzL2JvYmZvbHhjL2ZvbGxvd2VycyIsInR5cGUiOiJOb3RlIiwidXJsIjoiaHR0cHM6Ly9ndHMudGVzdC9AYm9iZm9seGMvc3RhdHVzZXMvMDFNNUFQRUIySlkxUjlYMlpDSDQyUVpZM0cifSwicHVibGlzaGVkIjoiMjAyNi0xMC0xOVQxODoyMzowN1oiLCJ0byI6Imh0dHBzOi8vZ3RzLnRlc3QvdXNlcnMvYm9iZm9seGMvZm9sbG93ZXJzIiwidHlwZSI6IkNyZWF0ZSJ9",
+  "body": "{\u0022@context\u0022:[\u0022https://gotosocial.org/ns\u0022,\u0022https://www.w3.org/ns/activitystreams\u0022],\u0022actor\u0022:\u0022https://gts.test/users/bobfolxc\u0022,\u0022id\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB2JY1R9X2ZCH42QZY3G/activity#Create\u0022,\u0022object\u0022:{\u0022attributedTo\u0022:\u0022https://gts.test/users/bobfolxc\u0022,\u0022content\u0022:\u0022\\u003cp\\u003eprivatejrsim only for followers\\u003c/p\\u003e\u0022,\u0022contentMap\u0022:{\u0022en\u0022:\u0022\\u003cp\\u003eprivatejrsim only for followers\\u003c/p\\u003e\u0022},\u0022id\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB2JY1R9X2ZCH42QZY3G\u0022,\u0022interactionPolicy\u0022:{\u0022canAnnounce\u0022:{\u0022automaticApproval\u0022:[\u0022https://gts.test/users/bobfolxc\u0022]},\u0022canLike\u0022:{\u0022automaticApproval\u0022:[\u0022https://gts.test/users/bobfolxc\u0022,\u0022https://gts.test/users/bobfolxc/followers\u0022]},\u0022canQuote\u0022:{\u0022automaticApproval\u0022:[\u0022https://gts.test/users/bobfolxc\u0022]},\u0022canReply\u0022:{\u0022automaticApproval\u0022:[\u0022https://gts.test/users/bobfolxc\u0022,\u0022https://gts.test/users/bobfolxc/followers\u0022]}},\u0022published\u0022:\u00222026-10-19T18:23:07Z\u0022,\u0022replies\u0022:{\u0022first\u0022:{\u0022id\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB2JY1R9X2ZCH42QZY3G/replies?page=true\u0022,\u0022next\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB2JY1R9X2ZCH42QZY3G/replies?page=true\\u0026only_other_accounts=false\u0022,\u0022partOf\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB2JY1R9X2ZCH42QZY3G/replies\u0022,\u0022type\u0022:\u0022CollectionPage\u0022},\u0022id\u0022:\u0022https://gts.test/users/bobfolxc/statuses/01M5APEB2JY1R9X2ZCH42QZY3G/replies\u0022,\u0022type\u0022:\u0022Collection\u0022},\u0022to\u0022:\u0022https://gts.test/users/bobfolxc/followers\u0022,\u0022type\u0022:\u0022Note\u0022,\u0022url\u0022:\u0022https://gts.test/@bobfolxc/statuses/01M5APEB2JY1R9X2ZCH42QZY3G\u0022},\u0022published\u0022:\u00222026-10-19T18:23:07Z\u0022,\u0022to\u0022:\u0022https://gts.test/users/bobfolxc/followers\u0022,\u0022type\u0022:\u0022Create\u0022}",
+  "signer": {
+    "actorId": "https://gts.test/users/bobfolxc",
+    "keyId": "https://gts.test/users/bobfolxc/main-key",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyj\u002BDzrh84bNopRDLQ3aL\nM9aPFkbx3rXCuHs3JLQxQxRSjWSXYLKmIFRQFDHukkQSYbl1ixVKbzAwUazBRL6t\nqliijD3zhQDRUl7dhDtCCz3lkP/E5agqV0c2R8Js2Xf2GUk7MLZxHEDU8vPzYvpg\n6eFG5FXPLdWPeEfDghWHAe4leyqAVlt/9ahbla3jvLlENISAUc56OEEbjxQ7IS3a\nrvdg\u002Bnbdkuz4rDo9J8xf1TD862AapH\u002BsKdwQ3K8pCVW6ZClEuHEDcjhCmDnU04Up\nmamKUb8C5NfMYQONjhRGMpy\u002B0LNSkwIIo70F/AI0wtHo7FGbnBOVhALgUcljU0PA\nnwIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}

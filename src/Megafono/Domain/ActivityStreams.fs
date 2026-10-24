@@ -232,7 +232,7 @@ type Extensions =
       Data: JsonObject }
 
 /// Terms Megáfono defines itself in the `@context` of an object (R-24); an app's extension prefix is never one of these
-let private ownTerms = set [ "ostatus"; "conversation"; "gts"; "interactionPolicy"; "canReply"; "automaticApproval" ]
+let ownTerms = set [ "ostatus"; "conversation"; "gts"; "interactionPolicy"; "canReply"; "automaticApproval" ]
 
 let private noteContext (extensions: Extensions option) : JsonNode =
     let terms = JsonObject()

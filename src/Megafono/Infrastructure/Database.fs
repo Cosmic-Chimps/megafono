@@ -2,6 +2,7 @@
 module Megafono.Infrastructure.Database
 
 open System.Threading.Tasks
+open Megafono.Domain
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Hosting
 open Npgsql
@@ -231,6 +232,52 @@ let private schema =
                 CHECK (activity_type IN ('Create', 'Update', 'Delete', 'Accept', 'Reject', 'Follow', 'Undo', 'Block'));
         END IF;
     END $$;
+
+    -- Posts from followed accounts (specs/005-followed-posts/data-model.md): one row per remote post and local user it
+    -- was passed to. References only: the content lives in the app.
+    CREATE TABLE IF NOT EXISTS feed_posts (
+        id            text NOT NULL,
+        local_actor   text NOT NULL REFERENCES local_actors (app_user_id),
+        remote_actor  text NOT NULL REFERENCES remote_actors (id),
+        audience      text NOT NULL CHECK (audience IN ('public', 'unlisted', 'followers', 'direct')),
+        state         text NOT NULL DEFAULT 'live' CHECK (state IN ('live', 'deleted')),
+        published_at  timestamptz NOT NULL,
+        first_seen_at timestamptz NOT NULL DEFAULT now(),
+        updated_at    timestamptz NOT NULL DEFAULT now(),
+        deleted_at    timestamptz NULL,
+        PRIMARY KEY (id, local_actor)
+    );
+    """
+
+/// The namespaces the app has published with (specs/005-followed-posts R-58). Created and filled once, from the
+/// string-valued terms of the stored objects' `@context` that are not Megáfono's own, inside a block that only runs when
+/// the table is absent, so later starts do not scan `objects`.
+let private extensionNamespaces =
+    let ownTerms = ActivityStreams.ownTerms |> Seq.map (fun term -> $"'{term}'") |> String.concat ", "
+
+    $"""
+    DO $$
+    BEGIN
+        IF to_regclass('extension_namespaces') IS NULL THEN
+            CREATE TABLE extension_namespaces (
+                namespace     text PRIMARY KEY,
+                first_used_at timestamptz NOT NULL DEFAULT now()
+            );
+
+            INSERT INTO extension_namespaces (namespace)
+            SELECT DISTINCT term.value #>> '{{}}'
+            FROM objects o,
+                 LATERAL jsonb_array_elements(
+                     CASE jsonb_typeof(o.document -> '@context')
+                         WHEN 'array' THEN o.document -> '@context'
+                         ELSE jsonb_build_array(o.document -> '@context')
+                     END) AS element,
+                 LATERAL jsonb_each(
+                     CASE jsonb_typeof(element) WHEN 'object' THEN element ELSE jsonb_build_object() END) AS term
+            WHERE jsonb_typeof(term.value) = 'string' AND term.key NOT IN ({ownTerms})
+            ON CONFLICT DO NOTHING;
+        END IF;
+    END $$;
     """
 
 // Arbitrary constant; serializes concurrent starts (two replicas, or tests) so CREATE ... IF NOT EXISTS cannot race
@@ -246,7 +293,7 @@ let initializeSchema (dataSource: NpgsqlDataSource) : Task =
         lockCommand.Parameters.AddWithValue("key", schemaLockKey) |> ignore
         let! _ = lockCommand.ExecuteNonQueryAsync()
 
-        use ddl = new NpgsqlCommand(schema, connection, transaction)
+        use ddl = new NpgsqlCommand(schema + extensionNamespaces, connection, transaction)
         let! _ = ddl.ExecuteNonQueryAsync()
         do! transaction.CommitAsync()
     }
