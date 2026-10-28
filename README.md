@@ -63,10 +63,12 @@ Tags: `0.2.0`, `0.2` and `latest` (prereleases such as `0.3.0-rc.1` get only the
 production.
 
 A release is made from GitHub: Actions › release › Run workflow › branch `main` › version `X.Y.Z` (no `v`). The
-workflow runs the tests, turns the "Unreleased" section of [`CHANGELOG.md`](CHANGELOG.md) into the version's
-section, commits and tags that on `main`, builds and pushes the images, and publishes the GitHub release with
-that section as its notes. It refuses a version whose "Unreleased" section is empty, so every change that matters
-to an operator or an integrating app goes under "Unreleased" as it is made. Pushing a tag `vX.Y.Z` does the same.
+workflow runs the tests, gathers the note files in [`changelog.d/`](changelog.d) into the version's section of
+[`CHANGELOG.md`](CHANGELOG.md), commits and tags that on `main`, builds and pushes the images, and publishes the
+GitHub release with that section as its notes. It refuses a version with no notes, so every change that matters
+to an operator or an integrating app adds a note file in `changelog.d/` (see its README); the release gathers
+them. Pushing a tag `vX.Y.Z` works when the tagged commit already holds its section (`.github/scripts/changelog.sh
+prepare X.Y.Z`, commit, tag that commit); a tag without it is refused.
 The workflow is [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
 ## Privacy limit
