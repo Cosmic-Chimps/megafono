@@ -448,8 +448,9 @@ type QueueTests(pg: PostgresFixture) =
                 do! Task.Delay 150
 
             do! waitUntil "attempts keep coming" (TimeSpan.FromSeconds 15.0) (fun () -> w.App.Received.Length >= 5)
-            let! stillThere = state ()
-            Assert.StartsWith("pending:", stillThere)
+            // The app may have answered while the worker still holds the lease ("sending:n"): wait for the attempt
+            // to be recorded. The clock is frozen, so the event then stays pending until the next advance.
+            do! waitUntilAsync "still pending" (TimeSpan.FromSeconds 15.0) (fun () -> task { let! s = state () in return s.StartsWith "pending:" })
 
             // The app recovers: delivered, same event id on every attempt, every signature valid
             w.App.WebhookMode <- FakeApp.Normal
