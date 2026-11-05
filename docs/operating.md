@@ -207,8 +207,56 @@ them. Edit and delete a reply with `PUT` and `DELETE /internal/objects/{id}`: th
   hold replies the app never heard of. Each post's `replies` collection lists only what Megáfono has seen.
 - Pasting the app's page URL into a search finds the thread post on **Mastodon only**, because the page links to its
   ActivityPub object. On GoToSocial paste the post's own URL (its `objectUrl`) or the account's handle.
-- A `Group` actor (for example one account per series) is a plain account: it is found, followed and posts like a
-  person. Megáfono does not boost its followers' replies, so it is not a Lemmy-style community.
+- A `Group` actor (for example one account per series) is found, followed and posts like a person. It does not boost
+  the replies it receives unless the app asks for it: see
+  [Group actors that announce replies](#group-actors-that-announce-replies).
+
+## Group actors that announce replies
+
+A `Group` can behave like a Lemmy community (FEP-1b12): it boosts the replies people write in its threads, so
+the people who follow the Group see the conversation, not only its posts. It is off by default and chosen per actor.
+The wire shapes are in [`specs/006-group-announce/contracts/`](../specs/006-group-announce/contracts/).
+
+**Turning it on.** Answer `"announcesReplies": true` in the app's actor lookup (`GET /megafono/actors?handle=` and
+`GET /megafono/actors/{id}`) for an actor whose `type` is `Group`. Absent or `null` is `false`. `true` on a
+`Person` or `Service` makes the lookup fail (it is logged), so the mistake shows at once. Megáfono reads it with the
+rest of the profile (the 5-minute cache, or `PUT /internal/actors/{id}` to refresh now). It is not part of the actor
+document, so changing it sends nothing to other servers.
+
+**What is announced.** Every reply in a thread whose root post the Group published, however deep, when the reply is
+`public` or `unlisted`:
+
+- a reply from another server, and a reply published through the app by one of your other users (the comments your own
+  users write under a series are the bulk of the conversation, and without this nobody following the Group would see
+  them);
+- not the Group's own replies, and not `followers` or `direct` replies: boosting them would widen the audience their
+  author chose.
+
+**To whom.** The announce (an `Announce` of the reply) goes to the servers of the Group's accepted followers and, for a
+reply from another server, to the reply's author, whose server then records the boost. Blocks apply as everywhere:
+nothing is sent to a blocked server or actor.
+
+**Edits and deletions.** When the reply is edited, the Group announces the update (an `Announce` of an `Update`) to the
+same recipients. When it is deleted, the Group retracts its boost (an `Undo` of the `Announce`). Only replies that
+were announced are followed up: a reply that arrived before you turned the flag on is not.
+
+**What other servers show.** Mastodon 4.7.3 and GoToSocial 0.22.2 take the announce as an ordinary boost: the Group is
+listed among the reply's boosters (`reblogged_by`) within a second or two. They accept the announce of the update and
+the retraction without showing any change: an edit reaches them as the author's own `Update`, and a deletion as the
+author's own `Delete`.
+
+**Limits.**
+
+- An announce already sent is not retracted when you block its author later; the block stops new deliveries only.
+- Turning the flag off stops new announces. Earlier ones stay, and the edits and deletions of those replies are still
+  followed up.
+- A server that got a reply only through the Group's boost keeps it until the author's deletion reaches that server;
+  the Group's retraction removes the boost, not the reply.
+- Megáfono announces only the replies it received, and a reply reaches it only as described under "What to tell your
+  users" above. The author's edits and deletions reach it the same way, with one difference between servers: Mastodon
+  also sends them to the servers that boosted the reply, GoToSocial does not. When a GoToSocial author drops the mention
+  of the Group in an edit, or deletes a reply that no longer mentions it, Megáfono never hears of it and sends no
+  announce of the update or retraction.
 
 ## Posts from followed accounts (a feed)
 
@@ -226,7 +274,8 @@ account, each gets their own event with the same post.
   `null`) and the verified author. Replies to other people's posts are included; filter on `inReplyTo` if your feed
   should not show them.
 - `post.updated`, the same payload with `updated` set, when the author edits it. It goes only to users who still
-  follow the author; `audience` and `published` stay those the post arrived with.
+  follow the author (or the Group that announced it, see below); `audience` and `published` stay those the post
+  arrived with.
 - `post.deleted` with the post's id when the author deletes it. It goes to every user who received the post, even
   after they unfollowed, so your app can remove it.
 
@@ -248,9 +297,31 @@ prefix it uses. Megáfono knows your namespaces from your publishes and updates:
 Megáfono keeps no copy of a post, only which of your users received it (to route edits and deletions), and offers no
 timeline query: your app stores what it shows, from the webhooks.
 
+**Posts announced by a Group.** When a `Group` your user follows announces a post (a remote Group that boosts the
+replies in its threads, as above: another instance of your app can follow a series account and receive its threads with
+their comments), the post reaches your app as the same three events, with a new top-level field `announcedBy`: the
+Group, in the same shape as `actor`. `actor` stays the post's author, verified from the author's own server; `announcedBy`
+is `null` for a post that came straight from a followed account, as in every event above. Megáfono reads the post from
+its own server (an announce only names it) and passes it on only when the author attributes it to their own server, it
+is a Note or Article, and it is `public` or `unlisted`; a followers-only or direct post announced by a Group is dropped.
+
+| Event | Sent for |
+|---|---|
+| `post.received` | each user with an accepted follow of the announcing Group who blocks neither the Group nor the author (nor their servers), except the author of a thread of the app's the post replies into (they get `reply.received`) |
+| `post.updated` | each user who received the post through this Group, still follows it, blocks neither, and does not follow the author (those get the author's own edit) |
+| `post.deleted` | each user who received the post through this Group and blocks neither the Group nor the author, when the Group retracts its boost |
+
+A user is told once per post and once per change, whichever road it came by: someone who follows both the author and the
+Group gets the post from whichever arrived first, and each edit once. The author's own edit and deletion still reach every
+user as above. A retraction of the boost is the Group's word about its own announce: it needs no fetch and ends the
+announced post for the users it reached.
+
 **What is not passed on.**
 
-- Boosts (`Announce`): acknowledged and dropped. Your users see a followed account's own posts only.
+- Boosts (`Announce`) by people: acknowledged and dropped, so your users see a followed account's own posts, not what
+  it boosts. The announces of a followed `Group` are passed on (see above); an announce of a followers-only or direct
+  post, of one of the app's own posts, from a Group nobody follows or of something Megáfono cannot read from its server is
+  dropped too.
 - Posts published before the follow was accepted: Megáfono does not fetch an account's past posts.
 - Direct posts and mentions from accounts the user does not follow, polls and other types than Note and Article, and
   a followed account's own deletion.

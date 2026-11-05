@@ -18,7 +18,7 @@ Non-goals (v1)
 • Media storage and upload: the app hosts its own files and sends URLs.
 • Full JSON-LD processing.
 • Moderation tooling beyond per-user and per-instance blocks.
-• Relays, boosts of remote posts and public timelines (candidates for v2).
+• Relays, boosts of remote posts by the app's users and public timelines (candidates for v2). A Group announcing the replies in its own threads, and passing on a followed Group's announces, are in scope (specs/006-group-announce).
 User stories
 US1 — Discoverable actor (P1). As an app developer, I want my users to be found from any fediverse server without writing protocol code.
 1. Given user alex exists in the app, when a Mastodon user searches @alex@app.example.com, then Mastodon shows the profile with the app's display name and summary.
@@ -44,13 +44,13 @@ Functional requirements
 Identity and discovery
 • FR-001 Serve /.well-known/webfinger for acct:{user}@{domain}, resolving the user through the app's actor lookup (FR-030). Cache positive answers for 5 minutes.
 • FR-002 Serve /.well-known/nodeinfo and NodeInfo 2.1 with the app's configured software name and version.
-• FR-003 Serve actor documents (Person by default, Service or Group if the app says so) with inbox, outbox, followers, following, shared inbox and publicKey.
+• FR-003 Serve actor documents (Person by default, Service or Group if the app says so; a Group can announce the replies in its threads, built in specs/006-group-announce) with inbox, outbox, followers, following, shared inbox and publicKey.
 • FR-004 The actor id is https://{domain}/ap/actors/{id}, where {id} is an identifier the app guarantees is immutable and never reused. The actor's url is the app's human profile URL (decided in specs/001-federation-core).
 • FR-005 Generate one RSA-2048 keypair per actor on first lookup. Private keys never leave Megáfono and are encrypted at rest.
 Inbound
 • FR-010 Verify draft-cavage HTTP Signatures (rsa-sha256 and hs2019) on every inbox POST: (request-target), host, date (±12 hours), digest. Reject with 401 otherwise.
 • FR-011 Fetch and cache remote actors and keys; on verification failure, refetch the key once (key rotation).
-• FR-012 Handle Follow, Undo Follow, Accept, Reject, Create (Note, Article and app types), Like, Undo Like, Delete, Update (actor), Block. Unknown types are acknowledged with 202 and dropped. An inbound Block (built in specs/004-blocks) ends the follows between the blocker and the local user, with follow.removed webhooks. A Create, Update or Delete of a Note or Article by an account a local user follows (built in specs/005-followed-posts) becomes post.received, post.updated or post.deleted, one per following user; Announce (boosts) is acknowledged and dropped.
+• FR-012 Handle Follow, Undo Follow, Accept, Reject, Create (Note, Article and app types), Like, Undo Like, Delete, Update (actor), Block. Unknown types are acknowledged with 202 and dropped. An inbound Block (built in specs/004-blocks) ends the follows between the blocker and the local user, with follow.removed webhooks. A Create, Update or Delete of a Note or Article by an account a local user follows (built in specs/005-followed-posts) becomes post.received, post.updated or post.deleted, one per following user. An Announce from a followed Group (built in specs/006-group-announce) of a Note or Article, of its edit or the retraction of the boost becomes post.received, post.updated or post.deleted with announcedBy; other Announces (boosts) are acknowledged and dropped.
 • FR-013 Deduplicate inbound activities by id for 7 days.
 • FR-014 Accept the body as raw bytes and verify the digest before parsing JSON.
 Outbound

@@ -27,6 +27,7 @@
     <Compile Include="ActorDeletionTests.fs" />
     <Compile Include="BlockTests.fs" />
     <Compile Include="FeedTests.fs" />
+    <Compile Include="GroupAnnounceTests.fs" />
     <Compile Include="DeploymentShapeTests.fs" />
   </ItemGroup>
 

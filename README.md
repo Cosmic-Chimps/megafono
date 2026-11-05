@@ -33,7 +33,8 @@ reach Megáfono. [`docs/operating.md`](docs/operating.md#replies-and-threads) ha
 
 When your users follow remote accounts, the posts of those accounts reach your app as `post.received` (edits as
 `post.updated`, deletions as `post.deleted`), one event per following user, so your app can build a feed. Megáfono
-keeps no copy and offers no timeline query; boosts and past posts are not passed on.
+keeps no copy and offers no timeline query. Past posts and boosts by people are not passed on; the posts a followed
+`Group` announces (the replies in its threads, as a Lemmy community does) are, with the Group in `announcedBy`.
 [`docs/operating.md`](docs/operating.md#posts-from-followed-accounts-a-feed) has the details and the limits.
 
 ## Blocks

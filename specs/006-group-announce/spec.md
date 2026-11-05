@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-04
 
-**Status**: Draft
+**Status**: Implemented
 
 **Input**: CodeAlta task `2026-10-27-group-actors-announce-the-replies-they-receive-8dxr`: "Frunchy wants one instance's
 series account (`@frieren@frunchy.lacalabaza.xyz`) to follow the same series on another Frunchy

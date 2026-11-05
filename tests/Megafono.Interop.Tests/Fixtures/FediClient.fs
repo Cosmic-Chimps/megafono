@@ -299,6 +299,13 @@ type FediClient(http: HttpClient, baseUri: string, token: string, username: stri
             return parse<StatusContext> body
         }
 
+    /// The accounts that boosted the status with this local id (`GET /api/v1/statuses/{id}/reblogged_by`)
+    member _.RebloggedBy(statusId: string) : Task<Account list> =
+        task {
+            let! body = get $"/api/v1/statuses/{statusId}/reblogged_by"
+            return parse<Account list> body
+        }
+
     member _.Notifications() : Task<Notification list> =
         task {
             let! body = get "/api/v1/notifications?limit=40"

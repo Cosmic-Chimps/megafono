@@ -33,8 +33,8 @@ from the task's text. R-70 is filled in by the interop task.
   receiver fetches the reply from its origin, which is also what Principle III asks of a Megáfono receiver. Sending it
   to the author's inbox is what Mastodon does for a boost: the author's server records who boosted, notifies the
   author, and from then on delivers the author's edits and deletions to the boosting server (Mastodon's
-  `StatusReachFinder` includes the servers that reblogged; GoToSocial likewise), which is how a Mastodon reply's edits
-  keep reaching Megáfono even when nobody here follows the author. Followers-only and direct replies were addressed
+  `StatusReachFinder` includes the servers that reblogged; GoToSocial, it turned out, does not: R-70), which is how a
+  Mastodon reply's edits keep reaching Megáfono even when nobody here follows the author. Followers-only and direct replies were addressed
   to specific people: boosting them would widen the audience the author chose (Principle II); Mastodon refuses to
   boost private posts anyway.
 - **Alternatives considered**: FEP-1b12's `Announce{Create{Note}}` with the Create embedded: Lemmy's shape, but
@@ -160,4 +160,49 @@ from the task's text. R-70 is filled in by the interop task.
   2xx to the `Announce` of the `Update` (no visible effect) and to the `Undo` of the `Announce` (the boost disappears).
   Both deliver the author's `Update` and `Delete` of the boosted reply to Megáfono (the booster's server) even when
   no local user follows the author.
-- **Observed**: to be recorded by T030 of tasks.md.
+- **Observed** (2026-11-04, `tests/Megafono.Interop.Tests/GroupAnnounceTests.fs`: `GroupAnnounceTests` on GoToSocial
+  0.22.2 and `MastodonGroupAnnounceTests` on Mastodon 4.7.3; both runs green, GoToSocial about 50 s, Mastodon about 40 s
+  with the images present). The scenario: carol follows the Group (an `announcesReplies` Group, unlocked, accepted at
+  once), finds its post by URL and replies publicly mentioning the Group. Everything in **Expected** held except the
+  last sentence, which holds on Mastodon only:
+  - **`reblogged_by` (SC-001)**: the Group is listed among the boosters of carol's reply on both servers, as soon as
+    the first poll after `reply.received` (GoToSocial 0.5 s, Mastodon 1.0 s after carol posted; the limit is 30 s). On
+    Mastodon the account has `group: true`; GoToSocial reports `group: false` for it.
+    The `Announce` delivery row was `delivered` at the first check, 1 attempt, no error.
+  - **The `Announce` on the wire** (from the `activities` row): `to` = [Public], `cc` = [the Group's followers
+    collection, carol's actor id], `object` the reply's id as a string. Deliveries: GoToSocial **one** (carol's personal
+    inbox, which is also her follower inbox: GoToSocial publishes no shared inbox, so the follower and author inboxes
+    collapse into one row); Mastodon **two** (its shared `/inbox` for the follower and carol's personal inbox as the
+    author), both `delivered`: a Mastodon server therefore gets the boost twice, which it takes without harm (one
+    boost in `reblogged_by`).
+  - **Followers-only reply** (`private` with a mention of the Group): reached the app as `reply.received` with
+    `audience: followers` on both servers (0.5 s), no `Announce` activity was queued for it and its `reblogged_by`
+    stays empty (R-62, FR-002).
+  - **`Announce{Update}`**: after carol's edit (with the mention kept) `reply.updated` arrived at once and an
+    `Announce` whose object is `{id: <carol's Update id>, type: "Update", actor: carol, object: <reply id>}` was queued
+    and `delivered` (2xx) on both servers (GoToSocial one delivery, Mastodon two per edit, one per inbox). The Update's
+    id is GoToSocial's `…/statuses/{id}/activity#Update` and Mastodon's `…/statuses/{id}#updates/{unix time}`. Neither
+    server showed any change: three seconds later `reblogged_by` still listed the Group, once (a no-op, as expected).
+  - **`Undo{Announce}`**: after carol's deletion `object.deleted` arrived at once and the Group's `Undo` (its object the
+    original `Announce`, same addressing as the boost) was queued and `delivered` (2xx) on both servers. The status was
+    gone by then, so what the `Undo` changed on a timeline could not be seen: only the 2xx is confirmed.
+  - **The author's `Update` and `Delete` reaching Megáfono as a booster (no mention, nobody here follows carol)**:
+    **differs by server**. *Mastodon* sent both: carol edited her announced reply dropping the mention and Megáfono
+    received the `Update` (`reply.updated` within 0.5 s); a second announced reply edited without the mention and
+    deleted gave `object.deleted` within 0.5 s and the `Undo` of its announce (both `delivered`). *GoToSocial* sent
+    neither: the `Update` of the reply edited without the mention did not arrive in 15 s, nor did the `Delete` of the
+    second reply (the inbox log shows only the `Follow`, the two `Create`s, and the `Update` and `Delete` of the
+    replies that still mentioned the Group). GoToSocial addresses an `Update` or `Delete` to the status's current
+    audience (followers, mentions) and does not add the servers that boosted it, unlike Mastodon's `StatusReachFinder`.
+    The R-62 rationale that GoToSocial "likewise" keeps a boosting server current was therefore wrong for GoToSocial.
+    The effect: for a reply from a GoToSocial user that does not (or no longer) mention the Group, an edit or deletion
+    does not reach Megáfono, so its `Announce{Update}` / `Undo` is never sent, and servers that got the reply through the
+    Group's boost learn of the change only from the author's own server (followers) or by refetching. No production change
+    was made; see the report of T022 and the limits in `docs/operating.md`.
+  - **Two edits in one second (Mastodon)**: in a later run the test's two edits of carol's reply fell within the same
+    second, and the second `reply.updated` never came: Mastodon names an `Update` after the edit's second
+    (`…#updates/{unix time}`) and writes `updated` to the second, so the second edit carried the first one's id and
+    time and Megáfono took it for a repeat (002's `{updateId}|{updated}` marker). Two edits by a person within one
+    second do not happen; the test now waits over a second between them.
+  - **Inbox answers**: Megáfono answered 202 to every `Create`, `Update` and `Delete` the servers sent.
+  - **Timing**: every event and every delivery was seen within one poll tick (0.5 s) on both servers.
