@@ -13,7 +13,7 @@
 ///  7. JSON parsed                                                    -> 400
 ///  8. activity id seen in the last 7 days                            -> 202, ignored (in the handler's transaction)
 ///  9. embedded ids on another host than the signer are not trusted (see InboxCommon.isOnSignerHost)
-/// 10. dispatch; unknown types                                        -> 202, dropped
+/// 10. dispatch (an Announce of a followed Group, and the Undo of one, are InboxAnnounces); unknown types -> 202, dropped
 module Megafono.Federation.Inbox
 
 open System
@@ -221,10 +221,19 @@ let private dispatchDelete (env: Env) (signer: RemoteActor) (activity: JsonNode)
         | _ -> return Ignored "the Delete is not the signer's own"
     }
 
+/// An `Undo` whose object is an embedded `Announce`
+let private isAnnounceUndo (activity: JsonNode) : bool =
+    match activity["object"] with
+    | :? JsonObject as o -> str o "type" = Some "Announce"
+    | _ -> false
+
 let private dispatch (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outcome> =
     match str activity "type" with
     | Some "Follow" -> InboxFollows.handleFollow env signer activity
+    // The Undo of a Group's Announce retracts the announced post; every other Undo is a Follow's (R-63)
+    | Some "Undo" when isAnnounceUndo activity -> InboxAnnounces.handleUndo env signer activity
     | Some "Undo" -> InboxFollows.handleUndo env signer activity
+    | Some "Announce" -> InboxAnnounces.handleAnnounce env signer activity
     | Some "Block" -> InboxBlocks.handleBlock env signer activity
     | Some "Create" -> dispatchCreate env signer activity
     // An edited Note is a post's Update; anything else is a profile update

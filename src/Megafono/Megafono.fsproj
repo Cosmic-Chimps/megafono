@@ -37,6 +37,7 @@
     <Compile Include="Federation/InboxActors.fs" />
     <Compile Include="Federation/InboxReplies.fs" />
     <Compile Include="Federation/InboxPosts.fs" />
+    <Compile Include="Federation/InboxAnnounces.fs" />
     <Compile Include="Federation/Inbox.fs" />
     <Compile Include="Internal/Actors.fs" />
     <Compile Include="Internal/Objects.fs" />

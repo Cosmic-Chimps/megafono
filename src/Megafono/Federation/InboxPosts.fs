@@ -16,8 +16,9 @@ open Megafono.Infrastructure.RemoteActors
 open Megafono.Federation.InboxCommon
 open Megafono.Federation.InboxNotes
 
-/// The post as the app sees it. `audience` is how it was addressed when it arrived.
-let private postObject
+/// The post as the app sees it. `audience` is how it was addressed when it arrived. (Public: a followed Group's
+/// announces, feature 006, pass on posts built the same way.)
+let postObject
     (env: Env)
     (note: JsonObject)
     (audience: string)
@@ -40,7 +41,7 @@ let private postObject
       Attachments = fields.Attachments }
 
 /// The app's own extension data on a post (FR-008): the namespaces the post declares that the app has published with
-let private extensionsOf (tx: Npgsql.NpgsqlTransaction) (context: JsonNode) (note: JsonObject) : Task<JsonNode option> =
+let extensionsOf (tx: Npgsql.NpgsqlTransaction) (context: JsonNode) (note: JsonObject) : Task<JsonNode option> =
     task {
         let declared = ActivityStreams.extensionTerms context @ ActivityStreams.extensionTerms note["@context"] |> List.map snd |> List.distinct
         let! known = FeedPosts.knownNamespaces tx declared
