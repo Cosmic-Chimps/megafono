@@ -224,11 +224,13 @@ let private post: Events.PostObject =
 
 [<Fact>]
 let ``005 app-contract post.received carries every documented field, inReplyTo null, no parent or thread`` () =
-    let json = envelopeOf (Events.postBody Events.PostReceived bob post None)
+    let json = envelopeOf (Events.postBody Events.PostReceived bob post None None)
     Assert.Equal("post.received", get json "type")
     Assert.Equal("series-52991", get json "user.id")
     Assert.Equal("https://mastodon.social/users/bob", get json "actor.id")
     Assert.Equal("@bob@mastodon.social", get json "actor.handle")
+    Assert.True(json.AsObject().ContainsKey "announcedBy")
+    Assert.Null json["announcedBy"]
     Assert.Equal("https://mastodon.social/users/bob/statuses/1200", get json "object.id")
     Assert.Equal("https://mastodon.social/@bob/1200", get json "object.url")
     Assert.Equal("Note", get json "object.type")
@@ -254,7 +256,7 @@ let ``005 app-contract post.received carries every documented field, inReplyTo n
 [<Fact>]
 let ``005 app-contract post.received passes inReplyTo on and null fields stay null`` () =
     let answer = { post with InReplyTo = Some "https://other.example/users/carol/statuses/9"; Summary = None; Sensitive = false; Language = None; Url = None; Attachments = [] }
-    let json = envelopeOf (Events.postBody Events.PostReceived bob answer None)
+    let json = envelopeOf (Events.postBody Events.PostReceived bob answer None None)
     Assert.Equal("https://other.example/users/carol/statuses/9", get json "object.inReplyTo")
     Assert.Null(nodeAt json "object.summary")
     Assert.False(boolAt json "object.sensitive")
@@ -265,7 +267,7 @@ let ``005 app-contract post.received passes inReplyTo on and null fields stay nu
 [<Fact>]
 let ``005 app-contract post.updated sets object.updated`` () =
     let updated = { post with Updated = Some(DateTimeOffset(2026, 10, 18, 18, 5, 0, TimeSpan.Zero)) }
-    let json = envelopeOf (Events.postBody Events.PostUpdated bob updated None)
+    let json = envelopeOf (Events.postBody Events.PostUpdated bob updated None None)
     Assert.Equal("post.updated", get json "type")
     Assert.Equal("2026-10-18T18:05:00Z", get json "object.updated")
     Assert.Equal("followers", get json "object.audience")
@@ -278,19 +280,46 @@ let ``005 app-contract extensions of the post replace the null`` () =
     extensions["namespace"] <- JsonValue.Create "https://app.example/ns#"
     extensions["prefix"] <- JsonValue.Create "app"
     extensions["data"] <- data
-    let json = envelopeOf (Events.postBody Events.PostReceived bob post (Some(extensions :> JsonNode)))
+    let json = envelopeOf (Events.postBody Events.PostReceived bob post None (Some(extensions :> JsonNode)))
     Assert.Equal("https://app.example/ns#", get json "extensions.namespace")
     Assert.Equal("app", get json "extensions.prefix")
     Assert.Equal(1, intAt json "extensions.data.watch.episode")
 
 [<Fact>]
 let ``005 app-contract post.deleted has only the id`` () =
-    let json = envelopeOf (Events.postDeletedBody bob post.Id)
+    let json = envelopeOf (Events.postDeletedBody bob post.Id None)
     Assert.Equal("post.deleted", get json "type")
     Assert.Equal(post.Id, get json "object.id")
     Assert.Equal(1, (nodeAt json "object").AsObject().Count)
     Assert.Equal("@bob@mastodon.social", get json "actor.handle")
+    Assert.Null json["announcedBy"]
     Assert.Null json["extensions"]
+
+let private group: Events.ActorSummary =
+    { Id = "https://otherfrunchy.io/ap/actors/series-52991"
+      Handle = "@frieren@otherfrunchy.io"
+      Name = "Frieren"
+      IconUrl = Some "https://otherfrunchy.io/img/frieren.png"
+      ProfileUrl = Some "https://otherfrunchy.io/series/frieren" }
+
+[<Fact>]
+let ``006 R-66 announcedBy carries the Group's summary, right after actor, on all three feed events`` () =
+    let received = envelopeOf (Events.postBody Events.PostReceived bob post (Some group) None)
+    Assert.Equal("https://otherfrunchy.io/ap/actors/series-52991", get received "announcedBy.id")
+    Assert.Equal("@frieren@otherfrunchy.io", get received "announcedBy.handle")
+    Assert.Equal("Frieren", get received "announcedBy.name")
+    Assert.Equal("https://otherfrunchy.io/img/frieren.png", get received "announcedBy.iconUrl")
+    Assert.Equal("https://otherfrunchy.io/series/frieren", get received "announcedBy.profileUrl")
+    // right after actor: the next key in document order
+    let keys = received.AsObject() |> Seq.map (fun kv -> kv.Key) |> List.ofSeq
+    Assert.Equal(1 + (List.findIndex ((=) "actor") keys), List.findIndex ((=) "announcedBy") keys)
+
+    let updated = { post with Updated = Some(DateTimeOffset(2026, 10, 18, 18, 5, 0, TimeSpan.Zero)) }
+    let updatedJson = envelopeOf (Events.postBody Events.PostUpdated bob updated (Some group) None)
+    Assert.Equal("https://otherfrunchy.io/ap/actors/series-52991", get updatedJson "announcedBy.id")
+
+    let deletedJson = envelopeOf (Events.postDeletedBody bob post.Id (Some group))
+    Assert.Equal("https://otherfrunchy.io/ap/actors/series-52991", get deletedJson "announcedBy.id")
 
 [<Fact>]
 let ``005 SC-005 reply.received keeps its exact JSON`` () =

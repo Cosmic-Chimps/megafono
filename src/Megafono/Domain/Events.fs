@@ -231,6 +231,23 @@ let private withExtensions (o: JsonObject) (extensions: JsonNode option) : (stri
     let extra = [ "object", (o :> JsonNode) ]
     match extensions with Some e -> extra @ [ "extensions", e ] | None -> extra
 
+/// `announcedBy` (specs/006-group-announce R-66): the Group that announced a feed post, in the same shape as `actor`,
+/// placed right after it since nothing else (no `follow`) comes between them for a feed event
+let private announcedByEntry (announcedBy: ActorSummary option) : string * JsonNode =
+    let node =
+        match announcedBy with
+        | Some group ->
+            let n = JsonObject()
+            n["id"] <- JsonValue.Create group.Id
+            n["handle"] <- JsonValue.Create group.Handle
+            n["name"] <- JsonValue.Create group.Name
+            n["iconUrl"] <- optionalString group.IconUrl
+            n["profileUrl"] <- optionalString group.ProfileUrl
+            n :> JsonNode
+        | None -> null
+
+    "announcedBy", node
+
 /// `reply.received` and `reply.updated`; `extensions` (the app's namespace, data under its prefix) is null when absent
 let replyBody (eventType: EventType) (actor: ActorSummary) (reply: ReplyObject) (extensions: JsonNode option) : EventBody =
     let o =
@@ -289,8 +306,9 @@ type PostObject =
       InReplyTo: string option
       Attachments: ReplyAttachment list }
 
-/// `post.received` and `post.updated`; `extensions` is null when absent
-let postBody (eventType: EventType) (actor: ActorSummary) (post: PostObject) (extensions: JsonNode option) : EventBody =
+/// `post.received` and `post.updated`; `announcedBy` is the Group that announced the post, or `null` for one that
+/// came straight from a followed account (specs/006-group-announce R-66); `extensions` is null when absent
+let postBody (eventType: EventType) (actor: ActorSummary) (post: PostObject) (announcedBy: ActorSummary option) (extensions: JsonNode option) : EventBody =
     let o =
         noteFields
             post.Id
@@ -310,10 +328,10 @@ let postBody (eventType: EventType) (actor: ActorSummary) (post: PostObject) (ex
     { Type = eventType
       Actor = Some actor
       Follow = None
-      Extra = withExtensions o extensions }
+      Extra = announcedByEntry announcedBy :: withExtensions o extensions }
 
-/// `post.deleted`: only the post's id
-let postDeletedBody (actor: ActorSummary) (postId: string) : EventBody =
+/// `post.deleted`: only the post's id, with `announcedBy` as `postBody`
+let postDeletedBody (actor: ActorSummary) (postId: string) (announcedBy: ActorSummary option) : EventBody =
     let o = JsonObject()
     o["id"] <- JsonValue.Create postId
-    { Type = PostDeleted; Actor = Some actor; Follow = None; Extra = [ "object", (o :> JsonNode) ] }
+    { Type = PostDeleted; Actor = Some actor; Follow = None; Extra = [ announcedByEntry announcedBy; "object", (o :> JsonNode) ] }

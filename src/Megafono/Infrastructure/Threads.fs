@@ -183,7 +183,9 @@ type ReplyRow =
       RootAuthor: string
       Audience: string
       State: string
-      PublishedAt: DateTimeOffset }
+      PublishedAt: DateTimeOffset
+      /// The id of the `Announce` the thread's Group sent for this reply, when it did (specs/006-group-announce R-62)
+      AnnounceActivity: Guid option }
 
 /// The row of a reply, locked until the transaction ends
 let findReply (tx: NpgsqlTransaction) (replyId: string) : Task<ReplyRow option> =
@@ -192,7 +194,7 @@ let findReply (tx: NpgsqlTransaction) (replyId: string) : Task<ReplyRow option> 
             command
                 tx
                 """SELECT rp.id, rp.remote_actor, rp.local_object, rp.parent, rp.parent_object, po.local_actor, rp.thread_root, ro.local_actor,
-                          rp.audience, rp.state, rp.published_at
+                          rp.audience, rp.state, rp.published_at, rp.announce_activity
                    FROM replies rp
                    JOIN objects ro ON ro.id = rp.thread_root
                    LEFT JOIN objects po ON po.id = rp.parent_object
@@ -215,9 +217,21 @@ let findReply (tx: NpgsqlTransaction) (replyId: string) : Task<ReplyRow option> 
                       RootAuthor = reader.GetString 7
                       Audience = reader.GetString 8
                       State = reader.GetString 9
-                      PublishedAt = reader.GetFieldValue<DateTimeOffset> 10 }
+                      PublishedAt = reader.GetFieldValue<DateTimeOffset> 10
+                      AnnounceActivity = optionalGuid reader 11 }
         else
             return None
+    }
+
+/// Remembers the Group's `Announce` for this reply, so its edit and deletion can be followed up
+/// (specs/006-group-announce R-62, R-63)
+let setAnnounce (tx: NpgsqlTransaction) (replyId: string) (activityGuid: Guid) : Task =
+    task {
+        use c =
+            command tx "UPDATE replies SET announce_activity = @activity WHERE id = @id" [ "id", box replyId; "activity", box activityGuid ]
+
+        let! _ = c.ExecuteNonQueryAsync()
+        ()
     }
 
 /// A live reply goes `deleted`; false when it already was (or does not exist)

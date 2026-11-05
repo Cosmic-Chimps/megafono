@@ -1,6 +1,15 @@
 <!--
 Sync Impact Report
 ==================
+Version change: 1.0.0 → 1.1.0 (2026-11-04)
+Bump rationale: MINOR, Scope and Technology Constraints materially expanded. "Boosts of remote
+posts" is narrowed to boosts by the app's users and public timelines; a Group actor announcing
+the replies in its own threads (FEP-1b12) and passing a followed Group's announces on to the app
+are in scope, as specs/006-group-announce (research R-69) asks. No principle changed.
+Templates: none affected. docs/vision.md's non-goal line says the same since 006.
+
+Earlier report (1.0.0)
+----------------------
 Version change: TEMPLATE (unversioned) → 1.0.0
 Bump rationale: initial ratification. First concrete constitution, derived from docs/vision.md
 and the 2026-10-10 review of it (permanent actor ids, idempotent publish, real-server interop
@@ -182,8 +191,12 @@ sidecar is supposed to remove, not add.
 - **Permanently out of scope for v1**, and declined by default: a hosted or multi-tenant
   service, any user interface, ActivityPub C2S and the Mastodon client API, media storage,
   full JSON-LD processing, moderation beyond per-user and per-instance blocks, relays, boosts
-  of remote posts and public timelines. Moving an item into scope requires a MINOR amendment
-  with written rationale.
+  of remote posts by the app's users (a "boost" button) and public timelines. Since 1.1.0, a
+  `Group` actor announcing the replies in its own threads to its followers (FEP-1b12, as a
+  Lemmy community does) and passing a followed Group's announces on to the app as feed events
+  are in scope (specs/006-group-announce): neither lets a user boost anything, and neither is
+  a timeline. Moving another item into scope requires a MINOR amendment with written
+  rationale.
 - **Open questions** listed in `docs/vision.md` MUST be answered in a spec or plan, with the
   decision recorded in the vision, before code depends on them.
 
@@ -226,4 +239,4 @@ design:
   simpler alternative that was rejected. An unjustified violation blocks the plan. Reviews
   verify the tests of Principle VI and the privacy tests of Principle II.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-10 | **Last Amended**: 2026-10-10
+**Version**: 1.1.0 | **Ratified**: 2026-10-10 | **Last Amended**: 2026-11-04

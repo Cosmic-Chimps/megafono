@@ -90,7 +90,7 @@ let createPost (env: Env) (signer: RemoteActor) (activity: JsonNode) (note: Json
 
                 let now = env.Time.GetUtcNow()
                 let published = time note "published" |> Option.defaultValue now
-                let! inserted = FeedPosts.insertRows tx postId signer.Id (Audience.receivedName audience) published users
+                let! inserted = FeedPosts.insertRows tx postId signer.Id (Audience.receivedName audience) published None users
 
                 if inserted.IsEmpty then
                     do! tx.RollbackAsync()
@@ -102,7 +102,7 @@ let createPost (env: Env) (signer: RemoteActor) (activity: JsonNode) (note: Json
                     for user in inserted do
                         // A JSON node has one parent: each event gets its own copy of the extension data
                         let own = extensions |> Option.map (fun e -> e.DeepClone())
-                        let! _ = Outbox.enqueueEvent tx env.Time user (Events.postBody Events.PostReceived (actorSummary signer) post own)
+                        let! _ = Outbox.enqueueEvent tx env.Time user (Events.postBody Events.PostReceived (actorSummary signer) post None own)
                         ()
 
                     do! tx.CommitAsync()
@@ -162,7 +162,7 @@ let updatePost (env: Env) (signer: RemoteActor) (activity: JsonNode) (note: Json
                     for row in rows |> List.filter (fun r -> List.contains r.LocalUser users) do
                         let post = postObject env note row.Audience row.PublishedAt (Some updated)
                         let own = extensions |> Option.map (fun e -> e.DeepClone())
-                        let! _ = Outbox.enqueueEvent tx env.Time row.LocalUser (Events.postBody Events.PostUpdated (actorSummary signer) post own)
+                        let! _ = Outbox.enqueueEvent tx env.Time row.LocalUser (Events.postBody Events.PostUpdated (actorSummary signer) post None own)
                         ()
 
                     do! tx.CommitAsync()
@@ -196,7 +196,7 @@ let deletePost (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Outc
                     return Ignored "the post was deleted meanwhile"
                 else
                     for user in deleted |> List.filter (fun u -> List.contains u hearing) do
-                        let! _ = Outbox.enqueueEvent tx env.Time user (Events.postDeletedBody (actorSummary signer) postId)
+                        let! _ = Outbox.enqueueEvent tx env.Time user (Events.postDeletedBody (actorSummary signer) postId None)
                         ()
 
                     do! tx.CommitAsync()

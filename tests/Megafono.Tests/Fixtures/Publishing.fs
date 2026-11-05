@@ -93,13 +93,21 @@ let addFollower
     }
 
 /// An outbound follow of `name` on `stub` by `localUser`, with that stub's real public key, so posts signed by it
-/// verify. `status` is pending, accepted, rejected or removed.
-let addFollowing (db: NpgsqlDataSource) (localUser: string) (stub: StubRemote.StubRemote) (name: string) (status: string) : Task =
+/// verify, and stored as the given actor type (`Group`, for specs/006-group-announce). `status` is pending,
+/// accepted, rejected or removed.
+let addFollowingTyped
+    (db: NpgsqlDataSource)
+    (localUser: string)
+    (stub: StubRemote.StubRemote)
+    (name: string)
+    (status: string)
+    (actorType: string)
+    : Task =
     task {
         use command =
             db.CreateCommand
                 """INSERT INTO remote_actors (id, host, handle, actor_type, inbox, followers_url, name, profile_url, key_id, public_key_pem)
-                   VALUES (@id, @host, @handle, 'Person', @inbox, @followers, @name, @profile, @keyid, @pem) ON CONFLICT (id) DO NOTHING;
+                   VALUES (@id, @host, @handle, @actorType, @inbox, @followers, @name, @profile, @keyid, @pem) ON CONFLICT (id) DO NOTHING;
                    INSERT INTO follows (id, direction, local_actor, remote_actor, follow_activity_id, status)
                    VALUES (gen_random_uuid(), 'outbound', @local, @id, @follow, @status)
                    ON CONFLICT (direction, local_actor, remote_actor) DO UPDATE SET status = @status"""
@@ -107,6 +115,7 @@ let addFollowing (db: NpgsqlDataSource) (localUser: string) (stub: StubRemote.St
         command.Parameters.AddWithValue("id", stub.ActorId name) |> ignore
         command.Parameters.AddWithValue("host", stub.Authority.ToLowerInvariant()) |> ignore
         command.Parameters.AddWithValue("handle", $"{name}@{stub.Authority}") |> ignore
+        command.Parameters.AddWithValue("actorType", actorType) |> ignore
         command.Parameters.AddWithValue("inbox", stub.InboxUrl name) |> ignore
         command.Parameters.AddWithValue("followers", stub.ActorId name + "/followers") |> ignore
         command.Parameters.AddWithValue("name", $"{name} (stub)") |> ignore
@@ -119,6 +128,10 @@ let addFollowing (db: NpgsqlDataSource) (localUser: string) (stub: StubRemote.St
         let! _ = command.ExecuteNonQueryAsync()
         ()
     }
+
+/// An outbound follow of a `Person` (the common case); see `addFollowingTyped` for a Group
+let addFollowing (db: NpgsqlDataSource) (localUser: string) (stub: StubRemote.StubRemote) (name: string) (status: string) : Task =
+    addFollowingTyped db localUser stub name status "Person"
 
 let setFollowStatus (db: NpgsqlDataSource) (localUser: string) (stub: StubRemote.StubRemote) (name: string) (status: string) : Task =
     Db.execute db $"UPDATE follows SET status = '{status}' WHERE local_actor = '{localUser}' AND remote_actor = '{stub.ActorId name}'"

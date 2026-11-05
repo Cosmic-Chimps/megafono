@@ -413,3 +413,83 @@ type AppClientTests(pg: PostgresFixture) =
             Assert.True (found plain).Discoverable
             Assert.False (found plain).Indexable
         }
+
+    [<Fact>]
+    member _.``R-61 parseProfile reads announcesReplies, true only for a Group``() =
+        let parse = AppClient.parseProfile false
+
+        let body (kind: string) (extra: string) =
+            $"""{{"id":"u1","handle":"a","name":"A","profileUrl":"https://a.example","locked":false,"type":"{kind}"{extra}}}"""
+
+        let ok (kind: string) (extra: string) = Result.defaultWith (fun e -> failwith e) (parse (body kind extra))
+
+        let absent = ok "Group" ""
+        Assert.False absent.AnnouncesReplies
+
+        let nullValue = ok "Group" ""","announcesReplies":null"""
+        Assert.False nullValue.AnnouncesReplies
+
+        let on = ok "Group" ""","announcesReplies":true"""
+        Assert.True on.AnnouncesReplies
+
+        let off = ok "Group" ""","announcesReplies":false"""
+        Assert.False off.AnnouncesReplies
+
+        // false is harmless for a non-Group
+        Assert.True((parse (body "Person" ""","announcesReplies":false""")).IsOk)
+
+        Assert.Equal(Error "'announcesReplies' is only for Group actors", parse (body "Person" ""","announcesReplies":true"""))
+        Assert.Equal(Error "'announcesReplies' is only for Group actors", parse (body "Service" ""","announcesReplies":true"""))
+
+        for bad in [ ""","announcesReplies":"yes" """; ""","announcesReplies":1""" ] do
+            Assert.Equal(Error "'announcesReplies' must be true or false", parse (body "Group" bad))
+
+    [<Fact>]
+    member _.``R-61 a stored Group profile keeps announces_replies, and a refresh that turns it off stores false``() : Task =
+        task {
+            let! s = setup pg true
+            s.App.AddUser { FakeApp.user "g-1" "series" with Type = "Group"; AnnouncesReplies = Some true }
+            let! group = s.Client.ByHandle "series"
+            Assert.True (found group).AnnouncesReplies
+
+            s.Time.Advance(TimeSpan.FromMinutes 10.0)
+            s.App.AddUser { FakeApp.user "g-1" "series" with Type = "Group"; AnnouncesReplies = Some false }
+            let! refreshed = s.Client.ByHandle "series"
+            Assert.False (found refreshed).AnnouncesReplies
+        }
+
+    [<Fact>]
+    member _.``R-61 turning announcesReplies on or off is not a profile change``() : Task =
+        task {
+            let! s = setup pg true
+            let store (profile: AppProfile) =
+                task {
+                    use! connection = s.DataSource.OpenConnectionAsync()
+                    use! tx = connection.BeginTransactionAsync()
+                    let! stored = s.Client.StoreIn tx profile
+                    do! tx.CommitAsync()
+                    return stored |> Option.map snd
+                }
+
+            let fetchAndStore () =
+                task {
+                    let! fetched = s.Client.Fetch "g-2"
+                    let profile = match fetched with Fetched p -> p | other -> failwith $"expected Fetched, got {other}"
+                    return! store profile
+                }
+
+            s.App.AddUser { FakeApp.user "g-2" "crew" with Type = "Group" }
+            let! first = fetchAndStore ()
+            Assert.Equal(Some true, first) // first sight is always a change
+
+            s.App.AddUser { FakeApp.user "g-2" "crew" with Type = "Group"; AnnouncesReplies = Some true }
+            let! turnedOn = fetchAndStore ()
+            Assert.Equal(Some false, turnedOn)
+
+            s.App.AddUser { FakeApp.user "g-2" "crew" with Type = "Group"; AnnouncesReplies = Some false }
+            let! turnedOff = fetchAndStore ()
+            Assert.Equal(Some false, turnedOff)
+
+            let! activities = Db.count s.DataSource "SELECT count(*) FROM activities"
+            Assert.Equal(0L, activities)
+        }

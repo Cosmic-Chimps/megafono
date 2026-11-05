@@ -95,11 +95,11 @@ type FeedPostsTests(pg: PostgresFixture) =
             let! db = setup pg stub
             let bob = stub.ActorId "bob"
 
-            let! first = inTx db (fun tx -> FeedPosts.insertRows tx postId bob "followers" published [ "bea"; "alex" ])
+            let! first = inTx db (fun tx -> FeedPosts.insertRows tx postId bob "followers" published None [ "bea"; "alex" ])
             Assert.Equal<string list>([ "alex"; "bea" ], first)
 
             // the same post again, also for a user it has not reached: only the new row is returned
-            let! second = inTx db (fun tx -> FeedPosts.insertRows tx postId bob "public" published [ "alex"; "bea"; "dan" ])
+            let! second = inTx db (fun tx -> FeedPosts.insertRows tx postId bob "public" published None [ "alex"; "bea"; "dan" ])
             Assert.Equal<string list>([ "dan" ], second)
 
             let! rows = inTx db (fun tx -> FeedPosts.liveRows tx postId bob)
@@ -124,7 +124,7 @@ type FeedPostsTests(pg: PostgresFixture) =
             Assert.Empty live
 
             // a deleted row is never live again: inserting the post anew finds the rows
-            let! afterDelete = inTx db (fun tx -> FeedPosts.insertRows tx postId bob "public" published [ "alex" ])
+            let! afterDelete = inTx db (fun tx -> FeedPosts.insertRows tx postId bob "public" published None [ "alex" ])
             Assert.Empty afterDelete
         }
 

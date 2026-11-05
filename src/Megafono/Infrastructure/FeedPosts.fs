@@ -86,26 +86,32 @@ let qualifying (tx: NpgsqlTransaction) (users: string list) (signer: string) (ho
 
 /// Records the post for each of `users` that has no row for it yet and returns those users, sorted: the ones to
 /// queue `post.received` for (R-55). `audience` is how the post arrived (`public`, `unlisted`, `followers`, `direct`).
+/// `announcedBy` is the Group whose `Announce` brought it, or `None` for a post straight from a followed account
+/// (specs/006-group-announce R-66).
 let insertRows
     (tx: NpgsqlTransaction)
     (postId: string)
     (signer: string)
     (audience: string)
     (published: DateTimeOffset)
+    (announcedBy: string option)
     (users: string list)
     : Task<string list> =
     task {
+        let orNull (value: string option) : obj = match value with Some v -> box v | None -> box DBNull.Value
+
         use c =
             command
                 tx
-                """INSERT INTO feed_posts (id, local_actor, remote_actor, audience, published_at)
-                   SELECT @id, u, @signer, @audience, @published FROM unnest(@users::text[]) AS u ORDER BY u
+                """INSERT INTO feed_posts (id, local_actor, remote_actor, audience, published_at, announced_by)
+                   SELECT @id, u, @signer, @audience, @published, @announced FROM unnest(@users::text[]) AS u ORDER BY u
                    ON CONFLICT DO NOTHING
                    RETURNING local_actor"""
                 [ "id", box postId
                   "signer", box signer
                   "audience", box audience
                   "published", box published.UtcDateTime
+                  "announced", orNull announcedBy
                   "users", box (Array.ofList users) ]
 
         let! inserted = strings c
@@ -167,6 +173,85 @@ let markDeleted (tx: NpgsqlTransaction) (time: TimeProvider) (postId: string) (s
 
         let! deleted = strings c
         return List.sort deleted
+    }
+
+// ---- a followed Group's announces (feature 006, specs/006-group-announce R-66, R-67) -----------------------
+
+/// The live rows of a post that this Group announced, sorted by user: who is to hear of its edit or its retraction
+let announcedRows (tx: NpgsqlTransaction) (postId: string) (group: string) : Task<FeedRow list> =
+    task {
+        use c =
+            command
+                tx
+                """SELECT local_actor, audience, published_at FROM feed_posts
+                   WHERE id = @id AND announced_by = @group AND state = 'live'
+                   ORDER BY local_actor"""
+                [ "id", box postId; "group", box group ]
+
+        use! reader = c.ExecuteReaderAsync()
+        let rows = ResizeArray<FeedRow>()
+
+        while reader.Read() do
+            rows.Add
+                { LocalUser = reader.GetString 0
+                  Audience = reader.GetString 1
+                  PublishedAt = reader.GetFieldValue<DateTimeOffset> 2 }
+
+        return List.ofSeq rows
+    }
+
+/// Turns the live rows this Group announced `deleted` (the `Undo{Announce}` path) and returns their users, sorted
+let markDeletedAnnounced (tx: NpgsqlTransaction) (time: TimeProvider) (postId: string) (group: string) : Task<string list> =
+    task {
+        use c =
+            command
+                tx
+                """UPDATE feed_posts SET state = 'deleted', deleted_at = @now, updated_at = @now
+                   WHERE id = @id AND announced_by = @group AND state = 'live'
+                   RETURNING local_actor"""
+                [ "now", box (time.GetUtcNow().UtcDateTime); "id", box postId; "group", box group ]
+
+        let! deleted = strings c
+        return List.sort deleted
+    }
+
+/// The live users among `users` an announced post may still go to, sorted: not covered by a block of the Group nor
+/// of the author, optionally still following the Group (`mustFollowGroup`), and optionally excluding whoever has an
+/// accepted outbound follow of the author (`excludeAuthorFollowers`: those hear from the author's own edit instead, R-67)
+let qualifyingAnnounced
+    (tx: NpgsqlTransaction)
+    (users: string list)
+    (group: string)
+    (groupHost: string)
+    (author: string)
+    (authorHost: string)
+    (mustFollowGroup: bool)
+    (excludeAuthorFollowers: bool)
+    : Task<string list> =
+    task {
+        use c =
+            command
+                tx
+                $"""SELECT a.app_user_id FROM local_actors a
+                    WHERE a.app_user_id = ANY(@users) AND a.deleted_at IS NULL
+                      AND (NOT @mustFollowGroup OR EXISTS (SELECT 1 FROM follows f
+                                                      WHERE f.direction = 'outbound' AND f.status = 'accepted'
+                                                        AND f.local_actor = a.app_user_id AND f.remote_actor = @group))
+                      AND (NOT @excludeAuthorFollowers OR NOT EXISTS (SELECT 1 FROM follows f
+                                                      WHERE f.direction = 'outbound' AND f.status = 'accepted'
+                                                        AND f.local_actor = a.app_user_id AND f.remote_actor = @author))
+                      AND NOT {Blocks.coveredSql "a.app_user_id" "@group" "@groupHost"}
+                      AND NOT {Blocks.coveredSql "a.app_user_id" "@author" "@authorHost"}
+                    ORDER BY a.app_user_id"""
+                [ "users", box (Array.ofList users)
+                  "mustFollowGroup", box mustFollowGroup
+                  "excludeAuthorFollowers", box excludeAuthorFollowers
+                  "group", box group
+                  "groupHost", box groupHost
+                  "author", box author
+                  "authorHost", box authorHost ]
+
+        return! strings c
     }
 
 // ---- the app's extension namespaces (R-58) ---------------------------------------------------------------

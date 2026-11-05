@@ -52,6 +52,9 @@ let private schema =
     ALTER TABLE local_actors ADD COLUMN IF NOT EXISTS discoverable boolean NOT NULL DEFAULT true;
     ALTER TABLE local_actors ADD COLUMN IF NOT EXISTS indexable boolean NOT NULL DEFAULT false;
 
+    -- A Group that announces the replies in its threads (specs/006-group-announce/data-model.md, R-61)
+    ALTER TABLE local_actors ADD COLUMN IF NOT EXISTS announces_replies boolean NOT NULL DEFAULT false;
+
     CREATE UNIQUE INDEX IF NOT EXISTS ux_local_actors_handle
         ON local_actors (handle) WHERE deleted_at IS NULL;
 
@@ -145,11 +148,14 @@ let private schema =
         local_actor   text NOT NULL REFERENCES local_actors (app_user_id),
         object        uuid NULL REFERENCES objects (id),
         activity_type text NOT NULL
-            CHECK (activity_type IN ('Create', 'Update', 'Delete', 'Accept', 'Reject', 'Follow', 'Undo', 'Block')),
+            CHECK (activity_type IN ('Create', 'Update', 'Delete', 'Accept', 'Reject', 'Follow', 'Undo', 'Block', 'Announce')),
         audience      text NOT NULL CHECK (audience IN ('public', 'unlisted', 'followers', 'direct')),
         body          bytea NOT NULL,
         created_at    timestamptz NOT NULL DEFAULT now()
     );
+
+    -- The Announce the thread's Group sent for this reply (specs/006-group-announce/data-model.md, R-62, R-63)
+    ALTER TABLE replies ADD COLUMN IF NOT EXISTS announce_activity uuid NULL REFERENCES activities (id);
 
     -- Queues
     CREATE TABLE IF NOT EXISTS deliveries (
@@ -221,15 +227,17 @@ let private schema =
     CREATE INDEX IF NOT EXISTS ix_blocks_actor ON blocks (actor) WHERE actor IS NOT NULL;
     CREATE INDEX IF NOT EXISTS ix_blocks_domain ON blocks (domain) WHERE domain IS NOT NULL;
 
-    -- Databases created before blocks lack 'Block' in the activity types: replace the check once
+    -- Databases created before 'Block' or 'Announce' joined the activity types: replace the check once, to whichever
+    -- is the current full list (specs/004-blocks, specs/006-group-announce/data-model.md)
     DO $$
     BEGIN
         IF EXISTS (SELECT 1 FROM pg_constraint
                    WHERE conrelid = 'activities'::regclass AND conname = 'activities_activity_type_check'
-                     AND pg_get_constraintdef(oid) NOT LIKE '%''Block''%') THEN
+                     AND pg_get_constraintdef(oid) NOT LIKE '%''Announce''%') THEN
             ALTER TABLE activities DROP CONSTRAINT activities_activity_type_check;
             ALTER TABLE activities ADD CONSTRAINT activities_activity_type_check
-                CHECK (activity_type IN ('Create', 'Update', 'Delete', 'Accept', 'Reject', 'Follow', 'Undo', 'Block'));
+                CHECK (activity_type IN
+                    ('Create', 'Update', 'Delete', 'Accept', 'Reject', 'Follow', 'Undo', 'Block', 'Announce'));
         END IF;
     END $$;
 
@@ -247,6 +255,9 @@ let private schema =
         deleted_at    timestamptz NULL,
         PRIMARY KEY (id, local_actor)
     );
+
+    -- The remote Group whose Announce brought the post to this user (specs/006-group-announce/data-model.md, R-66)
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS announced_by text NULL REFERENCES remote_actors (id);
     """
 
 /// The namespaces the app has published with (specs/005-followed-posts R-58). Created and filled once, from the

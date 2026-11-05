@@ -423,6 +423,70 @@ type SchemaTests(pg: PostgresFixture) =
             })
 
     [<Fact>]
+    member _.``006 data-model: announces_replies, announce_activity and announced_by exist with their defaults; Announce is an activity type, the replaced check stays single``() : Task =
+        withDatabase (fun dataSource _ ->
+            task {
+                do! Database.initializeSchema dataSource
+
+                let actor id handle =
+                    $"INSERT INTO local_actors (app_user_id, handle, name, profile_url, public_key_pem, enc_private_key) VALUES ('{id}', '{handle}', 'N', 'https://app/u', 'pem', '\\x00')"
+
+                do! execute dataSource (actor "u1" "alex")
+                let! announces = scalar dataSource "SELECT announces_replies FROM local_actors WHERE app_user_id = 'u1'"
+                Assert.False(announces :?> bool)
+
+                do!
+                    execute
+                        dataSource
+                        "INSERT INTO objects (id, local_actor, audience, object_type, document) VALUES ('00000000-0000-4000-8000-0000000000b1', 'u1', 'public', 'Note', '{}')"
+
+                do!
+                    execute
+                        dataSource
+                        "INSERT INTO remote_actors (id, host, actor_type, inbox, key_id, public_key_pem) VALUES ('https://h/bob', 'h', 'Person', 'https://h/i', 'https://h/bob#k', 'p')"
+
+                do!
+                    execute
+                        dataSource
+                        "INSERT INTO activities (id, local_actor, activity_type, audience, body) VALUES ('00000000-0000-4000-8000-0000000000c1', 'u1', 'Announce', 'public', '\\x7b7d')"
+
+                do!
+                    execute
+                        dataSource
+                        """INSERT INTO replies (id, remote_actor, parent, thread_root, audience, published_at, announce_activity)
+                            VALUES ('https://h/r1', 'https://h/bob', 'p', '00000000-0000-4000-8000-0000000000b1', 'public', now(), '00000000-0000-4000-8000-0000000000c1')"""
+
+                let! announceActivity = scalar dataSource "SELECT announce_activity FROM replies WHERE id = 'https://h/r1'"
+                Assert.Equal(Guid.Parse "00000000-0000-4000-8000-0000000000c1", announceActivity :?> Guid)
+
+                do!
+                    execute
+                        dataSource
+                        "INSERT INTO feed_posts (id, local_actor, remote_actor, audience, state, published_at, announced_by) VALUES ('https://h/bob/1', 'u1', 'https://h/bob', 'public', 'live', now(), 'https://h/bob')"
+
+                let! announcedBy = scalar dataSource "SELECT announced_by FROM feed_posts WHERE id = 'https://h/bob/1'"
+                Assert.Equal("https://h/bob", announcedBy :?> string)
+
+                // A database made before 'Announce' has the old check: it is replaced once, then left alone
+                do! execute dataSource "DELETE FROM feed_posts"
+                do! execute dataSource "DELETE FROM replies"
+                do! execute dataSource "DELETE FROM activities"
+                do! execute dataSource "ALTER TABLE activities DROP CONSTRAINT activities_activity_type_check"
+
+                do!
+                    execute
+                        dataSource
+                        "ALTER TABLE activities ADD CONSTRAINT activities_activity_type_check CHECK (activity_type IN ('Create', 'Update', 'Delete', 'Accept', 'Reject', 'Follow', 'Undo', 'Block'))"
+
+                do! rejected dataSource checkViolation "INSERT INTO activities (id, local_actor, activity_type, audience, body) VALUES (gen_random_uuid(), 'u1', 'Announce', 'direct', '\\x7b7d')"
+                do! Database.initializeSchema dataSource
+                do! Database.initializeSchema dataSource
+                do! execute dataSource "INSERT INTO activities (id, local_actor, activity_type, audience, body) VALUES (gen_random_uuid(), 'u1', 'Announce', 'direct', '\\x7b7d')"
+                let! checks = scalar dataSource "SELECT count(*) FROM pg_constraint WHERE conname = 'activities_activity_type_check'"
+                Assert.Equal(1L, checks :?> int64)
+            })
+
+    [<Fact>]
     member _.``005 R-58 extension_namespaces is filled once from the stored objects' context, then left alone``() : Task =
         withDatabase (fun dataSource _ ->
             task {

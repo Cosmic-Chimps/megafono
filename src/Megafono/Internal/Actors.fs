@@ -15,28 +15,6 @@ let private error (ctx: HttpContext) (status: int) (code: string) (message: stri
     ctx.SetStatusCode status
     ctx.WriteJson {| error = code; message = message |}
 
-/// The distinct inboxes of the user's accepted followers, shared inbox first (one request per server)
-let private followerInboxes (tx: NpgsqlTransaction) (appUserId: string) =
-    task {
-        use command =
-            new NpgsqlCommand(
-                """SELECT DISTINCT COALESCE(r.shared_inbox, r.inbox)
-                   FROM follows f JOIN remote_actors r ON r.id = f.remote_actor
-                   WHERE f.direction = 'inbound' AND f.local_actor = @id AND f.status = 'accepted'""",
-                tx.Connection,
-                tx
-            )
-
-        command.Parameters.AddWithValue("id", appUserId) |> ignore
-        use! reader = command.ExecuteReaderAsync()
-        let inboxes = ResizeArray<string>()
-
-        while reader.Read() do
-            inboxes.Add(reader.GetString 0)
-
-        return List.ofSeq inboxes
-    }
-
 /// Stores the new profile and queues the `Update{Person}` for the followers' servers in ONE transaction: either
 /// both are saved or neither is, so a crash cannot leave a stored change that was never announced (Principle V).
 /// The Update carries the exact bytes every retry will send. None when the actor was deleted.
@@ -64,7 +42,7 @@ let private storeAndAnnounce
             do! tx.CommitAsync()
             return Some(actor, false, 0)
         | Some(actor, true) ->
-            let! inboxes = followerInboxes tx actor.AppUserId
+            let! inboxes = Outbox.followerInboxes tx actor.AppUserId
 
             if inboxes.IsEmpty then
                 do! tx.CommitAsync()

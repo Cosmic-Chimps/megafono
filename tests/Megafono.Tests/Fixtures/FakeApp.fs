@@ -29,7 +29,9 @@ type FakeUser =
       /// Sent only when set, so the default tests keep the old shape (absent means true)
       Discoverable: bool option
       /// Sent only when set (absent means false)
-      Indexable: bool option }
+      Indexable: bool option
+      /// Sent only when set (absent means false); specs/006-group-announce R-61
+      AnnouncesReplies: bool option }
 
 let user (id: string) (handle: string) : FakeUser =
     { Id = id
@@ -41,7 +43,8 @@ let user (id: string) (handle: string) : FakeUser =
       Type = "Person"
       Locked = false
       Discoverable = None
-      Indexable = None }
+      Indexable = None
+      AnnouncesReplies = None }
 
 type Mode =
     | Normal
@@ -95,6 +98,7 @@ type FakeApp(token: string, webhookSecret: string) =
         node["locked"] <- JsonValue.Create u.Locked
         u.Discoverable |> Option.iter (fun v -> node["discoverable"] <- JsonValue.Create v)
         u.Indexable |> Option.iter (fun v -> node["indexable"] <- JsonValue.Create v)
+        u.AnnouncesReplies |> Option.iter (fun v -> node["announcesReplies"] <- JsonValue.Create v)
         node.ToJsonString()
 
     let handleLookup (ctx: HttpContext) : Task =

@@ -202,28 +202,6 @@ let private readBody (ctx: HttpContext) : Task<byte[] option> =
 
 // ---- storage ---------------------------------------------------------------------------------------------
 
-/// The distinct inboxes of the author's accepted followers right now, the shared inbox where there is one (R-08)
-let private recipientInboxes (tx: NpgsqlTransaction) (appUserId: string) : Task<string list> =
-    task {
-        use command =
-            new NpgsqlCommand(
-                """SELECT DISTINCT COALESCE(r.shared_inbox, r.inbox)
-                   FROM follows f JOIN remote_actors r ON r.id = f.remote_actor
-                   WHERE f.direction = 'inbound' AND f.local_actor = @id AND f.status = 'accepted'""",
-                tx.Connection,
-                tx
-            )
-
-        command.Parameters.AddWithValue("id", appUserId) |> ignore
-        use! reader = command.ExecuteReaderAsync()
-        let inboxes = ResizeArray<string>()
-
-        while reader.Read() do
-            inboxes.Add(reader.GetString 0)
-
-        return List.ofSeq inboxes
-    }
-
 /// Stores the activity bytes and queues one delivery per recipient inbox, in the caller's transaction
 let private storeActivity
     (tx: NpgsqlTransaction)
@@ -253,7 +231,7 @@ let private storeActivity
         insert.Parameters.AddWithValue("body", body) |> ignore
         insert.Parameters.AddWithValue("now", time.GetUtcNow().UtcDateTime) |> ignore
         let! _ = insert.ExecuteNonQueryAsync()
-        let! inboxes = recipientInboxes tx appUserId
+        let! inboxes = Outbox.followerInboxes tx appUserId
         // Enqueued once per distinct inbox: a parent's author who also follows is not sent the same request twice
         let! _ = Outbox.enqueueDeliveries tx time activityGuid (inboxes @ extraInboxes)
         ()
@@ -400,7 +378,26 @@ let private publish (appUserId: string) : EndpointHandler =
                                 match parent with
                                 | Some p ->
                                     let! _ = Threads.recordLocalReply tx time objectGuid (Ids.objectId options.Domain objectGuid) p audience now
-                                    ()
+
+                                    // An announcing Group boosts a reply another local user publishes into its threads too
+                                    // (specs/006-group-announce R-64); local replies are always public or unlisted (002 FR-012)
+                                    if p.RootAuthor <> actor.AppUserId then
+                                        let! announces = Announces.groupAnnounces tx p.RootAuthor
+
+                                        if announces then
+                                            let received = match audience with Audience.Public -> Audience.ReceivedPublic | Audience.Unlisted -> Audience.ReceivedUnlisted | Audience.Followers -> Audience.ReceivedFollowers
+
+                                            let! announceGuid =
+                                                Announces.queueAnnounce
+                                                    tx
+                                                    time
+                                                    options.Domain
+                                                    p.RootAuthor
+                                                    (Ids.objectId options.Domain objectGuid)
+                                                    received
+                                                    (Ids.actorId options.Domain actor.AppUserId, None)
+
+                                            do! Threads.setAnnounce tx (Ids.objectId options.Domain objectGuid) announceGuid
                                 | None -> ()
 
                                 // The app's own namespaces, so a followed account's posts using one are recognized (R-58)
@@ -580,6 +577,30 @@ let private update (objectId: string) : EndpointHandler =
                             | None -> ()
 
                             do! storeActivity tx time stored.AppUserId objectGuid activityGuid "Update" stored.Audience activity plan.PersonalInboxes
+
+                            // The edit of a reply an announcing Group already boosted gets its own Announce{Update} (R-63)
+                            match stored.InReplyTo with
+                            | Some _ ->
+                                let! replyRow = Threads.findReply tx (Ids.objectId options.Domain objectGuid)
+
+                                match replyRow |> Option.bind (fun r -> r.AnnounceActivity) with
+                                | Some announceGuid ->
+                                    let! _ =
+                                        Announces.queueAnnounceUpdate
+                                            tx
+                                            time
+                                            options.Domain
+                                            replyRow.Value.RootAuthor
+                                            (Ids.activityId options.Domain activityGuid)
+                                            (Ids.actorId options.Domain stored.AppUserId)
+                                            None
+                                            (Ids.objectId options.Domain objectGuid)
+                                            announceGuid
+
+                                    ()
+                                | None -> ()
+                            | None -> ()
+
                             do! tx.CommitAsync()
                             return! ctx.WriteJson(publishResponse options.Domain objectGuid stored.ThreadRoot)
         }
@@ -636,6 +657,29 @@ let private delete (objectId: string) : EndpointHandler =
                     // A reply leaves its parent's `replies` collection with it
                     let! _ = Threads.markDeleted tx time (Ids.objectId options.Domain objectGuid)
                     do! storeActivity tx time stored.AppUserId objectGuid activityGuid "Delete" stored.Audience activity plan.PersonalInboxes
+
+                    // The retraction of an announcing Group's boost of the reply, if it ever sent one (R-63)
+                    match stored.InReplyTo with
+                    | Some _ ->
+                        let! replyRow = Threads.findReply tx (Ids.objectId options.Domain objectGuid)
+
+                        match replyRow |> Option.bind (fun r -> r.AnnounceActivity) with
+                        | Some announceGuid ->
+                            let! _ =
+                                Announces.queueUndoAnnounce
+                                    tx
+                                    time
+                                    options.Domain
+                                    replyRow.Value.RootAuthor
+                                    announceGuid
+                                    (Ids.actorId options.Domain stored.AppUserId)
+                                    None
+                                    (Ids.objectId options.Domain objectGuid)
+
+                            ()
+                        | None -> ()
+                    | None -> ()
+
                     do! tx.CommitAsync()
                     ctx.SetStatusCode 202
                     return! ctx.WriteJson {| id = objectGuid.ToString "D"; deliveriesUrl = $"/internal/objects/{objectGuid:D}/deliveries" |}

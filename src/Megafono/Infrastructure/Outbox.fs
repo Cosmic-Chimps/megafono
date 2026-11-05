@@ -22,6 +22,30 @@ let private notify (tx: NpgsqlTransaction) (channel: string) =
 /// The host key a delivery is limited by: lowercase host, plus the port when it is not the default
 let hostOf (inbox: string) : string = Uri(inbox).Authority.ToLowerInvariant()
 
+/// The distinct inboxes of a local actor's accepted followers right now, the shared inbox where there is one
+/// (R-08; moved here from `Internal/Objects.fs` and `Internal/Actors.fs` for feature 006's Group announces, which
+/// use the same followers)
+let followerInboxes (tx: NpgsqlTransaction) (appUserId: string) : Task<string list> =
+    task {
+        use command =
+            new NpgsqlCommand(
+                """SELECT DISTINCT COALESCE(r.shared_inbox, r.inbox)
+                   FROM follows f JOIN remote_actors r ON r.id = f.remote_actor
+                   WHERE f.direction = 'inbound' AND f.local_actor = @id AND f.status = 'accepted'""",
+                tx.Connection,
+                tx
+            )
+
+        command.Parameters.AddWithValue("id", appUserId) |> ignore
+        use! reader = command.ExecuteReaderAsync()
+        let inboxes = ResizeArray<string>()
+
+        while reader.Read() do
+            inboxes.Add(reader.GetString 0)
+
+        return List.ofSeq inboxes
+    }
+
 let private insertDeliveries (tx: NpgsqlTransaction) (time: TimeProvider) (activityId: Guid) (inboxes: string list) (filtered: bool) : Task<int> =
     task {
         let distinct = inboxes |> List.distinct |> Array.ofList

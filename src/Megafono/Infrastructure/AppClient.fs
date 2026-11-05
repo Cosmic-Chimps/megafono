@@ -25,7 +25,10 @@ type LocalActor =
       EncPrivateKey: byte[]
       CreatedAt: DateTimeOffset
       Discoverable: bool
-      Indexable: bool }
+      Indexable: bool
+      /// A Group that announces the replies in its threads (specs/006-group-announce R-61); always false for any
+      /// other type
+      AnnouncesReplies: bool }
 
 type LookupResult =
     | Found of LocalActor
@@ -51,7 +54,9 @@ type AppProfile =
       /// Optional in the answer: absent or null is true
       Discoverable: bool
       /// Optional in the answer: absent or null is false
-      Indexable: bool }
+      Indexable: bool
+      /// Optional in the answer: absent or null is false; true is only valid when `Type` is "Group" (R-61)
+      AnnouncesReplies: bool }
 
 /// What the app answered to an explicit profile fetch
 type FetchResult =
@@ -141,6 +146,7 @@ let parseProfile (allowHttp: bool) (body: string) : Result<AppProfile, string> =
 
                 let! discoverable = optionalBool root "discoverable" true
                 let! indexable = optionalBool root "indexable" false
+                let! announcesReplies = optionalBool root "announcesReplies" false
 
                 let! handle =
                     match Ids.normalizeHandle rawHandle with
@@ -152,6 +158,7 @@ let parseProfile (allowHttp: bool) (body: string) : Result<AppProfile, string> =
                 do!
                     if not (Ids.isValidAppUserId id) then Error "'id' must match ^[A-Za-z0-9_-]{1,64}$"
                     elif not (actorTypes.Contains kind) then Error "'type' must be Person, Service or Group"
+                    elif announcesReplies && kind <> "Group" then Error "'announcesReplies' is only for Group actors"
                     elif not (isAbsoluteUrl allowHttp profileUrl) then Error "'profileUrl' must be an absolute https URL"
                     elif iconUrl.IsSome && not (isAbsoluteUrl allowHttp iconUrl.Value) then Error "'iconUrl' must be an absolute https URL"
                     else Ok()
@@ -166,7 +173,8 @@ let parseProfile (allowHttp: bool) (body: string) : Result<AppProfile, string> =
                       Type = kind
                       Locked = locked
                       Discoverable = discoverable
-                      Indexable = indexable }
+                      Indexable = indexable
+                      AnnouncesReplies = announcesReplies }
             }
     with :? JsonException as e ->
         Error $"the answer is not valid JSON: {e.Message}"
@@ -174,7 +182,7 @@ let parseProfile (allowHttp: bool) (body: string) : Result<AppProfile, string> =
 // ---- storage ---------------------------------------------------------------------------------------------
 
 let private columns =
-    "app_user_id, handle, actor_type, locked, name, summary, icon_url, profile_url, profile_checked_at, public_key_pem, enc_private_key, created_at, discoverable, indexable"
+    "app_user_id, handle, actor_type, locked, name, summary, icon_url, profile_url, profile_checked_at, public_key_pem, enc_private_key, created_at, discoverable, indexable, announces_replies"
 
 let private readActor (reader: System.Data.Common.DbDataReader) : LocalActor =
     let optional (i: int) = if reader.IsDBNull i then None else Some(reader.GetString i)
@@ -192,7 +200,8 @@ let private readActor (reader: System.Data.Common.DbDataReader) : LocalActor =
       EncPrivateKey = reader.GetFieldValue<byte[]> 10
       CreatedAt = reader.GetFieldValue<DateTimeOffset> 11
       Discoverable = reader.GetBoolean 12
-      Indexable = reader.GetBoolean 13 }
+      Indexable = reader.GetBoolean 13
+      AnnouncesReplies = reader.GetBoolean 14 }
 
 let private querySingle (command: NpgsqlCommand) =
     task {
@@ -235,6 +244,7 @@ let private bindProfile (command: NpgsqlCommand) (profile: AppProfile) (now: Dat
     add "profile" profile.ProfileUrl
     add "discoverable" profile.Discoverable
     add "indexable" profile.Indexable
+    add "announces" profile.AnnouncesReplies
     add "now" now.UtcDateTime
 
 /// A command on the data source, or on the caller's transaction when there is one
@@ -251,7 +261,7 @@ let private updateKnown (env: Env) (tx: NpgsqlTransaction option) (profile: AppP
             commandFor env tx
                 $"""UPDATE local_actors SET handle = @handle, actor_type = @type, locked = @locked, name = @name, summary = @summary,
                     icon_url = @icon, profile_url = @profile, discoverable = @discoverable, indexable = @indexable,
-                    profile_checked_at = @now
+                    announces_replies = @announces, profile_checked_at = @now
                     WHERE app_user_id = @id AND deleted_at IS NULL RETURNING {columns}"""
 
         bindProfile command profile now
@@ -268,14 +278,14 @@ let private insertNew (env: Env) (tx: NpgsqlTransaction option) (profile: AppPro
         use command =
             commandFor env tx
                 $"""INSERT INTO local_actors (app_user_id, handle, actor_type, locked, name, summary, icon_url, profile_url,
-                        discoverable, indexable, profile_checked_at, public_key_pem, enc_private_key, created_at)
+                        discoverable, indexable, announces_replies, profile_checked_at, public_key_pem, enc_private_key, created_at)
                     VALUES (@id, @handle, @type, @locked, @name, @summary, @icon, @profile, @discoverable, @indexable,
-                        @now, @pem, @enc, @now)
+                        @announces, @now, @pem, @enc, @now)
                     ON CONFLICT (app_user_id) DO UPDATE SET handle = EXCLUDED.handle, actor_type = EXCLUDED.actor_type,
                         locked = EXCLUDED.locked, name = EXCLUDED.name, summary = EXCLUDED.summary,
                         icon_url = EXCLUDED.icon_url, profile_url = EXCLUDED.profile_url,
                         discoverable = EXCLUDED.discoverable, indexable = EXCLUDED.indexable,
-                        profile_checked_at = EXCLUDED.profile_checked_at
+                        announces_replies = EXCLUDED.announces_replies, profile_checked_at = EXCLUDED.profile_checked_at
                     WHERE local_actors.deleted_at IS NULL
                     RETURNING {columns}"""
 

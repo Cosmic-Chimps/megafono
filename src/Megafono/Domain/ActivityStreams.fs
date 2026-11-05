@@ -615,3 +615,78 @@ let undoBlock (activityId: string) (localActorId: string) (blocked: BlockRef) : 
     let doc = followActivity "Undo" activityId localActorId node
     doc["to"] <- JsonArray(str blocked.Object)
     doc
+
+// ======================================================================================================
+// Group announces (feature 006; research R-62, R-63)
+// ======================================================================================================
+
+/// The addressing of a Group's announce: like a boost of the reply's own audience, naming the reply's author
+/// besides the Group's followers (omitted when there is none to name)
+let announceAddressing (groupFollowers: string) (author: string option) (audience: Audience.Received) : Audience.Addressing =
+    let authored (items: string list) = items @ Option.toList author
+
+    match audience with
+    | Audience.ReceivedPublic -> { To = [ publicAudience ]; Cc = authored [ groupFollowers ] }
+    | Audience.ReceivedUnlisted -> { To = [ groupFollowers ]; Cc = authored [ publicAudience ] }
+    | Audience.ReceivedFollowers | Audience.ReceivedDirect -> { To = [ groupFollowers ]; Cc = authored [] }
+
+let private announceDoc
+    (domain: string)
+    (groupUserId: string)
+    (activityId: string)
+    (now: DateTimeOffset)
+    (activityType: string)
+    (addressing: Audience.Addressing)
+    (objectNode: JsonNode)
+    : JsonNode =
+    let doc = JsonObject()
+    doc["@context"] <- str "https://www.w3.org/ns/activitystreams"
+    doc["id"] <- str activityId
+    doc["type"] <- str activityType
+    doc["actor"] <- str (Ids.actorId domain groupUserId)
+    doc["published"] <- str (iso now)
+    doc["to"] <- JsonArray(addressing.To |> List.map str |> Array.ofList)
+    doc["cc"] <- JsonArray(addressing.Cc |> List.map str |> Array.ofList)
+    doc["object"] <- objectNode
+    doc
+
+/// A plain boost of the reply's id (R-62): `object` is the reply's own IRI, never a copy of its content
+let announce (domain: string) (groupUserId: string) (activityId: string) (now: DateTimeOffset) (addressing: Audience.Addressing) (objectIri: string) : JsonNode =
+    announceDoc domain groupUserId activityId now "Announce" addressing (str objectIri)
+
+/// `Announce{Update}` of an edited reply (R-63): the embedded `Update` is a pointer (the edit's own id), never
+/// trusted content; receivers re-read the reply from its origin
+let announceUpdate
+    (domain: string)
+    (groupUserId: string)
+    (activityId: string)
+    (now: DateTimeOffset)
+    (addressing: Audience.Addressing)
+    (updateId: string)
+    (authorId: string)
+    (objectIri: string)
+    : JsonNode =
+    let update = JsonObject()
+    update["id"] <- str updateId
+    update["type"] <- str "Update"
+    update["actor"] <- str authorId
+    update["object"] <- str objectIri
+    announceDoc domain groupUserId activityId now "Announce" addressing update
+
+/// `Undo{Announce}`, retracting the boost of a deleted reply (R-63): the embedded `Announce` is the Group's own,
+/// by the id it was first sent with
+let undoAnnounce
+    (domain: string)
+    (groupUserId: string)
+    (activityId: string)
+    (now: DateTimeOffset)
+    (addressing: Audience.Addressing)
+    (announceId: string)
+    (objectIri: string)
+    : JsonNode =
+    let announceNode = JsonObject()
+    announceNode["id"] <- str announceId
+    announceNode["type"] <- str "Announce"
+    announceNode["actor"] <- str (Ids.actorId domain groupUserId)
+    announceNode["object"] <- str objectIri
+    announceDoc domain groupUserId activityId now "Undo" addressing announceNode

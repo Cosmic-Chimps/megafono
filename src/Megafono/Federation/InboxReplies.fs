@@ -117,7 +117,14 @@ let createReply (env: Env) (signer: RemoteActor) (activity: JsonNode) (note: Jso
 
                         let reply = replyObject env note (Audience.receivedName audience) parentRef parent.Root published None
                         let! _ = Outbox.enqueueEvent tx env.Time parent.RootAuthor (Events.replyBody Events.ReplyReceived (actorSummary signer) reply extensions)
-                        ()
+
+                        // An announcing Group boosts every public or unlisted reply in its threads (specs/006-group-announce R-62)
+                        if Audience.isListable audience then
+                            let! announces = Announces.groupAnnounces tx parent.RootAuthor
+
+                            if announces then
+                                let! announceGuid = Announces.queueAnnounce tx env.Time env.Domain parent.RootAuthor replyId audience (signer.Id, Some signer.Inbox)
+                                do! Threads.setAnnounce tx replyId announceGuid
 
                     // A reply seen again under another activity id is still only one reply: keep the marker
                     do! tx.CommitAsync()
@@ -183,6 +190,13 @@ let updateReply (env: Env) (signer: RemoteActor) (activity: JsonNode) (note: Jso
                         let! extensions = extensionsOf tx row.ThreadRoot activity["@context"] note
                         do! Threads.markUpdated tx env.Time replyId
                         let! _ = Outbox.enqueueEvent tx env.Time row.RootAuthor (Events.replyBody Events.ReplyUpdated (actorSummary signer) reply extensions)
+
+                        match row.AnnounceActivity with
+                        | Some announceGuid ->
+                            let! _ = Announces.queueAnnounceUpdate tx env.Time env.Domain row.RootAuthor updateId signer.Id (Some signer.Inbox) replyId announceGuid
+                            ()
+                        | None -> ()
+
                         do! tx.CommitAsync()
                         return Handled
         | _ -> return Ignored "the Update carries no ids"
@@ -210,6 +224,13 @@ let handleDelete (env: Env) (signer: RemoteActor) (activity: JsonNode) : Task<Ou
                 else
                     let! _ = Threads.markDeleted tx env.Time replyId
                     let! _ = Outbox.enqueueEvent tx env.Time row.RootAuthor (Events.deletedBody (actorSummary signer) replyId (threadRef env.Domain row.ThreadRoot))
+
+                    match row.AnnounceActivity with
+                    | Some announceGuid ->
+                        let! _ = Announces.queueUndoAnnounce tx env.Time env.Domain row.RootAuthor announceGuid signer.Id (Some signer.Inbox) replyId
+                        ()
+                    | None -> ()
+
                     do! tx.CommitAsync()
                     return Handled
         | _ -> return Ignored "the Delete is not the signer's own"

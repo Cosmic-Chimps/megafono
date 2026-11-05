@@ -24,6 +24,7 @@
     <Compile Include="Infrastructure/Outbox.fs" />
     <Compile Include="Infrastructure/Threads.fs" />
     <Compile Include="Infrastructure/FeedPosts.fs" />
+    <Compile Include="Infrastructure/Announces.fs" />
     <Compile Include="Federation/Http.fs" />
     <Compile Include="Federation/Actors.fs" />
     <Compile Include="Federation/Objects.fs" />

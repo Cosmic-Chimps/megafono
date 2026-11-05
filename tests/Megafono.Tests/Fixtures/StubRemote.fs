@@ -57,6 +57,7 @@ type StubRemote() =
     let mutable sharedInbox: string option = None
     let mutable mutate: (string -> JsonObject -> unit) option = None
     let users = ConcurrentDictionary<string, unit>()
+    let actorTypes = ConcurrentDictionary<string, string>()
     let notes = ConcurrentDictionary<string, JsonObject>()
     let mutable app: WebApplication = null
 
@@ -65,6 +66,7 @@ type StubRemote() =
 
     let actorId (name: string) = $"{baseUrl ()}/users/{name}"
     let keyIdOf (name: string) = match keyStyle with Fragment -> $"{actorId name}#main-key" | _ -> $"{actorId name}/main-key"
+    let actorTypeOf (name: string) : string = match actorTypes.TryGetValue name with true, t -> t | false, _ -> "Person"
 
     let keyNode (name: string) =
         let k = JsonObject()
@@ -77,7 +79,7 @@ type StubRemote() =
         let doc = JsonObject()
         doc["@context"] <- JsonArray(JsonValue.Create "https://www.w3.org/ns/activitystreams", JsonValue.Create "https://w3id.org/security/v1")
         doc["id"] <- JsonValue.Create(actorId name)
-        doc["type"] <- JsonValue.Create "Person"
+        doc["type"] <- JsonValue.Create(actorTypeOf name)
         doc["preferredUsername"] <- JsonValue.Create name
         doc["name"] <- JsonValue.Create $"{name} (stub)"
         doc["inbox"] <- JsonValue.Create $"{actorId name}/inbox"
@@ -167,7 +169,7 @@ type StubRemote() =
                     | PathStub ->
                         let stub = JsonObject()
                         stub["id"] <- JsonValue.Create(actorId name)
-                        stub["type"] <- JsonValue.Create "Person"
+                        stub["type"] <- JsonValue.Create(actorTypeOf name)
                         stub["publicKey"] <- keyNode name
                         write ctx 200 "application/activity+json" (stub.ToJsonString())
                     | PathKeyObject ->
@@ -209,6 +211,9 @@ type StubRemote() =
         and set v = mutate <- v
 
     member _.AddUser(name: string) = users[name] <- ()
+
+    /// Serves `name` as this actor type (`Group`, say) instead of the default `Person` (specs/006-group-announce T011)
+    member _.SetActorType(name: string, actorType: string) = actorTypes[name] <- actorType
 
     /// Serves a Note of `name` at `/users/{name}/statuses/{suffix}` (what a server does for a reply it sent)
     member _.ServeNote(name: string, suffix: string, note: JsonObject) = notes[$"/users/{name}/statuses/{suffix}"] <- note
